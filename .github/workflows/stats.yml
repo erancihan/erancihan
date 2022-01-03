@@ -20,3 +20,5 @@ jobs:
           plugin_anilist_limit_characters: 22
           plugin_anilist_shuffle: yes
           plugin_anilist_user: freedrone
+          
+          token: ${{ secrets.METRICS_TOKEN }}
