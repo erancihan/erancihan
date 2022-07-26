@@ -37,11 +37,11 @@ Regardless, that is the problem of future me.
 fi
 
 ## copy config from repository
-if [[ "$DRY_RUN" != true ]]; then    
-    curl -O https://raw.githubusercontent.com/freedrone/dotfiles/master/.vimrc
-    curl -O https://raw.githubusercontent.com/freedrone/dotfiles/master/.p10k.zsh
-    curl -O https://raw.githubusercontent.com/freedrone/dotfiles/master/.zshrc
-    curl -O https://raw.githubusercontent.com/freedrone/dotfiles/master/.gitconfig
+if [[ "$DRY_RUN" != true ]]; then
+    curl -O https://raw.githubusercontent.com/erancihan/erancihan/master/dotfiles/.vimrc
+    curl -O https://raw.githubusercontent.com/erancihan/erancihan/master/dotfiles/.p10k.zsh
+    curl -O https://raw.githubusercontent.com/erancihan/erancihan/master/dotfiles/.zshrc
+    curl -O https://raw.githubusercontent.com/erancihan/erancihan/master/dotfiles/.gitconfig
 fi
 
 ## junegunn/vim-plug#installation
