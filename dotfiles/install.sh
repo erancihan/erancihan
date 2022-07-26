@@ -36,6 +36,9 @@ Regardless, that is the problem of future me.
 '
 fi
 
+rm -rf ~/.oh-my-zsh
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+
 ## copy config from repository
 if [[ "$DRY_RUN" != true ]]; then
     curl -O https://raw.githubusercontent.com/erancihan/erancihan/master/dotfiles/.vimrc
