@@ -8,10 +8,17 @@ if [[ ! -d "$ZSH/custom/themes/powerlevel10k" ]]; then
     echo "https://github.com/romkatv/powerlevel10k#meslo-nerd-font-patched-for-powerlevel10k"
 fi
 
+export PATH="$PATH:$HOME/.venv/bin"
+
 # ZSH_THEME="robbyrussell"
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
-plugins=(git)
+DISABLE_VENV_CD=1
+
+plugins=(
+    git
+    virtualenvwrapper
+)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -44,17 +51,22 @@ export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || pr
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
 # GoLang CONF
-export PATH="$PATH:/usr/local/go/bin"
+case `uname` in
+    Darwin)
+        # commands for OSX
+    ;;
+    Linux)
+        # commands for Linux
+        export PATH="$PATH:/usr/local/go/1.17/bin"
+        export GOPATH="${HOME}/go"
+    ;;
+esac
 
 # Laravel | Sail
 alias sail=./vendor/bin/sail
 
 # GitHub CLI completion
 compctl -K _gh gh
-
-# ROS
-source /opt/ros/noetic/setup.zsh
-source ~/Workspace/teknofest/karmasim_ws/devel/setup.zsh
 
 # Android SDK
 if [ -d "$HOME/Programs/Android/Sdk" ]
@@ -68,3 +80,5 @@ if [ -f "$HOME/Programs/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/Programs
 
 # The next line enables shell command completion for gcloud.
 if [ -f "$HOME/Programs/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/Programs/google-cloud-sdk/completion.zsh.inc"; fi
+
+export GPG_TTY=$(tty)
