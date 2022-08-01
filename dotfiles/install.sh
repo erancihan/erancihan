@@ -4,13 +4,13 @@ for key in "$@"
 do
 case $key in
     --dry-run)
-    DRY_RUN=true
-    shift ## past argument
+        DRY_RUN=true
+        shift ## past argument
     ;;
     ## EQUALS SEPARATED
     -e=*|--extension=*)
-    EXTENSION="${key#*=}"
-    shift ## past argument=value
+        EXTENSION="${key#*=}"
+        shift ## past argument=value
     ;;
     *)  ## default:
         ##     skip unhandled command
@@ -22,18 +22,20 @@ if [[ "$DRY_RUN" = true ]]; then
     echo "> DRY RUN"
 fi
 
+case `uname` in
+  Darwin)
+    # commands for OSX
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    brew install gh gnupg python virtualenv go php rust tree htop
+  ;;
+  Linux)
+    # commands for Linux
+  ;;
+esac
+
 ## install Node Version Manager
 if [[ "$DRY_RUN" != true ]]; then
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.2/install.sh | bash
-:'  
-After NVM is installed it is upto user to install node from NVM. 
-At this moment, I dont remember if NVM promts an interractive shell
-or whether this script will break during execution.
-
-Regardless, that is the problem of future me.
-                                                Signed: 2021-01-17 04:00
-                                                        @freedrone
-'
 fi
 
 rm -rf ~/.oh-my-zsh
