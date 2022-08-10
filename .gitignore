@@ -1,0 +1,12 @@
+!/**/.gitkeep
+
+.idea/
+/**/.idea
+.vscode/
+/**/.vscode/
+
+/**/cmake-build-*/
+/**/make-build-*/
+/**/build/
+
+/**/.env
