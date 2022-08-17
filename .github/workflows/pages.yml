@@ -25,7 +25,7 @@ jobs:
       - name: Build
         run: |
           cd website
-          hugo --minify
+          make release
           mv public ../public
 
       - name: Deploy
