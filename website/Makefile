@@ -14,7 +14,7 @@ dev:
 # Release -----------------------------------
 
 build-theme:
-	@cd themes/main; yarn publish
+	@cd themes/main; yarn build
 
 build-website:
 	hugo --minify

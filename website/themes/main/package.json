@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "publish": "npx tailwindcss -i ./assets/main.css -o ./assets/style.css",
+    "build": "npx tailwindcss -i ./assets/main.css -o ./assets/style.css",
     "watch": "npx tailwindcss -i ./assets/main.css -o ./assets/style.css --watch",
     "minify": "npx tailwindcss -i ./assets/main.css -o ./assets/style.css --minify"
   },
