@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: erancihan/erancihan-tailwind-theme-at-hugo
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
           path: website/themes/theme
 
       - name: Setup Hugo
