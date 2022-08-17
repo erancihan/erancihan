@@ -13,12 +13,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Checkout Theme
-        uses: actions/checkout@v3
         with:
-          repository: erancihan/erancihan-tailwind-theme-at-hugo
+          submodules: true
           token: ${{ secrets.GH_PAT }}
-          path: website/themes/theme
 
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@v2
