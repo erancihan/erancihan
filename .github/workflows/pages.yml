@@ -11,10 +11,14 @@ jobs:
   gh-page:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Checkout Theme
+        uses: actions/checkout@v3
         with:
-          submodules: true  # Fetch Hugo themes (true OR recursive)
-          fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
+          repository: erancihan/erancihan-tailwind-theme-at-hugo
+          token: ${{ secrets.GH_PAT }}
+          path: website/themes/theme
 
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@v2
@@ -25,7 +29,7 @@ jobs:
       - name: Build
         run: |
           cd website
-          hugo --minify
+          make release
           mv public ../public
 
       - name: Deploy
