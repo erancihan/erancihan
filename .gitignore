@@ -1,3 +1,16 @@
-/**/.vscode
+!/**/.gitkeep
+
+.idea/
+/**/.idea
+.vscode/
+/**/.vscode/
+
 *.log
+
+/**/cmake-build-*/
+/**/make-build-*/
+/**/build/
+/**/target/*
+
+/**/.env
 /**/node_modules
