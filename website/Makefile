@@ -3,7 +3,7 @@
 # Development -------------------------------
 
 watch-theme:
-	@cd themes/theme; yarn watch
+	@cd themes/theme; yarn; yarn watch
 
 watch-website:
 	hugo server -D --watch
@@ -14,7 +14,7 @@ dev:
 # Release -----------------------------------
 
 build-theme:
-	@cd themes/theme; yarn build
+	@cd themes/theme; yarn; yarn build
 
 build-website:
 	hugo --minify
