@@ -22,13 +22,16 @@ pub fn remove_duplicates_with_retain_set(nums: &mut Vec<i32>) -> i32 {
     let mut _set: HashSet<i32> = HashSet::new();
 
     nums.retain(|&elem| -> bool {
-        if _set.contains(&elem) {
-            return false;
+        match _set.get(&elem) {
+            Some(_value) => {
+                return false;
+            },
+            None => {
+                _set.insert(elem);
+                return true;
+            }
         }
-
-        _set.insert(elem);
-        return true;        
-    } );
+    });
     
     return nums.len() as i32;
 }
