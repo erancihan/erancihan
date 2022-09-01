@@ -1,0 +1,11 @@
+[package]
+name = "my-project"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.63.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wasm-pack = "0.10.3"
+cargo-generate = "0.16.0"
