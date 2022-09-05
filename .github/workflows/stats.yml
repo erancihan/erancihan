@@ -18,6 +18,7 @@ jobs:
           commits_authoring: Cihan Eran, erancihan, erancihan@gmail.com
           plugin_languages_ignored: >-
             shell
+          plugin_languages_details: bytes-size, percentage
           # AniList Conf
           plugin_anilist: yes
           plugin_anilist_medias: anime, manga
