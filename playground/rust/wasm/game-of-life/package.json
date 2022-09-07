@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "webpack --config webpack.config.js",
-    "start": "webpack-dev-server"
+    "start": "concurrently \"webpack-dev-server\" \"gulp\""
   },
   "keywords": [
     "webassembly",
@@ -21,10 +21,13 @@
     "wasm-game-of-life": "file:./wasm/game-of-life/pkg"
   },
   "devDependencies": {
+    "concurrently": "^7.4.0",
+    "copy-webpack-plugin": "^5.0.0",
+    "gulp": "^4.0.2",
+    "gulp-run-command": "^0.0.10",
     "hello-wasm-pack": "^0.1.0",
     "webpack": "^4.29.3",
     "webpack-cli": "^3.1.0",
-    "webpack-dev-server": "^3.1.5",
-    "copy-webpack-plugin": "^5.0.0"
+    "webpack-dev-server": "^3.1.5"
   }
 }
