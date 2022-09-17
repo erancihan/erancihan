@@ -1,4 +1,5 @@
 mod agent;
+use crate::agent::movement::Movement;
 
 trait Broadcast {
     fn on_broadcast(&self) -> ();
