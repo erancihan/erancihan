@@ -8,10 +8,17 @@ if [[ ! -d "$ZSH/custom/themes/powerlevel10k" ]]; then
     echo "https://github.com/romkatv/powerlevel10k#meslo-nerd-font-patched-for-powerlevel10k"
 fi
 
+export PATH="$PATH:$HOME/.venv/bin"
+
 # ZSH_THEME="robbyrussell"
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
-plugins=(git)
+DISABLE_VENV_CD=1
+
+plugins=(
+    git
+    virtualenvwrapper
+)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -34,17 +41,47 @@ compinit
 
 ########################################
 
-# Plex home directory
-export PLEX_HOME="/opt/plex/"
-
-########################################
-
 # Node Version Manager
 export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-# GoLang CONF
-export PATH="$PATH:/usr/local/go/bin"
+case `uname` in
+    Darwin)
+        # commands for OSX
+
+        # GoLang CONF
+        export GOPATH="${HOME}/go"
+    ;;
+    Linux)
+        # commands for Linux
+        
+        # Plex home directory
+        export PLEX_HOME="/opt/plex/"
+
+        # GoLang CONF
+        export PATH="$PATH:/usr/local/go/1.17/bin"
+        export GOPATH="${HOME}/go"
+
+        # Android SDK
+        if [ -d "$HOME/Programs/Android/Sdk" ]
+        then
+            export ANDROID_HOME="$HOME/Programs/Android/Sdk"
+            export PATH="$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools"
+        fi
+
+        # The next line updates PATH for the Google Cloud SDK.
+        if [ -f "$HOME/Programs/google-cloud-sdk/path.zsh.inc" ]; 
+        then 
+            . "$HOME/Programs/google-cloud-sdk/path.zsh.inc"; 
+        fi
+
+        # The next line enables shell command completion for gcloud.
+        if [ -f "$HOME/Programs/google-cloud-sdk/completion.zsh.inc" ]; 
+        then 
+            . "$HOME/Programs/google-cloud-sdk/completion.zsh.inc";
+        fi
+    ;;
+esac
 
 # Laravel | Sail
 alias sail=./vendor/bin/sail
@@ -52,19 +89,4 @@ alias sail=./vendor/bin/sail
 # GitHub CLI completion
 compctl -K _gh gh
 
-# ROS
-source /opt/ros/noetic/setup.zsh
-source ~/Workspace/teknofest/karmasim_ws/devel/setup.zsh
-
-# Android SDK
-if [ -d "$HOME/Programs/Android/Sdk" ]
-then
-    export ANDROID_HOME="$HOME/Programs/Android/Sdk"
-    export PATH="$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools"
-fi
-
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f "$HOME/Programs/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/Programs/google-cloud-sdk/path.zsh.inc"; fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f "$HOME/Programs/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/Programs/google-cloud-sdk/completion.zsh.inc"; fi
+export GPG_TTY=$(tty)

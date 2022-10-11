@@ -29,9 +29,10 @@ type LambdaResponse struct {
 }
 
 var (
-	AWS_S3_REGION     = ""
-	AWS_S3_BUCKET     = ""
-	AWS_S3_BUCKET_URL = "//" + AWS_S3_BUCKET + ".s3." + AWS_S3_REGION + ".amazonaws.com"
+	AWS_S3_REGION        = ""
+	AWS_S3_BUCKET        = ""
+	AWS_S3_BUCKET_URL    = "//" + AWS_S3_BUCKET + ".s3." + AWS_S3_REGION + ".amazonaws.com"
+	UPLOAD_FOLDER_PREFIX = "/uploads/"
 )
 
 func handle(ctx context.Context, name events.APIGatewayProxyRequest) (LambdaResponse, error) {
@@ -40,7 +41,7 @@ func handle(ctx context.Context, name events.APIGatewayProxyRequest) (LambdaResp
 	json.Unmarshal([]byte(name.Body), &request)
 
 	// retrieve request stuff
-	fileDest := "/uploads/" + request.Filename
+	fileDest := UPLOAD_FOLDER_PREFIX + request.Filename
 	imageDAT := request.Image
 
 	coI := strings.Index(imageDAT, ",")

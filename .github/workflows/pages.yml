@@ -1,0 +1,38 @@
+name: github pages
+
+on:
+  push:
+    branches:
+      - master  # Set a branch to deploy
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gh-page:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v2
+        with:
+          hugo-version: 'latest'
+          # extended: true
+
+      - name: Build
+        run: |
+          cd website
+          make release
+          mv public ../public
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/master'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+  

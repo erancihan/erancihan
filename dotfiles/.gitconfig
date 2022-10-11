@@ -4,4 +4,13 @@
 [color]
 	ui = always
 [commit]
-	gpgSign = true
+	gpgsign = true
+[user]
+	email = erancihan@gmail.com
+	name = Cihan Eran
+	signingkey = 
+	gpgsign = true
+[pull]
+	ff = only
+[pager]
+	branch = false
