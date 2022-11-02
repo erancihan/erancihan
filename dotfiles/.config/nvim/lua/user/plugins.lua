@@ -84,7 +84,17 @@ return packer.startup(function(use)
 	use("JoosepAlviste/nvim-ts-context-commentstring")
 
 	-- Theme
-	use("tanvirtin/monokai.nvim")
+	-- use("tanvirtin/monokai.nvim")
+	use {
+    "catppuccin/nvim",
+    as = "catppuccin",
+    config = function()
+        require("catppuccin").setup {
+            flavour = "macchiato" -- mocha, macchiato, frappe, latte
+        }
+        vim.api.nvim_command "colorscheme catppuccin"
+    end
+	}
 
 	-- Tabs
 	use({
@@ -139,6 +149,7 @@ return packer.startup(function(use)
 
 	-- Git Blame
 	use("f-person/git-blame.nvim")
+	vim.g.gitblame_display_virtual_text = 0
 
 	-- Colorize
 	use({
