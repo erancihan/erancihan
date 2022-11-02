@@ -26,7 +26,7 @@ case `uname` in
   Darwin)
     # commands for OSX
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    brew install gh gnupg python virtualenv go php rust tree htop
+    brew install gh gnupg tree htop
   ;;
   Linux)
     # commands for Linux
