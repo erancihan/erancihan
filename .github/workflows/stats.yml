@@ -33,7 +33,7 @@ jobs:
           plugin_languages_threshold: 0%
 
           plugin_languages_indepth: yes
-          commits_authoring: Cihan Eran, erancihan, freedrone, erancihan@gmail.com
+          commits_authoring: Cihan Eran, erancihan, erancihan@gmail.com
           plugin_languages_ignored: >-
             shell
           plugin_languages_details: bytes-size, percentage
