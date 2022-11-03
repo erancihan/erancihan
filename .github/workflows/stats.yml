@@ -17,6 +17,11 @@ jobs:
           base: header, activity, community, repositories, metadata
           config_timezone: Europe/Istanbul
 
+          # output conf
+          output_action: commit
+          committer_branch: metrics-renders
+          committer_message: "chore: update metrics"
+
           plugin_isocalendar: yes
           plugin_isocalendar_duration: full-year 
           
@@ -38,6 +43,13 @@ jobs:
             shell
           plugin_languages_details: bytes-size, percentage
           
+          # LeetCode conf
+          plugin_leetcode: yes
+          plugin_leetcode_limit_recent: 2
+          plugin_leetcode_limit_skills: 10
+          plugin_leetcode_sections: solved, skills, recent
+          plugin_leetcode_user: erancihan
+
           # AniList Conf
           plugin_anilist: yes
           plugin_anilist_medias: anime, manga
@@ -46,5 +58,6 @@ jobs:
           plugin_anilist_limit_characters: 22
           plugin_anilist_shuffle: no
           plugin_anilist_user: freedrone
+          
           # GitHub Token
           token: ${{ secrets.METRICS_TOKEN }}
