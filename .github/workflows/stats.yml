@@ -16,7 +16,22 @@ jobs:
           template: classic
           base: header, activity, community, repositories, metadata
           config_timezone: Europe/Istanbul
-          config_order: base, isocalendar, languages, leetcode, anilist
+          config_order: >
+            base.header,
+            introduction, 
+            base.activity+community,
+            isocalendar, 
+            base.repositories, 
+            lines, 
+            followup,
+            discussions,
+            languages, 
+            notable,
+            projects,
+            repositories,
+            gists,
+            leetcode, 
+            anilist
 
           # output conf
           output_action: commit
