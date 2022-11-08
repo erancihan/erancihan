@@ -149,7 +149,6 @@ return packer.startup(function(use)
 
 	-- Git Blame
 	use("f-person/git-blame.nvim")
-	vim.g.gitblame_display_virtual_text = 0
 
 	-- Colorize
 	use({
