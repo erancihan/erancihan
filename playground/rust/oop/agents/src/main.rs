@@ -1,5 +1,5 @@
 mod agent;
-use crate::agent::movement::Movement;
+use agent::Movement;
 
 
 fn main() {

@@ -1,5 +1,5 @@
 pub mod movement;
-use movement::Movement;
+pub use movement::Movement;
 
 
 pub struct Agent<'lt> {
