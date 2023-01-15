@@ -7,18 +7,49 @@ jobs:
   generate_readme_stats:
     name: Generates ReadMe Images
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: lowlighter/metrics@latest
         with:
+          user: erancihan
+          template: classic
+          base: header, activity, community, repositories, metadata
+          config_timezone: Europe/Istanbul
+
+          # output conf
+          output_action: commit
+          committer_branch: metrics-renders
+          committer_message: "chore: update metrics"
+
           plugin_isocalendar: yes
           plugin_isocalendar_duration: full-year 
+          
           # Language Analysis
           plugin_languages: yes
+          plugin_languages_analysis_timeout: 15
+          plugin_languages_categories: markup, programming
+          plugin_languages_colors: github
+          plugin_languages_limit: 8
+          plugin_languages_recent_categories: markup, programming
+          plugin_languages_recent_days: 14
+          plugin_languages_recent_load: 300
+          plugin_languages_sections: most-used
+          plugin_languages_threshold: 0%
+
           plugin_languages_indepth: yes
           commits_authoring: Cihan Eran, erancihan, erancihan@gmail.com
           plugin_languages_ignored: >-
             shell
           plugin_languages_details: bytes-size, percentage
+          
+          # LeetCode conf
+          plugin_leetcode: yes
+          plugin_leetcode_limit_recent: 2
+          plugin_leetcode_limit_skills: 10
+          plugin_leetcode_sections: solved, skills, recent
+          plugin_leetcode_user: erancihan
+
           # AniList Conf
           plugin_anilist: yes
           plugin_anilist_medias: anime, manga
@@ -27,5 +58,6 @@ jobs:
           plugin_anilist_limit_characters: 22
           plugin_anilist_shuffle: no
           plugin_anilist_user: freedrone
+          
           # GitHub Token
           token: ${{ secrets.METRICS_TOKEN }}

@@ -8,7 +8,10 @@ if [[ ! -d "$ZSH/custom/themes/powerlevel10k" ]]; then
     echo "https://github.com/romkatv/powerlevel10k#meslo-nerd-font-patched-for-powerlevel10k"
 fi
 
-export PATH="$PATH:$HOME/.venv/bin"
+export PATH="$PATH:$HOME/.venv/bin:$HOME/.local/bin"
+export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+
+export CPPFLAGS="-I/opt/homebrew/opt/openjdk/include"
 
 # ZSH_THEME="robbyrussell"
 ZSH_THEME="powerlevel10k/powerlevel10k"
@@ -17,7 +20,7 @@ DISABLE_VENV_CD=1
 
 plugins=(
     git
-    virtualenvwrapper
+    # virtualenvwrapper
 )
 
 source $ZSH/oh-my-zsh.sh
@@ -48,9 +51,13 @@ export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || pr
 case `uname` in
     Darwin)
         # commands for OSX
+        export PATH="/opt/homebrew/opt/ruby/bin:$PATH"
 
         # GoLang CONF
         export GOPATH="${HOME}/go"
+
+        # Android SDK
+        export ANDROID_HOME="$HOME/Library/Android/sdk"
     ;;
     Linux)
         # commands for Linux
