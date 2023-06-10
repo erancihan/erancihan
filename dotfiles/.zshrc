@@ -1,17 +1,51 @@
 # Path to your oh-my-zsh installation.
 export ZSH="${HOME}/.oh-my-zsh"
 
-if [[ ! -d "$ZSH/custom/themes/powerlevel10k" ]]; then
+if [[ ! -d "$ZSH/custom/themes/powerlevel10k" ]];
+then
     echo "p10k does not exist, cloning"
     git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
     echo "run ' p10k configure' to install font, or go to link for manual install"
     echo "https://github.com/romkatv/powerlevel10k#meslo-nerd-font-patched-for-powerlevel10k"
 fi
 
-export PATH="$PATH:$HOME/.venv/bin:$HOME/.local/bin"
-export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+export PATH="$PATH:$HOME/.venv/bin:$HOME/.local/bin:$HOME/.composer/vendor/bin"
 
-export CPPFLAGS="-I/opt/homebrew/opt/openjdk/include"
+# OpenJDK
+if [ -d "/opt/homebrew/opt/openjdk/bin" ]
+then
+    export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+    export CPPFLAGS="-I/opt/homebrew/opt/openjdk/include"
+fi
+
+# Ruby
+if [ -d "/opt/homebrew/opt/ruby/bin" ]
+then
+    export PATH="/opt/homebrew/opt/ruby/bin:$PATH"
+fi
+
+# setup resources folder
+if [ ! -d "$HOME/w/res" ]
+then
+    mkdir -p "$HOME/w/res"
+fi
+
+# GoLang
+export GOPATH="${HOME}/w/res/go"
+
+## gcloud setup
+if [ -d "$HOME/w/res/google-cloud-sdk" ]
+then
+    export PATH="$PATH:$HOME/w/res/google-cloud-sdk/bin"
+
+    # The next line enables shell command completion for gcloud.
+    if [ -f "$HOME/w/res/google-cloud-sdk/completion.zsh.inc" ];
+    then
+        . "$HOME/w/res/google-cloud-sdk/completion.zsh.inc";
+    fi
+fi
+
+######################################## ZSH config
 
 # ZSH_THEME="robbyrussell"
 ZSH_THEME="powerlevel10k/powerlevel10k"
@@ -42,7 +76,7 @@ autoload -Uz compinit
 compinit
 # End of lines added by compinstall
 
-########################################
+######################################## 
 
 # Node Version Manager
 export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
@@ -50,42 +84,22 @@ export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || pr
 
 case `uname` in
     Darwin)
-        # commands for OSX
-        export PATH="/opt/homebrew/opt/ruby/bin:$PATH"
-
-        # GoLang CONF
-        export GOPATH="${HOME}/go"
-
         # Android SDK
-        export ANDROID_HOME="$HOME/Library/Android/sdk"
+        if [ -d "$HOME/Library/Android/sdk" ]
+        then
+            export ANDROID_HOME="$HOME/Library/Android/sdk"
+            export ANDROID_NDK_HOME="/opt/homebrew/share/android-ndk"
+        fi
     ;;
     Linux)
-        # commands for Linux
-        
         # Plex home directory
         export PLEX_HOME="/opt/plex/"
-
-        # GoLang CONF
-        export PATH="$PATH:/usr/local/go/1.17/bin"
-        export GOPATH="${HOME}/go"
 
         # Android SDK
         if [ -d "$HOME/Programs/Android/Sdk" ]
         then
             export ANDROID_HOME="$HOME/Programs/Android/Sdk"
             export PATH="$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools"
-        fi
-
-        # The next line updates PATH for the Google Cloud SDK.
-        if [ -f "$HOME/Programs/google-cloud-sdk/path.zsh.inc" ]; 
-        then 
-            . "$HOME/Programs/google-cloud-sdk/path.zsh.inc"; 
-        fi
-
-        # The next line enables shell command completion for gcloud.
-        if [ -f "$HOME/Programs/google-cloud-sdk/completion.zsh.inc" ]; 
-        then 
-            . "$HOME/Programs/google-cloud-sdk/completion.zsh.inc";
         fi
     ;;
 esac
