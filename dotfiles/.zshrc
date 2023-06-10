@@ -11,40 +11,6 @@ fi
 
 export PATH="$PATH:$HOME/.venv/bin:$HOME/.local/bin:$HOME/.composer/vendor/bin"
 
-# OpenJDK
-if [ -d "/opt/homebrew/opt/openjdk/bin" ]
-then
-    export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
-    export CPPFLAGS="-I/opt/homebrew/opt/openjdk/include"
-fi
-
-# Ruby
-if [ -d "/opt/homebrew/opt/ruby/bin" ]
-then
-    export PATH="/opt/homebrew/opt/ruby/bin:$PATH"
-fi
-
-# setup resources folder
-if [ ! -d "$HOME/w/res" ]
-then
-    mkdir -p "$HOME/w/res"
-fi
-
-# GoLang
-export GOPATH="${HOME}/w/res/go"
-
-## gcloud setup
-if [ -d "$HOME/w/res/google-cloud-sdk" ]
-then
-    export PATH="$PATH:$HOME/w/res/google-cloud-sdk/bin"
-
-    # The next line enables shell command completion for gcloud.
-    if [ -f "$HOME/w/res/google-cloud-sdk/completion.zsh.inc" ];
-    then
-        . "$HOME/w/res/google-cloud-sdk/completion.zsh.inc";
-    fi
-fi
-
 ######################################## ZSH config
 
 # ZSH_THEME="robbyrussell"
@@ -82,16 +48,23 @@ compinit
 export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
+# homebrew home directory
+HOMEBREW_PREFIX="/opt/homebrew"
+
 case `uname` in
     Darwin)
+        HOMEBREW_PREFIX="/opt/homebrew"
+
         # Android SDK
         if [ -d "$HOME/Library/Android/sdk" ]
         then
             export ANDROID_HOME="$HOME/Library/Android/sdk"
-            export ANDROID_NDK_HOME="/opt/homebrew/share/android-ndk"
+            export ANDROID_NDK_HOME="$HOMEBREW_PREFIX/share/android-ndk"
         fi
     ;;
     Linux)
+        HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+
         # Plex home directory
         export PLEX_HOME="/opt/plex/"
 
@@ -103,6 +76,46 @@ case `uname` in
         fi
     ;;
 esac
+
+# Homebrew
+if [ -d "$HOMEBREW_PREFIX/bin" ]
+then
+    export PATH="$HOMEBREW_PREFIX/bin:$PATH"
+fi
+
+# OpenJDK
+if [ -d "$HOMEBREW_PREFIX/opt/openjdk/bin" ]
+then
+    export PATH="$HOMEBREW_PREFIX/opt/openjdk/bin:$PATH"
+    export CPPFLAGS="-I$HOMEBREW_PREFIX/opt/openjdk/include"
+fi
+
+# Ruby
+if [ -d "$HOMEBREW_PREFIX/opt/ruby/bin" ]
+then
+    export PATH="$HOMEBREW_PREFIX/opt/ruby/bin:$PATH"
+fi
+
+######################################## setup resources folder
+if [ ! -d "$HOME/w/res" ]
+then
+    mkdir -p "$HOME/w/res"
+fi
+
+# GoLang
+export GOPATH="$HOME/w/res/go"
+
+## gcloud setup
+if [ -d "$HOME/w/res/google-cloud-sdk" ]
+then
+    export PATH="$PATH:$HOME/w/res/google-cloud-sdk/bin"
+
+    # The next line enables shell command completion for gcloud.
+    if [ -f "$HOME/w/res/google-cloud-sdk/completion.zsh.inc" ];
+    then
+        . "$HOME/w/res/google-cloud-sdk/completion.zsh.inc";
+    fi
+fi
 
 # Laravel | Sail
 alias sail=./vendor/bin/sail
