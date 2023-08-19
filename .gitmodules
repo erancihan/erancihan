@@ -6,3 +6,6 @@
 	path = website/themes/theme
 	url = https://github.com/erancihan/erancihan-tailwind-theme-at-hugo.git
 	branch = main
+[submodule "dotfiles"]
+	path = dotfiles
+	url = git@github.com:erancihan/dotfiles.git
