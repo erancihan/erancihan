@@ -1,11 +1,3 @@
-[submodule "website/themes/ananke"]
-	path = website/themes/ananke
-	url = https://github.com/theNewDynamic/gohugo-theme-ananke.git
-	branch = master
-[submodule "website/themes/theme"]
-	path = website/themes/theme
-	url = https://github.com/erancihan/erancihan-tailwind-theme-at-hugo.git
-	branch = main
 [submodule "dotfiles"]
 	path = dotfiles
 	url = git@github.com:erancihan/dotfiles.git
