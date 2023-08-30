@@ -30,9 +30,15 @@ class Node:
     def __repr__(self):
         return f"Node({hex(id(self))}, edges:[{','.join([str(item) for item in self.edges])}])"
 
+    def _push(self, edge):
+        edge.parent = self
+        self.edges.append(edge)
+
+        return edge
+
     def add(self, value):
         if len(self.edges) == 0:
-            self.push_edge(Edge(label=value, target=Node()))
+            self._push(Edge(label=value, target=Node()))
             return
 
         # find the edge that has first matching char
@@ -48,7 +54,7 @@ class Node:
 
         # if no edge found
         if edge is None:
-            self.push_edge(Edge(label=value, target=Node()))
+            self._push(Edge(label=value, target=Node()))
             return
 
         # found our edge that we will work on
@@ -76,7 +82,7 @@ class Node:
         if suffix_label is not None and len(suffix_label) > 0:
             # i am spliting the edge
             node = Node()
-            node.push_edge(Edge(label=suffix_label, target=edge.target))
+            node._push(Edge(label=suffix_label, target=edge.target))
 
             # update O1's (edge) label and target
             edge.label = prefix
@@ -93,12 +99,6 @@ class Node:
 
         raise Exception("Unexpected case occured!")
 
-    def push_edge(self, edge):
-        edge.parent = self
-        self.edges.append(edge)
-
-        return edge
-
 
 if __name__ == '__main__':
     root = Node()
@@ -111,4 +111,6 @@ if __name__ == '__main__':
     root.add('slowly')
     root.add('toasting')
     root.add('toaster')
+
+
     print(root)
