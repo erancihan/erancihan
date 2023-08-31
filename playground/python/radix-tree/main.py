@@ -36,6 +36,30 @@ class Node:
 
         return edge
 
+    def lookup(self, value: str) -> bool:
+        return self.contains(value)
+
+    def contains(self, value: str) -> bool:
+        node: Node = self
+        size: int = 0
+
+        while (node is not None and size < len(value)):
+            edge: Edge = None
+
+            prefix: str = value[size:]
+            for _edge in node.edges:
+                if prefix.startswith(_edge.label):
+                    edge = _edge
+                    break
+
+            if edge is not None:
+                node = edge.target
+                size += len(edge.label)
+            else:
+                node = None
+
+        return (node is not None) and (size == len(value))
+
     def add(self, value):
         if len(self.edges) == 0:
             self._push(Edge(label=value, target=Node()))
@@ -112,5 +136,12 @@ if __name__ == '__main__':
     root.add('toasting')
     root.add('toaster')
 
-
     print(root)
+    print()
+    print(f"team     ?: {root.contains('team')}")
+    print(f"test     ?: {root.contains('test')}")
+    print(f"teams    ?: {root.contains('teams')}")
+    print(f"tester   ?: {root.contains('tester')}")
+    print(f"toaster  ?: {root.contains('toaster')}")
+    print(f"toasters ?: {root.contains('toasters')}")
+    print(f"potatoes ?: {root.contains('potatoes')}")
