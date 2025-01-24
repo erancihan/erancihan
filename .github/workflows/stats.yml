@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      METRICS_IMAGE_OVERRIDE: 'ghcr.io/erancihan/lowlighter-github-metrics:devel'
     steps:
       - uses: erancihan/lowlighter-github-metrics@devel
         with:
