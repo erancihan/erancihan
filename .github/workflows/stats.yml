@@ -10,7 +10,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: erancihan/lowlighter-github-metrics@custom-repo-host-managers
+      - uses: erancihan/lowlighter-github-metrics@devel
         with:
           user: erancihan
           template: classic
