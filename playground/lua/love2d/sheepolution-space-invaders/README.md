@@ -13,4 +13,4 @@ love .
 There are some changes to the original code:
 - Folder structure is different
 - Used `kenney_simple-space` assets
-- Implemented actor and hitbox classes to handle some logics
+- Implemented actor and hitbox classes to handle some logic
