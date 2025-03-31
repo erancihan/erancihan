@@ -27,13 +27,38 @@ function Actor:onHit(obj)
     -- to be implemented by subclasses
 end
 
+
+local function checkAB(hitboxA, hitboxB)
+    if type(hitboxB) == "table" and #hitboxB > 0 then
+        for i = 1, #hitboxB do
+            if hitboxA:collidesWith(hitboxB[i]) then
+                return true
+            end
+        end
+    else
+        return hitboxA:collidesWith(hitboxB)
+    end
+
+    return false
+end
+
 function Actor:checkCollision(obj)
     -- Check if the actor collides with the given object
     if self.hitbox == nil or obj.hitbox == nil then
         return
     end
 
-    if HITBOX_HANDLERS[self.hitbox.type][obj.hitbox.type](self, obj) then
+    -- check if self.hitbox is an iterable object or not
+    local doesCollide = false
+    if type(self.hitbox) == "table" and #self.hitbox > 0 then
+        for i = 1, #self.hitbox do
+            doesCollide = checkAB(self.hitbox[i], obj.hitbox)
+        end
+    else
+        doesCollide = checkAB(self.hitbox, obj.hitbox)
+    end
+
+    if doesCollide then
         -- invoke the onHit callback on the target object
         if obj.onHit then
             obj:onHit(self)

@@ -13,7 +13,7 @@ function Enemy:new()
     self.originX = self.image:getWidth() / 2
     self.originY = self.image:getHeight() / 2
 
-    self.hitbox = Hitbox()
+    self.hitbox = Hitbox(self)
     self.hitbox.type = HITBOX_TYPES.RECTANGLE
     self.hitbox.dl = -self.image:getWidth() / 2
     self.hitbox.dr = self.image:getWidth() / 2

@@ -15,7 +15,7 @@ function Bullet:new(x, y)
 
     self.dead = false
 
-    self.hitbox = Hitbox()
+    self.hitbox = Hitbox(self)
     self.hitbox.type = HITBOX_TYPES.POINT
 end
 

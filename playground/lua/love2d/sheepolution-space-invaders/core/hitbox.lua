@@ -6,63 +6,63 @@ Object = require 'libs.classic'
 -- | rectangle | collisionCheckCIRCLEvAABB   | collisionCheckAABBvAABB   |
 -- | point     | collisionCheckPOINTvCIRCLE  | collisionCheckPOINTvAABB  | collisionCheckPOINTvPOINT
 
-local function collisionCheckCIRCLEvCIRCLE(actorA, actorB)
+local function collisionCheckCIRCLEvCIRCLE(hitboxA, hitboxB)
     -- https://developer.arm.com/documentation/102467/0201/Example---collision-detection
     -- two circles collide if the distance from a.center to b.center is less than the sum of their radii
     --    or equivalently, if the squared distance is less than the sum of their radii squared
     --  sqrt(dx^2 + dy^2)   <=  (a.radius + b.radius)
     --  dx^2 + dy^2         <=  (a.radius + b.radius)^2
-    local dx = actorA.hitbox.x - actorB.hitbox.x
-    local dy = actorA.hitbox.y - actorB.hitbox.y
+    local dx = hitboxA.owner.x - hitboxB.owner.x
+    local dy = hitboxA.owner.y - hitboxB.owner.y
 
     local dsqr = dx * dx + dy * dy
-    local radsqr = (actorA.hitbox.radius + actorB.hitbox.radius) * (actorA.hitbox.radius + actorB.hitbox.radius)
+    local radsqr = (hitboxA.radius + hitboxB.radius) * (hitboxA.radius + hitboxB.radius)
 
     return dsqr <= radsqr
 end
 
 -- rectangle to rectangle collision check
-local function collisionCheckAABBvAABB(actorA, actorB)
+local function collisionCheckAABBvAABB(hitboxA, hitboxB)
     -- check if the two rectangles intersect or overlap
     return
-        actorA.x + actorA.hitbox.dl <= actorB.x + actorB.hitbox.dr and
-        actorA.x + actorA.hitbox.dr >= actorB.x + actorB.hitbox.dl and
-        actorA.y + actorA.hitbox.dt <= actorB.y + actorB.hitbox.db and
-        actorA.y + actorA.hitbox.db >= actorB.y + actorB.hitbox.dt
+        hitboxA.owner.x + hitboxA.dl <= hitboxB.owner.x + hitboxB.dr and
+        hitboxA.owner.x + hitboxA.dr >= hitboxB.owner.x + hitboxB.dl and
+        hitboxA.owner.y + hitboxA.dt <= hitboxB.owner.y + hitboxB.db and
+        hitboxA.owner.y + hitboxA.db >= hitboxB.owner.y + hitboxB.dt
 end
 
 -- rectangle to circle collision check
-local function collisionCheckCIRCLEvAABB(circle, aabb)
+local function collisionCheckCIRCLEvAABB(hitboxA, hitboxB)
     -- check if the circle intersects with the rectangle
-    local closestX = math.max(aabb.x + aabb.hitbox.dl, math.min(circle.x, aabb.x + aabb.hitbox.dr))
-    local closestY = math.max(aabb.y + aabb.hitbox.dt, math.min(circle.y, aabb.y + aabb.hitbox.db))
+    local closestX = math.max(hitboxB.owner.x + hitboxB.dl, math.min(hitboxA.owner.x, hitboxB.owner.x + hitboxB.dr))
+    local closestY = math.max(hitboxB.owner.y + hitboxB.dt, math.min(hitboxA.owner.y, hitboxB.owner.y + hitboxB.db))
 
-    local dx = circle.x - closestX
-    local dy = circle.y - closestY
+    local dx = hitboxA.owner.x - closestX
+    local dy = hitboxA.owner.y - closestY
 
-    return (dx * dx + dy * dy) < (circle.hitbox.radius * circle.hitbox.radius)
+    return (dx * dx + dy * dy) < (hitboxA.radius * hitboxA.radius)
 end
 
-local function collisionCheckPOINTvCIRCLE(point, circle)
+local function collisionCheckPOINTvCIRCLE(hitboxA, hitboxB)
     -- check if the point is within the circle
-    local dx = point.x - circle.x
-    local dy = point.y - circle.y
+    local dx = hitboxA.owner.x - hitboxB.owner.x
+    local dy = hitboxA.owner.y - hitboxB.owner.y
 
-    return (dx * dx + dy * dy) < (circle.hitbox.radius * circle.hitbox.radius)
+    return (dx * dx + dy * dy) < (hitboxB.radius * hitboxB.radius)
 end
 
 local function collisionCheckPOINTvAABB(point, aabb)
     -- check if the point is within the rectangle
     return
-        point.x >= aabb.x + aabb.hitbox.dl and
-        point.x <= aabb.x + aabb.hitbox.dr and
-        point.y >= aabb.y + aabb.hitbox.dt and
-        point.y <= aabb.y + aabb.hitbox.db
+        point.owner.x >= aabb.owner.x + aabb.dl and
+        point.owner.x <= aabb.owner.x + aabb.dr and
+        point.owner.y >= aabb.owner.y + aabb.dt and
+        point.owner.y <= aabb.owner.y + aabb.db
 end
 
 local function collisionCheckPOINTvPOINT(pointA, pointB)
     -- check if the two points are equal
-    return pointA.x == pointB.x and pointA.y == pointB.y
+    return pointA.owner.x == pointB.owner.x and pointA.owner.y == pointB.owner.y
 end
 
 -- Hitbox Types Enum
@@ -74,36 +74,36 @@ HITBOX_TYPES = {
 
 HITBOX_HANDLERS = {
     [HITBOX_TYPES.POINT] = {
-        [HITBOX_TYPES.POINT] = function(actorA, actorB)
-            return collisionCheckPOINTvPOINT(actorA, actorB)
+        [HITBOX_TYPES.POINT] = function(hitboxA, hitboxB)
+            return collisionCheckPOINTvPOINT(hitboxA, hitboxB)
         end,
-        [HITBOX_TYPES.CIRCLE] = function(actorA, actorB)
-            return collisionCheckPOINTvCIRCLE(actorA, actorB)
+        [HITBOX_TYPES.CIRCLE] = function(hitboxA, hitboxB)
+            return collisionCheckPOINTvCIRCLE(hitboxA, hitboxB)
         end,
-        [HITBOX_TYPES.RECTANGLE] = function(actorA, actorB)
-            return collisionCheckPOINTvAABB(actorA, actorB)
+        [HITBOX_TYPES.RECTANGLE] = function(hitboxA, hitboxB)
+            return collisionCheckPOINTvAABB(hitboxA, hitboxB)
         end,
     },
     [HITBOX_TYPES.CIRCLE] = {
-        [HITBOX_TYPES.POINT] = function(actorA, actorB)
-            return collisionCheckPOINTvCIRCLE(actorB, actorA)
+        [HITBOX_TYPES.POINT] = function(hitboxA, hitboxB)
+            return collisionCheckPOINTvCIRCLE(hitboxB, hitboxA)
         end,
-        [HITBOX_TYPES.CIRCLE] = function(actorA, actorB)
-            return collisionCheckCIRCLEvCIRCLE(actorA, actorB)
+        [HITBOX_TYPES.CIRCLE] = function(hitboxA, hitboxB)
+            return collisionCheckCIRCLEvCIRCLE(hitboxA, hitboxB)
         end,
-        [HITBOX_TYPES.RECTANGLE] = function(actorA, actorB)
-            return collisionCheckCIRCLEvAABB(actorA, actorB)
+        [HITBOX_TYPES.RECTANGLE] = function(hitboxA, hitboxB)
+            return collisionCheckCIRCLEvAABB(hitboxA, hitboxB)
         end,
     },
     [HITBOX_TYPES.RECTANGLE] = {
-        [HITBOX_TYPES.POINT] = function(actorA, actorB)
-            return collisionCheckPOINTvAABB(actorB, actorA)
+        [HITBOX_TYPES.POINT] = function(hitboxA, hitboxB)
+            return collisionCheckPOINTvAABB(hitboxB, hitboxA)
         end,
-        [HITBOX_TYPES.CIRCLE] = function(actorA, actorB)
-            return collisionCheckCIRCLEvAABB(actorB, actorA)
+        [HITBOX_TYPES.CIRCLE] = function(hitboxA, hitboxB)
+            return collisionCheckCIRCLEvAABB(hitboxB, hitboxA)
         end,
-        [HITBOX_TYPES.RECTANGLE] = function(actorA, actorB)
-            return collisionCheckAABBvAABB(actorA, actorB)
+        [HITBOX_TYPES.RECTANGLE] = function(hitboxA, hitboxB)
+            return collisionCheckAABBvAABB(hitboxA, hitboxB)
         end,
     },
 }
@@ -111,7 +111,9 @@ HITBOX_HANDLERS = {
 -- Hitbox class
 Hitbox = Object:extend()
 
-function Hitbox:new()
+function Hitbox:new(owner)
+    self.owner = owner -- the actor that owns this hitbox
+
     -- TODO: enumerate
     self.type = HITBOX_TYPES.CIRCLE -- default type
 
@@ -123,4 +125,8 @@ function Hitbox:new()
     self.dr = 0
     self.dt = 0
     self.db = 0
+end
+
+function Hitbox:collidesWith(otherHitbox)
+    return HITBOX_HANDLERS[self.type][otherHitbox.type](self, otherHitbox)
 end
