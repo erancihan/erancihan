@@ -5,20 +5,23 @@ Object = require 'libs.classic'
 Actor = Object:extend()
 
 function Actor:new()
-    -- constructor
-    self.image = nil
-
+    -- initialize the actor
     self.x = 0
     self.y = 0
-    self.width = 0
-    self.height = 0
+    -- self.width = 0
+    -- self.height = 0
 
+    -- image properties
+    self.image = nil
+    self.angle = 0
     self.scale = 1
     self.originX = 0
     self.originY = 0
 
+    -- logical properties
     self.dead = true  -- dead by default
 
+    -- hitbox properties
     self.hitbox = nil -- hitbox object
 end
 
