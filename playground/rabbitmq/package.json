@@ -1,0 +1,15 @@
+{
+  "name": "rabbitmq-tutorial",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "producer": "node producer/main.js",
+    "consumer": "node consumer/main.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "amqplib": "^0.10.7"
+  }
+}
