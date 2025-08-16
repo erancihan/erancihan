@@ -1,0 +1,7 @@
+.venv
+
+# ignore go files
+vendor
+
+# database files
+*.db
