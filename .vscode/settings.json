@@ -1,0 +1,14 @@
+{
+    "makefile.extensionOutputFolder": "./.vscode",
+    "files.associations": {
+        "*.rss": "xml",
+        "stdlib.h": "c",
+        "string.h": "c",
+        "stdio.h": "c"
+    },
+    "Lua.runtime.version": "LuaJIT",
+    "Lua.workspace.library": [
+        "${3rd}/love2d/library",
+    ],
+    "cmake.ignoreCMakeListsMissing": true,
+}

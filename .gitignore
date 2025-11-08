@@ -2,8 +2,8 @@
 
 .idea/
 /**/.idea
-.vscode/
-/**/.vscode/
+.vscode/*
+!.vscode/settings.json
 
 *.log
 
