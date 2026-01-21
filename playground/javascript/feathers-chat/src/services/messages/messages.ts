@@ -35,7 +35,6 @@ export const message = (app: Application) => {
   app.service(messagePath).hooks({
     around: {
       all: [
-        logRuntime,
         authenticate('jwt'),
         schemaHooks.resolveExternal(messageExternalResolver),
         schemaHooks.resolveResult(messageResolver)

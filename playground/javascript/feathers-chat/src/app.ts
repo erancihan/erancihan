@@ -11,6 +11,7 @@ import { sqlite } from './sqlite'
 import { authentication } from './authentication'
 import { services } from './services/index'
 import { channels } from './channels'
+import { logRuntime } from './hooks/log-runtime'
 
 const app: Application = koa(feathers())
 
@@ -41,12 +42,13 @@ app.configure(channels)
 // Register hooks that run on all service methods
 app.hooks({
   around: {
-    all: [logError]
+    all: [logRuntime, logError]
   },
   before: {},
   after: {},
   error: {}
 })
+
 // Register application setup and teardown hooks here
 app.hooks({
   setup: [],
