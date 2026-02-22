@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"drive-rsync/internal/application"
+	"drive-rsync/internal/config"
 	googleclient "drive-rsync/internal/google-client"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2/google"
@@ -14,9 +14,10 @@ import (
 	"google.golang.org/api/option"
 )
 
-// Global Drive Service (In a real app, inject this)
 var (
 	credentialsPath string
+	dataDir         string
+	devMode         bool
 )
 
 var rootCmd = &cobra.Command{
@@ -24,40 +25,47 @@ var rootCmd = &cobra.Command{
 	Short: "Google Drive Rsync Clone",
 	Long:  `A CLI tool to synchronize local directories with Google Drive.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		var err error
-
 		ctx := context.Background()
 
-		// if credentialsPath is not set, use default
-		if credentialsPath == "" {
-			credentialsPath = "secrets/credentials.json"
-		}
-
-		// convert credentialsPath to absolute path
-		credentialsPath, err = filepath.Abs(credentialsPath)
+		// Initialize application config
+		appConfig, err := config.NewAppConfig(dataDir, devMode)
 		if err != nil {
-			return fmt.Errorf("failed to get absolute path of credentials: %w", err)
+			return fmt.Errorf("failed to initialize config: %w", err)
 		}
 
-		if _, err := os.Stat(credentialsPath); os.IsNotExist(err) {
-			return fmt.Errorf("credentials file '%s' does not exist", credentialsPath)
+		if err := appConfig.EnsureDataDir(); err != nil {
+			return fmt.Errorf("failed to ensure data directory: %w", err)
 		}
 
-		secrets, err := os.ReadFile(credentialsPath)
+		application.Config = appConfig
+
+		// Resolve credentials path
+		creds := credentialsPath
+		if creds == "" {
+			creds = appConfig.CredentialsPath
+		}
+
+		if _, err := os.Stat(creds); os.IsNotExist(err) {
+			return fmt.Errorf("credentials file '%s' does not exist", creds)
+		}
+
+		secrets, err := os.ReadFile(creds)
 		if err != nil {
-			return fmt.Errorf("unable to read client secret file: %v", err)
+			return fmt.Errorf("unable to read client secret file: %w", err)
 		}
 
-		config, err := google.ConfigFromJSON(secrets, drive.DriveScope)
+		oauthConfig, err := google.ConfigFromJSON(secrets, drive.DriveScope)
 		if err != nil {
-			return fmt.Errorf("unable to parse client secret file: %v", err)
+			return fmt.Errorf("unable to parse client secret file: %w", err)
 		}
-		client := googleclient.GetClient(config, &googleclient.AuthConfig{Path: filepath.Dir(credentialsPath)})
 
-		// Pass the flag value (credentialsPath) to your auth setup
+		client := googleclient.GetClient(oauthConfig, &googleclient.AuthConfig{
+			Path: appConfig.DataDir,
+		})
+
 		application.DriveService, err = drive.NewService(ctx, option.WithHTTPClient(client))
 		if err != nil {
-			return fmt.Errorf("failed to authenticate using '%s': %w", credentialsPath, err)
+			return fmt.Errorf("failed to create Drive service: %w", err)
 		}
 
 		fmt.Println("Authenticated successfully")
@@ -67,7 +75,9 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&credentialsPath, "credentials", "c", "credentials.json", "path to google credentials.json")
+	rootCmd.PersistentFlags().StringVarP(&credentialsPath, "credentials", "c", "", "path to google credentials.json (default: <data-dir>/credentials.json)")
+	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "path to app data directory (default: ~/.gdrsync/)")
+	rootCmd.PersistentFlags().BoolVar(&devMode, "dev", false, "use current directory for app data (development mode)")
 
 	rootCmd.AddCommand(application.InitCommand())
 	rootCmd.AddCommand(application.SyncCommand())

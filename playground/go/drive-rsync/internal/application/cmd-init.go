@@ -1,11 +1,10 @@
 package application
 
 import (
+	"drive-rsync/internal/config"
+	"drive-rsync/internal/database"
 	drivehelpers "drive-rsync/internal/drive-helpers"
-	"encoding/json"
 	"fmt"
-	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -16,26 +15,24 @@ func InitCommand() *cobra.Command {
 		Use:   "init [remote folder name]",
 		Short: "Initialize the current directory for sync",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			folderName := args[0]
 
 			id, err := drivehelpers.GetOrCreatePath(DriveService, folderName)
 			if err != nil {
-				fmt.Printf("Error creating folder: %v\n", err)
-				return
+				return fmt.Errorf("error creating remote folder: %w", err)
 			}
 
-			// 2. Write the config file
-			config := SyncConfig{
-				RemoteFolderID: id,
-				RemotePathName: folderName,
-				LastSync:       time.Now(),
-			}
+			// Create a new sync database and save it
+			dbPath := config.SyncFileName
+			db := database.New(dbPath, id, folderName)
 
-			file, _ := json.MarshalIndent(config, "", " ")
-			_ = os.WriteFile(ConfigFileName, file, 0644)
+			if err := db.Save(); err != nil {
+				return fmt.Errorf("error saving sync database: %w", err)
+			}
 
 			fmt.Printf("Initialized sync for '%s' (ID: %s)\n", folderName, id)
+			return nil
 		},
 	}
 }
