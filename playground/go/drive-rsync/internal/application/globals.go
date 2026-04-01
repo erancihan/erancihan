@@ -1,7 +1,15 @@
 package application
 
-import "google.golang.org/api/drive/v3"
+import (
+	"drive-rsync/internal/config"
 
-const ConfigFileName = ".gdrsync.json"
+	"google.golang.org/api/drive/v3"
+)
 
-var DriveService *drive.Service
+var (
+	// DriveService is the authenticated Google Drive API service.
+	DriveService *drive.Service
+
+	// Config is the application-level configuration (data dir, credentials, etc.).
+	Config *config.AppConfig
+)

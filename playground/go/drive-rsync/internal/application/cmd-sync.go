@@ -2,8 +2,10 @@ package application
 
 import (
 	"crypto/md5"
+	"drive-rsync/internal/config"
+	"drive-rsync/internal/database"
+	"drive-rsync/internal/ignore"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -15,50 +17,65 @@ import (
 	"google.golang.org/api/drive/v3"
 )
 
-// Cache to store "Directory Path -> Drive Folder ID" to avoid repeated API calls
+// folderCache stores "relative directory path -> Drive Folder ID" to avoid repeated API calls.
 var folderCache = make(map[string]string)
 
 func SyncCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",
 		Short: "Push local changes to Google Drive",
-		Run: func(cmd *cobra.Command, args []string) {
-			// 1. Load Config
-			data, err := os.ReadFile(ConfigFileName)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// 1. Load database
+			db, err := database.Load(config.SyncFileName)
 			if err != nil {
-				fmt.Println("Not initialized. Run 'gdrsync init <name>' first.")
-				return
+				return fmt.Errorf("not initialized. Run 'gdrsync init <name>' first: %w", err)
 			}
-			var config SyncConfig
-			json.Unmarshal(data, &config)
 
-			fmt.Printf("Syncing to remote folder: %s (%s)\n", config.RemotePathName, config.RemoteFolderID)
+			fmt.Printf("Syncing to remote folder: %s (%s)\n", db.RemotePathName, db.RemoteFolderID)
 
-			// 2. Perform Sync
-			err = performSync(DriveService, config.RemoteFolderID)
-			if err != nil {
-				fmt.Printf("Sync failed: %v\n", err)
-			} else {
-				fmt.Println("Sync completed successfully.")
-				// Update timestamp
-				config.LastSync = time.Now()
-				updatedConfig, _ := json.MarshalIndent(config, "", " ")
-				os.WriteFile(ConfigFileName, updatedConfig, 0644)
+			// 2. Perform sync
+			if err := performSync(DriveService, db); err != nil {
+				return fmt.Errorf("sync failed: %w", err)
 			}
+
+			// 3. Update timestamp and save
+			db.UpdateLastSync()
+			if err := db.Save(); err != nil {
+				return fmt.Errorf("failed to update sync database: %w", err)
+			}
+
+			fmt.Println("Sync completed successfully.")
+			return nil
 		},
 	}
 }
 
-func performSync(srv *drive.Service, rootRemoteID string) error {
-	// Walk the current directory
+func performSync(srv *drive.Service, db *database.SyncDatabase) error {
+	rootRemoteID := db.RemoteFolderID
+
+	// Initialize the ignore checker (loads .grsyncignore or uses defaults)
+	ignoreChecker, err := ignore.NewChecker(".")
+	if err != nil {
+		return fmt.Errorf("failed to initialize ignore checker: %w", err)
+	}
+
 	return filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip hidden files and the config file itself
-		if strings.HasPrefix(info.Name(), ".") || info.Name() == ConfigFileName {
+		// Skip hidden files/dirs and the sync database file itself
+		if strings.HasPrefix(info.Name(), ".") || info.Name() == config.SyncFileName {
 			if info.IsDir() && info.Name() != "." {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Check against ignore rules
+		relForIgnore, _ := filepath.Rel(".", path)
+		if relForIgnore != "." && ignoreChecker.ShouldIgnore(relForIgnore) {
+			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
@@ -69,12 +86,11 @@ func performSync(srv *drive.Service, rootRemoteID string) error {
 			return nil
 		}
 
-		// Determine the parent folder ID for this item
+		// Determine parent folder ID
 		parentDir := filepath.Dir(relPath)
 		parentID := rootRemoteID
 
 		if parentDir != "." {
-			// We need to resolve the ID of the parent folder on Drive
 			var ok bool
 			parentID, ok = folderCache[parentDir]
 			if !ok {
@@ -83,29 +99,28 @@ func performSync(srv *drive.Service, rootRemoteID string) error {
 		}
 
 		if info.IsDir() {
-			// Handle Directory Creation
-			return ensureRemoteFolder(srv, relPath, info.Name(), parentID)
-		} else {
-			// Handle File Upload/Sync
-			return syncFile(srv, path, info.Name(), parentID)
+			return ensureRemoteFolder(srv, db, relPath, info.Name(), parentID)
 		}
+		return syncFile(srv, db, path, relPath, info.Name(), parentID, info)
 	})
 }
 
-// ensureRemoteFolder checks if a folder exists remotely, creates it if not, and caches the ID
-func ensureRemoteFolder(srv *drive.Service, relPath, name, parentID string) error {
-	// 1. Check if folder exists in parentID
-	q := fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", name, parentID)
+// ensureRemoteFolder checks if a folder exists remotely, creates it if not,
+// caches the ID, and tracks it in the database.
+func ensureRemoteFolder(srv *drive.Service, db *database.SyncDatabase, relPath, name, parentID string) error {
+	q := fmt.Sprintf(
+		"name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+		name, parentID,
+	)
 	r, err := srv.Files.List().Q(q).Fields("files(id)").Do()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list remote folders for '%s': %w", relPath, err)
 	}
 
 	var folderID string
 	if len(r.Files) > 0 {
 		folderID = r.Files[0].Id
 	} else {
-		// Create it
 		f := &drive.File{
 			Name:     name,
 			Parents:  []string{parentID},
@@ -113,78 +128,134 @@ func ensureRemoteFolder(srv *drive.Service, relPath, name, parentID string) erro
 		}
 		res, err := srv.Files.Create(f).Fields("id").Do()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create remote folder '%s': %w", relPath, err)
 		}
 		folderID = res.Id
 		fmt.Printf("[Created Dir] %s\n", relPath)
 	}
 
-	// Add to cache so children can find it
+	// Cache for child resolution
 	folderCache[relPath] = folderID
+
+	// Track in database
+	db.TrackFile(relPath, database.FileEntry{
+		RemoteID: folderID,
+		IsDir:    true,
+	})
+
 	return nil
 }
 
-func syncFile(srv *drive.Service, localPath, name, parentID string) error {
-	// 1. Calculate Local Hash
+// syncFile uploads a new file or updates an existing one, and tracks it in the database.
+func syncFile(srv *drive.Service, db *database.SyncDatabase, localPath, relPath, name, parentID string, info os.FileInfo) error {
+	// 1. Calculate local hash
 	localHash, err := hashFile(localPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to hash '%s': %w", relPath, err)
 	}
 
-	// 2. Check for file in Remote
+	// 2. Check database first — skip if unchanged
+	if entry, ok := db.GetFile(relPath); ok {
+		if entry.LocalHash == localHash {
+			return nil // No change since last sync
+		}
+	}
+
+	// 3. Check for file on remote
 	q := fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false", name, parentID)
-	r, err := srv.Files.List().Q(q).Fields("files(id, md5Checksum)").Do()
+	r, err := srv.Files.List().Q(q).Fields("files(id, md5Checksum, modifiedTime)").Do()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list remote files for '%s': %w", relPath, err)
 	}
 
-	// 3. Compare and Action
+	var remoteID string
+	var remoteHash string
+	var remoteModified time.Time
+
 	if len(r.Files) > 0 {
 		remoteFile := r.Files[0]
 		if remoteFile.Md5Checksum == localHash {
-			// fmt.Printf("[Skipping] %s (No Change)\n", name)
+			// File unchanged on both sides — just track it
+			db.TrackFile(relPath, database.FileEntry{
+				RemoteID:       remoteFile.Id,
+				LocalHash:      localHash,
+				RemoteHash:     remoteFile.Md5Checksum,
+				LocalModified:  info.ModTime(),
+				RemoteModified: parseTime(remoteFile.ModifiedTime),
+				Size:           info.Size(),
+			})
 			return nil
 		}
-		// File exists but hash differs: UPDATE
-		fmt.Printf("[Updating] %s\n", name)
+
+		// File exists but differs: UPDATE
+		fmt.Printf("[Updating] %s\n", relPath)
 
 		f, err := os.Open(localPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to open '%s' for update: %w", relPath, err)
 		}
 		defer f.Close()
 
-		// Update uses Files.Update
-		_, err = srv.Files.Update(remoteFile.Id, nil).Media(f).Do()
-		return err
+		updated, err := srv.Files.Update(remoteFile.Id, nil).Media(f).Fields("id, md5Checksum, modifiedTime").Do()
+		if err != nil {
+			return fmt.Errorf("failed to update '%s': %w", relPath, err)
+		}
+		remoteID = updated.Id
+		remoteHash = updated.Md5Checksum
+		remoteModified = parseTime(updated.ModifiedTime)
+	} else {
+		// File does not exist: UPLOAD
+		fmt.Printf("[Uploading] %s\n", relPath)
+
+		f, err := os.Open(localPath)
+		if err != nil {
+			return fmt.Errorf("failed to open '%s' for upload: %w", relPath, err)
+		}
+		defer f.Close()
+
+		driveFile := &drive.File{
+			Name:    name,
+			Parents: []string{parentID},
+		}
+		created, err := srv.Files.Create(driveFile).Media(f).Fields("id, md5Checksum, modifiedTime").Do()
+		if err != nil {
+			return fmt.Errorf("failed to upload '%s': %w", relPath, err)
+		}
+		remoteID = created.Id
+		remoteHash = created.Md5Checksum
+		remoteModified = parseTime(created.ModifiedTime)
 	}
 
-	// File does not exist: UPLOAD
-	fmt.Printf("[Uploading] %s\n", name)
-	f, err := os.Open(localPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+	// Track the file in the database
+	db.TrackFile(relPath, database.FileEntry{
+		RemoteID:       remoteID,
+		LocalHash:      localHash,
+		RemoteHash:     remoteHash,
+		LocalModified:  info.ModTime(),
+		RemoteModified: remoteModified,
+		Size:           info.Size(),
+	})
 
-	driveFile := &drive.File{
-		Name:    name,
-		Parents: []string{parentID},
-	}
-	_, err = srv.Files.Create(driveFile).Media(f).Do()
-	return err
+	return nil
 }
 
-// hashFile returns the MD5 string required by Google Drive
+// hashFile returns the MD5 hex string for a file.
 func hashFile(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
+
 	hash := md5.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// parseTime parses an RFC3339 timestamp string, returning zero time on failure.
+func parseTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	return t
 }

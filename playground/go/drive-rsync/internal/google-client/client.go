@@ -8,29 +8,26 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 
 	"golang.org/x/oauth2"
 )
 
-// --- GOOGLE AUTH BOILERPLATE ---
-// Retrieve a token, saves the token, then returns the generated client.
+// AuthConfig controls where tokens are stored.
 type AuthConfig struct {
 	Path string
 }
 
+// GetClient returns an authenticated HTTP client.
+// It looks for a cached token in AuthConfig.Path/token.json,
+// falling back to the OAuth2 web flow if no token is found.
 func GetClient(config *oauth2.Config, authConfig *AuthConfig) *http.Client {
-	if authConfig == nil {
-		authConfig = &AuthConfig{Path: "secrets"}
+	if authConfig == nil || authConfig.Path == "" {
+		log.Fatal("AuthConfig.Path must be set")
 	}
-	// The file token.json stores the user's access and refresh tokens, and is
-	// created automatically when the authorization flow completes for the first
-	// time.
 
-	if authConfig.Path == "" {
-		authConfig.Path = "secrets"
-	}
-	tokFile := authConfig.Path + "/token.json"
+	tokFile := filepath.Join(authConfig.Path, "token.json")
 
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
@@ -50,63 +47,61 @@ func tokenFromFile(file string) (*oauth2.Token, error) {
 
 	tok := &oauth2.Token{}
 	err = json.NewDecoder(f).Decode(tok)
-
 	return tok, err
 }
 
 func saveToken(path string, token *oauth2.Token) {
 	fmt.Printf("Saving credential file to: %s\n", path)
+
+	// Ensure the parent directory exists
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		log.Fatalf("Unable to create directory for token: %v", err)
+	}
+
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Fatalf("Unable to cache oauth token: %v", err)
 	}
 	defer f.Close()
-	json.NewEncoder(f).Encode(token)
+
+	if err := json.NewEncoder(f).Encode(token); err != nil {
+		log.Fatalf("Unable to write oauth token: %v", err)
+	}
 }
 
 func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
-	// 1. Create a channel to receive the auth code from the web server
 	codeCh := make(chan string)
 
-	// 2. Create a local server to listen for the callback
-	// NOTE: Ensure "http://localhost:8080" is added to your Authorized Redirect URIs in Google Cloud Console
-	server := &http.Server{Addr: ":8080"}
+	// Use a dedicated ServeMux to avoid polluting the default mux
+	mux := http.NewServeMux()
+	server := &http.Server{Addr: ":8080", Handler: mux}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Get the code from the query string
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		if code != "" {
-			// Tell the user it was successful
 			fmt.Fprint(w, "Login successful! You can close this tab now.")
-			// Send code to the channel
 			codeCh <- code
 		} else {
 			fmt.Fprint(w, "Error: No code found.")
 		}
 	})
 
-	// 3. Start the server in a goroutine
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start local server: %v", err)
 		}
 	}()
 
-	// 4. Construct the Auth URL with the redirect to localhost
 	config.RedirectURL = "http://localhost:8080"
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
 
-	// 5. Open the browser automatically
 	fmt.Println("Opening browser for authentication...")
 	openBrowser(authURL)
 
-	// 6. Wait for the code
 	authCode := <-codeCh
 
-	// 7. Shut down the server nicely
 	go server.Shutdown(context.Background())
 
-	// 8. Exchange the code for a token
 	tok, err := config.Exchange(context.TODO(), authCode)
 	if err != nil {
 		log.Fatalf("Unable to retrieve token from web: %v", err)
@@ -114,7 +109,7 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 	return tok
 }
 
-// Helper to open the browser on different OSs
+// openBrowser opens the given URL in the default browser (cross-platform).
 func openBrowser(url string) {
 	var err error
 	switch runtime.GOOS {
