@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"drive-rsync/internal/config"
 	"drive-rsync/internal/database"
+	"drive-rsync/internal/ignore"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -52,6 +53,12 @@ func SyncCommand() *cobra.Command {
 func performSync(srv *drive.Service, db *database.SyncDatabase) error {
 	rootRemoteID := db.RemoteFolderID
 
+	// Initialize the ignore checker (loads .grsyncignore or uses defaults)
+	ignoreChecker, err := ignore.NewChecker(".")
+	if err != nil {
+		return fmt.Errorf("failed to initialize ignore checker: %w", err)
+	}
+
 	return filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -60,6 +67,15 @@ func performSync(srv *drive.Service, db *database.SyncDatabase) error {
 		// Skip hidden files/dirs and the sync database file itself
 		if strings.HasPrefix(info.Name(), ".") || info.Name() == config.SyncFileName {
 			if info.IsDir() && info.Name() != "." {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Check against ignore rules
+		relForIgnore, _ := filepath.Rel(".", path)
+		if relForIgnore != "." && ignoreChecker.ShouldIgnore(relForIgnore) {
+			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
