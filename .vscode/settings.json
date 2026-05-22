@@ -11,4 +11,18 @@
         "${3rd}/love2d/library",
     ],
     "cmake.ignoreCMakeListsMissing": true,
+    "workbench.colorCustomizations": {
+        "statusBar.background": "#278BF5",
+        "titleBar.activeBackground": "#278BF5",
+        "titleBar.activeForeground": "#ffffff",
+        "titleBar.border": "#278BF5",
+        "titleBar.inactiveBackground": "#278BF5",
+        "titleBar.inactiveForeground": "#ffffff",
+        "activityBar.background": "#F59127",
+        "activityBar.foreground": "#000000",
+        "activityBar.border": "#F59127",
+        "activityBar.inactiveForeground": "#278BF5",
+        "activityBarBadge.background": "#278BF5",
+        "activityBarBadge.foreground": "#ffffff"
+    }
 }
