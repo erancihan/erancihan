@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "scripts": {
+    "css": "tailwindcss -i extension/src/styles.css -o extension/styles.css --minify",
+    "css:watch": "tailwindcss -i extension/src/styles.css -o extension/styles.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4"
+  }
+}

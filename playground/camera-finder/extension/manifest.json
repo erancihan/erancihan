@@ -1,0 +1,39 @@
+{
+  "manifest_version": 2,
+  "name": "Camera Finder",
+  "version": "1.0.0",
+  "description": "Automatically collects and analyzes secondhand camera listings for price-performance evaluation.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "camera-finder@erancihan",
+      "strict_min_version": "109.0"
+    }
+  },
+  "permissions": [
+    "tabs",
+    "storage",
+    "activeTab"
+  ],
+  "background": {
+    "scripts": ["camera_db.js", "background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.lcegroup.co.uk/Secondhand-Search/*",
+        "https://www.lcegroup.co.uk/secondhand-search/*",
+        "https://www.lcegroup.co.uk/Used/*",
+        "https://www.lcegroup.co.uk/used/*"
+      ],
+      "js": ["camera_db.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_title": "Camera Finder"
+  },
+  "web_accessible_resources": [
+    "dashboard.html"
+  ]
+}

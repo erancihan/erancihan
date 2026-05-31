@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera Finder — Analysis Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-surface-primary text-gray-200 min-h-screen leading-relaxed">
+
+  <!-- Header -->
+  <header class="bg-gradient-to-b from-indigo-500/8 to-transparent border-b border-border-dim px-10 py-6 sticky top-0 z-50 backdrop-blur-xl">
+    <div class="max-w-[1400px] mx-auto flex items-center justify-between">
+      <h1 class="text-[22px] font-bold bg-gradient-to-r from-indigo-500 to-purple-400 bg-clip-text text-transparent">📷 Camera Finder</h1>
+      <div class="flex gap-6 text-[13px] text-gray-400" id="headerStats"></div>
+    </div>
+  </header>
+
+  <main class="max-w-[1400px] mx-auto px-10 py-7">
+    <!-- Empty state -->
+    <div id="emptyState" class="hidden text-center py-20 text-gray-500">
+      <h2 class="text-xl mb-2 text-gray-400">No data collected yet</h2>
+      <p class="text-sm">Click the Camera Finder extension icon and press "Collect Data" to start.</p>
+    </div>
+
+    <div id="mainContent" class="hidden">
+      <!-- Summary cards -->
+      <div class="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3.5 mb-7" id="summaryCards"></div>
+
+      <!-- Filters -->
+      <div class="flex gap-2.5 mb-6 flex-wrap items-center" id="filters"></div>
+
+      <!-- Scatter chart -->
+      <section class="bg-surface-card border border-border-dim rounded-[14px] p-6 mb-7 shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-[17px] font-semibold">Price vs Value Score</h2>
+            <p class="text-xs text-gray-400 mt-0.5">Bubble size = condition. Higher + further left = better deal</p>
+          </div>
+        </div>
+        <div class="relative w-full h-[420px]"><canvas id="scatterChart" class="w-full! h-full!"></canvas></div>
+      </section>
+
+      <!-- Bar chart -->
+      <section class="bg-surface-card border border-border-dim rounded-[14px] p-6 mb-7 shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-[17px] font-semibold">Price Range by Model</h2>
+            <p class="text-xs text-gray-400 mt-0.5">Min/max/average used prices vs original RRP</p>
+          </div>
+        </div>
+        <div class="relative w-full h-[420px]"><canvas id="barChart" class="w-full! h-full!"></canvas></div>
+      </section>
+
+      <!-- Use cases -->
+      <section class="mt-7">
+        <h2 class="text-[17px] font-semibold mb-1">Best Pick for Your Use Cases</h2>
+        <p class="text-xs text-gray-400">Tuned for portraits, car photography, astrophotography, and night shots</p>
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3.5 mt-3.5" id="useCaseCards"></div>
+      </section>
+
+      <!-- Table -->
+      <section class="bg-surface-card border border-border-dim rounded-[14px] overflow-hidden mt-7 shadow-[0_20px_40px_rgba(0,0,0,0.4)]">
+        <div class="px-5 py-4 border-b border-border-dim flex items-center justify-between">
+          <h2 class="text-[17px] font-semibold">All Listings</h2>
+          <span class="text-xs text-gray-400" id="listingCount"></span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse">
+            <thead class="bg-indigo-500/5" id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Tooltip -->
+  <div id="tooltip" class="fixed bg-[#1a1a2e] border border-border-dim rounded-lg px-4 py-3 pointer-events-none text-xs shadow-[0_20px_40px_rgba(0,0,0,0.4)] z-[1000] min-w-[180px] opacity-0 transition-opacity duration-150"></div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

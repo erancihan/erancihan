@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Camera Finder</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="w-[360px] bg-bg-primary text-gray-200 p-4 font-['Segoe_UI',system-ui,sans-serif]">
+
+  <!-- Header -->
+  <div class="flex items-center gap-2 mb-4">
+    <span class="text-[22px]">📷</span>
+    <h1 class="text-[17px] font-bold bg-gradient-to-r from-indigo-500 to-purple-400 bg-clip-text text-transparent">
+      Camera Finder</h1>
+  </div>
+
+  <!-- Stats -->
+  <div class="flex gap-2.5 mb-4 p-3 rounded-lg bg-bg-card border border-border-dim">
+    <div class="flex-1 text-center">
+      <div class="text-lg font-extrabold text-purple-400" id="statItems">—</div>
+      <div class="text-[10px] text-gray-500 uppercase tracking-wider">Items</div>
+    </div>
+    <div class="flex-1 text-center">
+      <div class="text-lg font-extrabold text-purple-400" id="statModels">—</div>
+      <div class="text-[10px] text-gray-500 uppercase tracking-wider">Models</div>
+    </div>
+    <div class="flex-1 text-center">
+      <div class="text-lg font-extrabold text-purple-400" id="statPages">—</div>
+      <div class="text-[10px] text-gray-500 uppercase tracking-wider">Pages</div>
+    </div>
+  </div>
+
+  <!-- Search config -->
+  <div class="mb-4">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Brands to Search</div>
+    <div class="flex flex-col gap-1.5" id="searchOptions">
+
+      <label
+        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-card border border-border-dim cursor-pointer hover:border-border-hover hover:bg-bg-card-hover transition-all text-[13px]">
+        <input type="checkbox" checked data-make="Sony" data-model="A7" data-label="Sony A7 series"
+          class="accent-indigo-500 w-4 h-4">
+        <span class="w-2 h-2 rounded-full bg-brand-sony shrink-0"></span>
+        Sony A7 series
+      </label>
+
+      <label
+        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-card border border-border-dim cursor-pointer hover:border-border-hover hover:bg-bg-card-hover transition-all text-[13px]">
+        <input type="checkbox" checked data-make="Canon" data-model="EOS R" data-label="Canon EOS R series"
+          class="accent-indigo-500 w-4 h-4">
+        <span class="w-2 h-2 rounded-full bg-brand-canon shrink-0"></span>
+        Canon EOS R series
+      </label>
+
+      <label
+        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-card border border-border-dim cursor-pointer hover:border-border-hover hover:bg-bg-card-hover transition-all text-[13px]">
+        <input type="checkbox" checked data-make="Nikon" data-model="Z" data-label="Nikon Z series"
+          class="accent-indigo-500 w-4 h-4">
+        <span class="w-2 h-2 rounded-full bg-brand-nikon shrink-0"></span>
+        Nikon Z series
+      </label>
+
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="mb-4 hidden" id="progressArea">
+    <div class="w-full h-1.5 bg-border-dim rounded-full overflow-hidden mb-2.5">
+      <div
+        class="h-full bg-gradient-to-r from-indigo-500 to-purple-400 rounded-full transition-[width] duration-500 animate-pulse"
+        id="progressBar" style="width:0%"></div>
+    </div>
+    <div class="text-xs text-gray-400 leading-relaxed">
+      Collected <span class="font-bold text-purple-400" id="progressCount">0</span> items from <span
+        class="font-bold text-purple-400" id="progressPages">0</span> pages
+      <span class="block mt-1 text-[11px] text-gray-500 truncate max-w-[320px]" id="progressUrl"></span>
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="mb-4">
+    <button
+      class="flex items-center justify-center gap-2 w-full p-3 rounded-xl border-none font-semibold text-sm cursor-pointer transition-all bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:opacity-90 hover:-translate-y-0.5"
+      id="btnCollect">
+      <span>🔍</span> Collect Data
+    </button>
+    <button
+      class="hidden flex items-center justify-center gap-2 w-full p-3 rounded-xl border-none font-semibold text-sm cursor-pointer transition-all bg-gradient-to-r from-red-500 to-red-600 text-white hover:opacity-90"
+      id="btnStop">
+      <span>⏹️</span> Stop Collection
+    </button>
+  </div>
+
+  <div class="h-px bg-border-dim my-4"></div>
+
+  <div>
+    <button
+      class="flex items-center justify-center gap-2 w-full p-3 rounded-xl font-semibold text-sm cursor-pointer transition-all bg-bg-card border border-border-dim text-gray-400 hover:border-indigo-500 hover:text-gray-200"
+      id="btnDashboard">
+      📊 View Dashboard
+    </button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>
