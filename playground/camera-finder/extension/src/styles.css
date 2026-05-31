@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@source "../popup.html";
+@source "../popup.js";
+@source "../dashboard.html";
+@source "../dashboard.js";
+
+@theme {
+  /* Shared borders */
+  --color-border-dim: #1e1e30;
+  --color-border-hover: #3a3a5c;
+
+  /* Popup surfaces */
+  --color-bg-primary: #0f0f17;
+  --color-bg-card: #16162a;
+  --color-bg-card-hover: #1a1a32;
+
+  /* Dashboard surfaces */
+  --color-surface-primary: #0a0a0f;
+  --color-surface-card: #12121a;
+  --color-surface-card-hover: #1a1a2e;
+
+  /* Brand accent colors */
+  --color-brand-sony: #6366f1;
+  --color-brand-canon: #ef4444;
+  --color-brand-nikon: #eab308;
+}
+
+@layer base {
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+}
