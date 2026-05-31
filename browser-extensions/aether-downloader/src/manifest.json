@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "AetherDownloader",
+  "version": "1.0.0",
+  "description": "Download images from Pixiv and Zerochan with hover previews and a premium UI.",
+  "icons": {
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "downloads",
+    "storage",
+    "activeTab",
+    "webRequest",
+    "webRequestBlocking"
+  ],
+  "host_permissions": [
+    "*://*.zerochan.net/*",
+    "*://*.pixiv.net/*",
+    "*://*.pximg.net/*"
+  ],
+  "background": {
+    "scripts": ["background/service-worker.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.zerochan.net/*"],
+      "js": ["content/zerochan.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.pixiv.net/*"],
+      "js": ["content/pixiv.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches": ["*://*.zerochan.net/*", "*://*.pixiv.net/*"]
+    }
+  ]
+}
