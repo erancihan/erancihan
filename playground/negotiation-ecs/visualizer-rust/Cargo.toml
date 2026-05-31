@@ -1,0 +1,19 @@
+[package]
+name = "negotiation-visualizer"
+version = "0.1.0"
+edition = "2021"
+description = "Real-time visualizer for ECS Multi-Agent Negotiation Simulator"
+
+[dependencies]
+eframe = "0.31"
+egui = "0.31"
+egui_extras = { version = "0.31", features = ["datepicker"] }
+egui_plot = "0.31"
+tokio = { version = "1", features = ["full"] }
+tonic = "0.13"
+prost = "0.13"
+prost-types = "0.13"
+clap = { version = "4", features = ["derive"] }
+
+[build-dependencies]
+tonic-build = "0.13"
