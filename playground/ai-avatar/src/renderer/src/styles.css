@@ -1,0 +1,307 @@
+/*
+ * Cozy "desk-pet" aesthetic: a warm amber companion on deep charcoal glass.
+ * The window is frameless + transparent, so the avatar pane is fully see-through
+ * (the character floats on the real desktop) while the terminal sits on a glass slab.
+ * Offline-safe type: macOS-native serif display + rounded UI, no web fonts fetched.
+ */
+
+:root {
+  --glass: rgba(26, 24, 34, 0.74);
+  --glass-edge: rgba(255, 255, 255, 0.08);
+  --ink: #f3e9d8;
+  --muted: #b9ad9a;
+  --amber: #f0a868;
+  --accent: var(--amber);
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --radius: 20px;
+  --font-display: 'Iowan Old Style', 'Palatino', Georgia, serif;
+  --font-ui: ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, monospace;
+}
+
+/* Pose-reactive accent: the whole UI subtly shifts hue with the avatar's mood. */
+.app[data-pose='listening'] { --accent: #7fc8a9; }
+.app[data-pose='thinking'] { --accent: #9d8df0; }
+.app[data-pose='working'] { --accent: #5fb0e8; }
+.app[data-pose='speaking'] { --accent: #f08fb0; }
+.app[data-pose='alert'] { --accent: #f0c14b; }
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent; /* let the desktop show through the frameless window */
+  font-family: var(--font-ui);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+}
+
+/* ---- titlebar (drag handle) ---- */
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 6px 0 12px;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: var(--shadow);
+}
+
+.titlebar-drag {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  height: 100%;
+  -webkit-app-region: drag; /* whole left region drags the window */
+}
+
+.titlebar .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+
+.titlebar .title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.pose-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.titlebar-actions {
+  display: flex;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.icon-btn {
+  -webkit-app-region: no-drag;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+}
+
+.icon-btn.close:hover {
+  background: rgba(240, 100, 100, 0.25);
+  color: #ffd9d9;
+}
+
+/* ---- stage ---- */
+.stage {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+}
+
+.avatar-pane {
+  flex: 0 0 42%;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  gap: 8px;
+}
+
+.avatar-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* faint radial halo behind the character, tinted by the current pose */
+  background: radial-gradient(
+    60% 55% at 50% 58%,
+    color-mix(in srgb, var(--accent) 22%, transparent),
+    transparent 70%
+  );
+  transition: background 0.6s ease;
+}
+
+.avatar-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ---- chat box ---- */
+.chatbox {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: var(--shadow);
+}
+
+.chatbox-input {
+  flex: 1;
+  resize: none;
+  max-height: 90px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  user-select: text;
+  cursor: text;
+}
+
+.chatbox-input::placeholder {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.chatbox-send {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #1a1822;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.2s ease, background 0.4s ease;
+}
+
+.chatbox-send:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.chatbox-send:active {
+  transform: translateY(0) scale(0.96);
+}
+
+/* ---- terminal pane ---- */
+.terminal-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  backdrop-filter: blur(20px) saturate(1.15);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  position: relative;
+}
+
+/* subtle grain/scanline texture for warmth */
+.terminal-pane::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.015) 0px,
+    rgba(255, 255, 255, 0.015) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  opacity: 0.5;
+}
+
+.terminal-view {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 12px;
+  user-select: text;
+  cursor: text;
+}
+
+.terminal-view .xterm,
+.terminal-view .xterm-viewport {
+  background: transparent !important;
+}
+
+/* ---- guidance / banners ---- */
+.guidance {
+  padding: 28px 26px;
+  max-width: 460px;
+  margin: auto;
+}
+
+.guidance h2 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  margin: 0 0 10px;
+  color: var(--accent);
+}
+
+.guidance p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.guidance .muted,
+.muted {
+  color: var(--muted);
+}
+
+.banner {
+  padding: 8px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--glass-edge);
+}
+
+.banner.warn {
+  color: #ffd9b0;
+  background: rgba(240, 168, 104, 0.12);
+}

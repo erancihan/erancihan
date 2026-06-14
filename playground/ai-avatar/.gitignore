@@ -1,0 +1,17 @@
+node_modules/
+out/
+dist/
+.vite/
+*.log
+
+# Built/native artifacts
+*.node
+
+# Live2D model + runtime binaries are NOT committed (license + size).
+# See resources/models/README.md and resources/runtime/README.md.
+resources/models/*/
+!resources/models/README.md
+resources/runtime/*.js
+!resources/runtime/README.md
+
+.DS_Store
