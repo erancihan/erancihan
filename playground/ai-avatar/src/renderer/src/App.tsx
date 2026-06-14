@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AvatarPose, CliStatus } from '../../shared/ipc.js'
+import type { AvatarCue, AvatarPose, CliStatus, HooksStatus } from '../../shared/ipc.js'
 import { AvatarStage } from './avatar/AvatarStage.js'
 import { TerminalView } from './components/Terminal.js'
 import { ChatBox } from './components/ChatBox.js'
@@ -14,24 +14,45 @@ export function App(): JSX.Element {
   const [sessionOk, setSessionOk] = useState<boolean | null>(null)
   const [pose, setPose] = useState<AvatarPose>('idle')
   const [showTerminal, setShowTerminal] = useState(true)
+  const [hooks, setHooks] = useState<HooksStatus | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const idleTimer = useRef<number | undefined>(undefined)
+  const noticeTimer = useRef<number | undefined>(undefined)
 
   // Detect the CLI up front so we can show install/login guidance instead of crashing.
   useEffect(() => {
     window.companion.detectCli().then(setCli)
+    window.companion.hooksStatus().then(setHooks)
   }, [])
 
-  // Return to idle after a quiet beat. Used by the activity-driven pose nudges below;
-  // Phase 2 replaces this heuristic with real Claude Code hooks.
+  const flashNotice = useCallback((text: string) => {
+    setNotice(text)
+    window.clearTimeout(noticeTimer.current)
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 6000)
+  }, [])
+
+  // Return to idle after a quiet beat. Drives the activity heuristic used when hooks
+  // aren't installed; real hook cues (below) take precedence by clearing this timer.
   const scheduleIdle = useCallback((delay = 1400) => {
     window.clearTimeout(idleTimer.current)
     idleTimer.current = window.setTimeout(() => setPose('idle'), delay)
   }, [])
 
+  // Authoritative pose source: Claude Code hook cues forwarded from the bridge.
+  useEffect(() => {
+    return window.companion.onAvatarCue((cue: AvatarCue) => {
+      window.clearTimeout(idleTimer.current) // cues outrank the heuristic
+      if (cue.pose) setPose(cue.pose)
+      if (cue.message) flashNotice(cue.message)
+    })
+  }, [flashNotice])
+
   const handleOutput = useCallback(() => {
+    // Heuristic fallback (only meaningful when hooks aren't installed).
+    if (hooks?.installed) return
     setPose('working')
     scheduleIdle()
-  }, [scheduleIdle])
+  }, [hooks, scheduleIdle])
 
   const handleSend = useCallback(() => {
     setPose('listening')
@@ -43,7 +64,19 @@ export function App(): JSX.Element {
     setSessionOk(ok)
   }, [])
 
+  const toggleHooks = useCallback(async () => {
+    const next = hooks?.installed
+      ? await window.companion.uninstallHooks()
+      : await window.companion.installHooks()
+    setHooks(next)
+    if (next.error) flashNotice(`Hooks: ${next.error}`)
+    else if (next.installed)
+      flashNotice('Reactions installed for this project — restart the session to apply.')
+    else flashNotice('Reactions removed.')
+  }, [hooks, flashNotice])
+
   const needsGuidance = cli && !cli.found
+  const reactionsOn = hooks?.installed ?? false
 
   return (
     <div className="app" data-pose={pose}>
@@ -54,6 +87,13 @@ export function App(): JSX.Element {
           <span className="pose-tag">{pose}</span>
         </div>
         <div className="titlebar-actions">
+          <button
+            className={`icon-btn${reactionsOn ? ' active' : ''}`}
+            onClick={toggleHooks}
+            title={reactionsOn ? 'reactions on — click to remove hooks' : 'enable avatar reactions (install hooks)'}
+          >
+            ⚡
+          </button>
           <button
             className="icon-btn"
             onClick={() => setShowTerminal((v) => !v)}
@@ -70,6 +110,8 @@ export function App(): JSX.Element {
           </button>
         </div>
       </header>
+
+      {notice && <div className="toast">{notice}</div>}
 
       <main className="stage">
         <section className="avatar-pane">

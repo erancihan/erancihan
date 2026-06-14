@@ -4,6 +4,7 @@ import {
   type AppSettings,
   type AvatarCue,
   type CliStatus,
+  type HooksStatus,
   type TerminalSize
 } from '../shared/ipc.js'
 
@@ -26,6 +27,10 @@ const api = {
     ipcRenderer.invoke(Channels.SettingsSet, partial),
 
   quit: (): void => ipcRenderer.send(Channels.AppQuit),
+
+  hooksStatus: (): Promise<HooksStatus> => ipcRenderer.invoke(Channels.HooksStatus),
+  installHooks: (): Promise<HooksStatus> => ipcRenderer.invoke(Channels.HooksInstall),
+  uninstallHooks: (): Promise<HooksStatus> => ipcRenderer.invoke(Channels.HooksUninstall),
 
   startTerminal: (size: TerminalSize): Promise<TerminalStartResult> =>
     ipcRenderer.invoke(Channels.TerminalStart, size),

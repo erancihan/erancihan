@@ -10,9 +10,25 @@ directly, _or_ talk to the character — both drive the **same** Claude Code ses
 > spawned with `ANTHROPIC_API_KEY` stripped, so the session always runs on your
 > subscription login.
 
-This is **Phase 1 (Core MVP)** from [`PLAN.md`](./PLAN.md).
+This implements **Phases 1–2** from [`PLAN.md`](./PLAN.md).
 
-## What works now (Phase 1)
+## What works now (Phase 2)
+
+- ✅ **Avatar reactions via Claude Code hooks.** Click ⚡ in the title bar to install
+  scoped, reversible hooks into `<projectDir>/.claude/settings.json`. The avatar then
+  moves through **listen → think → work → idle** as the session fires
+  `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop`.
+- ✅ **Permission / notification prompts surfaced in-UI** as a toast (the prompt itself is
+  still answered in the embedded terminal).
+- ✅ **Local hook bridge:** an ephemeral `127.0.0.1` HTTP server with a per-launch token,
+  published to a runtime file the forwarder reads — stable hook config, rotating endpoint,
+  safe no-op when the app is closed. See [`resources/hooks/README.md`](./resources/hooks/README.md).
+
+Removing the hooks (⚡ again) restores the prior settings precisely, leaving any of your
+own hooks untouched. Restart the claude session after toggling so Claude Code reloads
+its config.
+
+## What works (Phase 1)
 
 - ✅ Frameless / transparent / always-on-top Electron window.
 - ✅ Detects the local `claude` CLI on launch (PATH + common install dirs); shows
@@ -24,10 +40,9 @@ This is **Phase 1 (Core MVP)** from [`PLAN.md`](./PLAN.md).
   - Uses a self-contained **Canvas2D placeholder** companion out of the box (no binary
     assets needed), and transparently upgrades to a real **Live2D** model when one is
     provided. See [`resources/models/README.md`](./resources/models/README.md).
-- ✅ Activity-driven pose changes (listening / working / idle) as a stand-in until
-  Phase 2 wires real Claude Code hooks.
+- ✅ Activity-driven pose changes as a fallback when reaction hooks aren't installed.
 
-Later phases (reactions via hooks, `claude -p` emotion classification, voice/lip-sync,
+Later phases (`claude -p` emotion classification → expression blends, voice/lip-sync,
 model & personality customization) are described in [`PLAN.md`](./PLAN.md).
 
 ## Prerequisites
@@ -69,7 +84,9 @@ src/
     cli/detect.ts        find `claude`, parse version, guide install/login
     cli/ptyService.ts    spawn ONE interactive `claude` PTY (no API key in env)
     settings.ts          app prefs only — never any Anthropic credential
-  preload/index.ts       contextBridge: terminal IO, detect, settings, avatar cues
+    hooks/bridge.ts      localhost cue server (ephemeral port + token) → renderer
+    hooks/install.ts     write/remove scoped, reversible Claude Code hook config
+  preload/index.ts       contextBridge: terminal IO, detect, settings, hooks, avatar cues
   renderer/
     App.tsx              layout + pose state machine
     components/Terminal.tsx   xterm.js view of the live session (typeable)
@@ -81,15 +98,17 @@ src/
       createAvatarController.ts  picks Live2D, falls back to placeholder
       AvatarStage.tsx            React host + gaze/click/cue wiring
   shared/ipc.ts          typed IPC contract shared across processes
+  shared/hookEvents.ts   pure event→cue mapping + managed-hook list
 resources/
+  hooks/cue.mjs          installed hook forwarder → posts cues to the bridge
   models/                drop Live2D models here (not committed; see README)
   runtime/               drop live2dcubismcore.min.js here (not committed; see README)
 ```
 
 **Data flow:** typing in `Terminal` _or_ `ChatBox` → `companion.sendInput` → `PtyService`
 stdin → the real `claude` session (native tools/MCP/permissions) → output streams back to
-`Terminal`. The avatar reacts to session activity (Phase 2 swaps the heuristic for hooks).
-No Anthropic key anywhere in the flow.
+`Terminal`. In parallel, Claude Code **hooks** → `cue.mjs` → `hooks/bridge` → renderer →
+`AvatarController` switches pose. No Anthropic key anywhere in the flow.
 
 ## License
 

@@ -29,6 +29,17 @@ export interface AvatarCue {
   expression?: string
   /** Free-form source tag for debugging, e.g. "PreToolUse:Edit". */
   source?: string
+  /** Human-readable text to surface in-UI (e.g. a Notification/permission prompt). */
+  message?: string
+}
+
+/** Whether the Claude Code reaction hooks are installed for the current project. */
+export interface HooksStatus {
+  installed: boolean
+  /** Absolute path to the settings file the hooks live in. */
+  settingsPath: string
+  /** Why install/status failed, if it did. */
+  error?: string
 }
 
 /** App settings persisted to userData (NO Anthropic credentials are ever stored). */
@@ -54,7 +65,10 @@ export const Channels = {
   TerminalResize: 'terminal:resize',
   SettingsGet: 'settings:get',
   SettingsSet: 'settings:set',
-  AppQuit: 'app:quit'
+  AppQuit: 'app:quit',
+  HooksStatus: 'hooks:status',
+  HooksInstall: 'hooks:install',
+  HooksUninstall: 'hooks:uninstall'
 } as const
 
 export interface TerminalSize {

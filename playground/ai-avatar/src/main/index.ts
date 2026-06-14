@@ -3,10 +3,49 @@ import { join } from 'node:path'
 import { detectClaude } from './cli/detect.js'
 import { PtyService } from './cli/ptyService.js'
 import { loadSettings, saveSettings } from './settings.js'
-import { Channels, type AppSettings, type TerminalSize } from '../shared/ipc.js'
+import { HookBridge } from './hooks/bridge.js'
+import {
+  hooksStatus,
+  installHooks,
+  uninstallHooks,
+  type InstallContext
+} from './hooks/install.js'
+import type { HookEvent } from '../shared/hookEvents.js'
+import { Channels, type AppSettings, type AvatarCue, type TerminalSize } from '../shared/ipc.js'
 
 const pty = new PtyService()
 let mainWindow: BrowserWindow | null = null
+let bridge: HookBridge | null = null
+
+/** Absolute path to the bundled hook forwarder (dev vs packaged differ). */
+function hookScriptPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'hooks', 'cue.mjs')
+    : join(app.getAppPath(), 'resources', 'hooks', 'cue.mjs')
+}
+
+/** Runtime file the bridge publishes its live {port, token} to. */
+function bridgeRuntimeFile(): string {
+  return join(app.getPath('userData'), 'companion-bridge.json')
+}
+
+/**
+ * Build the InstallContext for the CURRENT project dir. The hook command re-runs the
+ * Electron binary in Node mode (ELECTRON_RUN_AS_NODE) so it never depends on a system
+ * `node` being on Claude Code's PATH.
+ */
+function installContext(): InstallContext {
+  const scriptPath = hookScriptPath()
+  const bridgeFile = bridgeRuntimeFile()
+  const electron = process.execPath
+  const settingsPath = join(loadSettings().projectDir, '.claude', 'settings.json')
+  return {
+    settingsPath,
+    scriptPath,
+    build: (event: HookEvent) =>
+      `ELECTRON_RUN_AS_NODE=1 "${electron}" "${scriptPath}" --event ${event} --bridge "${bridgeFile}"`
+  }
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -40,12 +79,22 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // Forward PTY output and lifecycle to the renderer.
+  // Forward PTY output and lifecycle to the renderer. Wrapped because async senders
+  // (the hook bridge, PTY chunks) can fire while the frame is mid-teardown on quit/HMR.
   const sendToRenderer = (channel: string, payload: unknown): void => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    try {
       mainWindow.webContents.send(channel, payload)
+    } catch {
+      // Frame disposed between the guard and the send; safe to drop.
     }
   }
+
+  // Start the hook bridge; forward mapped cues to the renderer's avatar.
+  bridge = new HookBridge(bridgeRuntimeFile(), (cue: AvatarCue) =>
+    sendToRenderer(Channels.AvatarCue, cue)
+  )
+  bridge.start().catch((err) => console.error('[bridge] failed to start:', err))
 
   // Register IPC once the window (and its sender) exist.
   registerIpc(sendToRenderer)
@@ -87,6 +136,11 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
 
   // Close button → fully quit. before-quit disposes the PTY, terminating claude.
   ipcMain.on(Channels.AppQuit, () => app.quit())
+
+  // Reaction hooks (Phase 2): scoped to the current project, reversible.
+  ipcMain.handle(Channels.HooksStatus, () => hooksStatus(installContext()))
+  ipcMain.handle(Channels.HooksInstall, () => installHooks(installContext()))
+  ipcMain.handle(Channels.HooksUninstall, () => uninstallHooks(installContext()))
 }
 
 app.whenReady().then(() => {
@@ -100,7 +154,11 @@ app.on('window-all-closed', () => {
   // Single-window companion: closing the window quits the app on every platform
   // (no lingering dock process), and disposing the PTY terminates the claude child.
   pty.dispose()
+  bridge?.stop()
   app.quit()
 })
 
-app.on('before-quit', () => pty.dispose())
+app.on('before-quit', () => {
+  pty.dispose()
+  bridge?.stop()
+})
