@@ -25,6 +25,8 @@ const api = {
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke(Channels.SettingsGet),
   setSettings: (partial: Partial<AppSettings>): Promise<AppSettings> =>
     ipcRenderer.invoke(Channels.SettingsSet, partial),
+  pickDirectory: (): Promise<string | null> =>
+    ipcRenderer.invoke(Channels.DialogPickDirectory),
 
   quit: (): void => ipcRenderer.send(Channels.AppQuit),
 

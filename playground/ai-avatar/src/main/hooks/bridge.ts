@@ -21,7 +21,9 @@ export class HookBridge {
     /** Runtime file the forwarder reads, e.g. userData/companion-bridge.json. */
     private readonly runtimeFile: string,
     /** Called with a mapped cue for each valid incoming hook signal. */
-    private readonly onCue: (cue: AvatarCue) => void
+    private readonly onCue: (cue: AvatarCue) => void,
+    /** Called with the raw signal too (e.g. to trigger emotion on Stop). Optional. */
+    private readonly onSignal?: (signal: HookSignal) => void
   ) {}
 
   async start(): Promise<void> {
@@ -53,6 +55,7 @@ export class HookBridge {
           const signal = JSON.parse(body) as HookSignal
           const cue = mapEventToCue(signal)
           if (cue) this.onCue(cue)
+          this.onSignal?.(signal)
         } catch {
           // Malformed payload — ignore; never let a hook break the app.
         }

@@ -1,7 +1,7 @@
 import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import type { AppSettings } from '../shared/ipc.js'
 
 // IMPORTANT: this store holds ONLY app preferences. It never holds Anthropic
@@ -19,13 +19,32 @@ function settingsPath(): string {
   return join(app.getPath('userData'), 'settings.json')
 }
 
-export function loadSettings(): AppSettings {
+/**
+ * Launch-time override for the start directory, e.g. `COMPANION_PROJECT_DIR=/path npm run dev`.
+ * Wins for the session over the persisted setting (but is not written back, so it doesn't
+ * stick). Relative paths resolve against the directory `npm run dev` was launched from.
+ */
+function envProjectDir(): string | undefined {
+  const raw = process.env.COMPANION_PROJECT_DIR
+  if (!raw) return undefined
+  const dir = isAbsolute(raw) ? raw : resolve(process.cwd(), raw)
   try {
-    const raw = readFileSync(settingsPath(), 'utf8')
-    return { ...defaults(), ...(JSON.parse(raw) as Partial<AppSettings>) }
+    if (statSync(dir).isDirectory()) return dir
   } catch {
-    return defaults()
+    // Not a real directory — ignore the override rather than crashing the session.
   }
+  return undefined
+}
+
+export function loadSettings(): AppSettings {
+  let stored: AppSettings
+  try {
+    stored = { ...defaults(), ...(JSON.parse(readFileSync(settingsPath(), 'utf8')) as Partial<AppSettings>) }
+  } catch {
+    stored = defaults()
+  }
+  const override = envProjectDir()
+  return override ? { ...stored, projectDir: override } : stored
 }
 
 export function saveSettings(partial: Partial<AppSettings>): AppSettings {

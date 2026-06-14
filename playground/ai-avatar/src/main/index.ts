@@ -1,9 +1,11 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { detectClaude } from './cli/detect.js'
 import { PtyService } from './cli/ptyService.js'
+import { EmotionService } from './cli/emotion.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { HookBridge } from './hooks/bridge.js'
+import type { HookSignal } from '../shared/hookEvents.js'
 import {
   hooksStatus,
   installHooks,
@@ -90,9 +92,22 @@ function createWindow(): void {
     }
   }
 
-  // Start the hook bridge; forward mapped cues to the renderer's avatar.
-  bridge = new HookBridge(bridgeRuntimeFile(), (cue: AvatarCue) =>
-    sendToRenderer(Channels.AvatarCue, cue)
+  // Emotion agent (Phase 3): on turn end, classify the reply tone via headless `claude -p`
+  // and push an expression cue. Async — never blocks the session.
+  const emotion = new EmotionService((label) =>
+    sendToRenderer(Channels.AvatarCue, { expression: label } as AvatarCue)
+  )
+
+  // Start the hook bridge; forward mapped cues to the renderer's avatar, and trigger the
+  // emotion classification when a Stop signal carries a transcript path.
+  bridge = new HookBridge(
+    bridgeRuntimeFile(),
+    (cue: AvatarCue) => sendToRenderer(Channels.AvatarCue, cue),
+    (signal: HookSignal) => {
+      if (signal.event !== 'Stop') return
+      const transcript = signal.data?.transcript_path
+      if (typeof transcript === 'string') void emotion.classifyFromTranscript(transcript)
+    }
   )
   bridge.start().catch((err) => console.error('[bridge] failed to start:', err))
 
@@ -136,6 +151,19 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
 
   // Close button → fully quit. before-quit disposes the PTY, terminating claude.
   ipcMain.on(Channels.AppQuit, () => app.quit())
+
+  // Pick the start/working directory for the claude session (returns null if cancelled).
+  ipcMain.handle(Channels.DialogPickDirectory, async () => {
+    const opts = {
+      title: 'Choose start directory',
+      defaultPath: loadSettings().projectDir,
+      properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[]
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, opts)
+      : await dialog.showOpenDialog(opts)
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+  })
 
   // Reaction hooks (Phase 2): scoped to the current project, reversible.
   ipcMain.handle(Channels.HooksStatus, () => hooksStatus(installContext()))

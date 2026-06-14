@@ -68,7 +68,8 @@ export const Channels = {
   AppQuit: 'app:quit',
   HooksStatus: 'hooks:status',
   HooksInstall: 'hooks:install',
-  HooksUninstall: 'hooks:uninstall'
+  HooksUninstall: 'hooks:uninstall',
+  DialogPickDirectory: 'dialog:pickDirectory'
 } as const
 
 export interface TerminalSize {

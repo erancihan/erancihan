@@ -9,13 +9,21 @@ import { ChatBox } from './components/ChatBox.js'
 // to switch backends — nothing else changes (see AvatarController).
 const MODEL_URL: string | null = null
 
+/** Last path segment, cross-platform — the renderer has no node `path`. */
+function basename(p: string): string {
+  const parts = p.split(/[\\/]/).filter(Boolean)
+  return parts[parts.length - 1] ?? p
+}
+
 export function App(): JSX.Element {
   const [cli, setCli] = useState<CliStatus | null>(null)
   const [sessionOk, setSessionOk] = useState<boolean | null>(null)
   const [pose, setPose] = useState<AvatarPose>('idle')
+  const [expression, setExpression] = useState<string | undefined>(undefined)
   const [showTerminal, setShowTerminal] = useState(true)
   const [hooks, setHooks] = useState<HooksStatus | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [projectDir, setProjectDir] = useState<string | null>(null)
   const idleTimer = useRef<number | undefined>(undefined)
   const noticeTimer = useRef<number | undefined>(undefined)
 
@@ -23,6 +31,7 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.companion.detectCli().then(setCli)
     window.companion.hooksStatus().then(setHooks)
+    window.companion.getSettings().then((s) => setProjectDir(s.projectDir))
   }, [])
 
   const flashNotice = useCallback((text: string) => {
@@ -42,7 +51,12 @@ export function App(): JSX.Element {
   useEffect(() => {
     return window.companion.onAvatarCue((cue: AvatarCue) => {
       window.clearTimeout(idleTimer.current) // cues outrank the heuristic
-      if (cue.pose) setPose(cue.pose)
+      if (cue.pose) {
+        setPose(cue.pose)
+        // A new turn starting resets last turn's emotion until it's reclassified.
+        if (cue.pose === 'thinking' || cue.pose === 'listening') setExpression('neutral')
+      }
+      if (cue.expression) setExpression(cue.expression) // from the emotion agent on Stop
       if (cue.message) flashNotice(cue.message)
     })
   }, [flashNotice])
@@ -75,8 +89,19 @@ export function App(): JSX.Element {
     else flashNotice('Reactions removed.')
   }, [hooks, flashNotice])
 
+  // Choose the start directory; persist it and restart the session there.
+  const changeDir = useCallback(async () => {
+    const dir = await window.companion.pickDirectory()
+    if (!dir || dir === projectDir) return
+    await window.companion.setSettings({ projectDir: dir })
+    setProjectDir(dir) // changes the TerminalView key → remounts → new session in `dir`
+    window.companion.hooksStatus().then(setHooks) // hooks are scoped per directory
+    flashNotice(`Start directory: ${dir} — session restarted.`)
+  }, [projectDir, flashNotice])
+
   const needsGuidance = cli && !cli.found
   const reactionsOn = hooks?.installed ?? false
+  const dirLabel = projectDir ? basename(projectDir) : '…'
 
   return (
     <div className="app" data-pose={pose}>
@@ -87,6 +112,13 @@ export function App(): JSX.Element {
           <span className="pose-tag">{pose}</span>
         </div>
         <div className="titlebar-actions">
+          <button
+            className="icon-btn dir-btn"
+            onClick={changeDir}
+            title={projectDir ? `start directory: ${projectDir} — click to change` : 'set start directory'}
+          >
+            📁 <span className="dir-label">{dirLabel}</span>
+          </button>
           <button
             className={`icon-btn${reactionsOn ? ' active' : ''}`}
             onClick={toggleHooks}
@@ -115,7 +147,7 @@ export function App(): JSX.Element {
 
       <main className="stage">
         <section className="avatar-pane">
-          <AvatarStage modelUrl={MODEL_URL} pose={pose} />
+          <AvatarStage modelUrl={MODEL_URL} pose={pose} expression={expression} />
           <ChatBox onSend={handleSend} />
         </section>
 
@@ -137,7 +169,15 @@ export function App(): JSX.Element {
                     Couldn’t start the session. {cli?.guidance ?? ''}
                   </div>
                 )}
-                <TerminalView onStatus={handleStatus} onOutput={handleOutput} />
+                {/* Mount only once the start dir is known, so changing it (key) is the
+                    only thing that remounts → exactly one session per directory. */}
+                {projectDir && (
+                  <TerminalView
+                    key={projectDir}
+                    onStatus={handleStatus}
+                    onOutput={handleOutput}
+                  />
+                )}
               </>
             )}
           </section>

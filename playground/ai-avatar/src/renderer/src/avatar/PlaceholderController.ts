@@ -41,6 +41,7 @@ export class PlaceholderController implements AvatarController {
   private blink = 0 // 0 open .. 1 shut
   private blinking = false
   private pokeUntil = 0
+  private expression = 'neutral'
 
   async mount(host: HTMLElement): Promise<void> {
     const canvas = document.createElement('canvas')
@@ -71,8 +72,8 @@ export class PlaceholderController implements AvatarController {
     this.pose = pose
   }
 
-  setExpression(_expression: string): void {
-    // Placeholder ignores named expressions for now; pose tint conveys mood.
+  setExpression(expression: string): void {
+    this.expression = expression
   }
 
   lookAt(clientX: number, clientY: number): void {
@@ -224,27 +225,55 @@ export class PlaceholderController implements AvatarController {
     r: number,
     eyeOpen: number
   ): void {
+    const f = FACES[this.expression] ?? FACES.neutral
+    const ink = '#2a2433'
     const gx = this.gazeCurrent.x * r * 0.12
     const gy = this.gazeCurrent.y * r * 0.1
     const eyeDX = r * 0.34
     const eyeY = y - r * 0.1
-    const eyeR = r * 0.12
+    const eyeR = r * 0.12 * f.eyeScale
+    const lw = Math.max(1.5, r * 0.045)
 
-    ctx.fillStyle = '#2a2433'
+    // Eyebrows convey anger / sadness (inner corner up = sad, down = angry).
+    if (f.brow !== 0) {
+      ctx.strokeStyle = ink
+      ctx.lineWidth = lw
+      ctx.lineCap = 'round'
+      for (const dir of [-1, 1]) {
+        const bx = x + dir * eyeDX + gx
+        const by = eyeY - r * 0.26 + gy
+        ctx.beginPath()
+        ctx.moveTo(bx - dir * r * 0.1, by + dir * f.brow * r * 0.07)
+        ctx.lineTo(bx + dir * r * 0.1, by - dir * f.brow * r * 0.07)
+        ctx.stroke()
+      }
+    }
+
+    ctx.fillStyle = ink
     for (const dir of [-1, 1]) {
       const ex = x + dir * eyeDX + gx
+      const ey = eyeY + gy
+      if (f.happyEyes && eyeOpen > 0.5) {
+        // Upward arc "^_^" eyes for joy.
+        ctx.strokeStyle = ink
+        ctx.lineWidth = lw
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.arc(ex, ey + eyeR * 0.4, eyeR * 1.1, 1.15 * Math.PI, 1.85 * Math.PI)
+        ctx.stroke()
+        continue
+      }
       ctx.save()
-      ctx.translate(ex, eyeY + gy)
+      ctx.translate(ex, ey)
       ctx.scale(1, Math.max(0.08, eyeOpen))
       ctx.beginPath()
       ctx.arc(0, 0, eyeR, 0, Math.PI * 2)
       ctx.fill()
-      // Catchlight.
       ctx.fillStyle = 'rgba(255,255,255,0.85)'
       ctx.beginPath()
       ctx.arc(eyeR * 0.35, -eyeR * 0.35, eyeR * 0.3, 0, Math.PI * 2)
       ctx.fill()
-      ctx.fillStyle = '#2a2433'
+      ctx.fillStyle = ink
       ctx.restore()
     }
 
@@ -256,14 +285,45 @@ export class PlaceholderController implements AvatarController {
       ctx.fill()
     }
 
-    // Mouth: tiny smile.
-    ctx.strokeStyle = '#2a2433'
-    ctx.lineWidth = Math.max(1.5, r * 0.04)
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    ctx.arc(x + gx, y + r * 0.08 + gy, r * 0.12, 0.15 * Math.PI, 0.85 * Math.PI)
-    ctx.stroke()
+    // Mouth: open (O) when agape, else a curve whose sign is smile (+) vs frown (−).
+    const mx = x + gx
+    const my = y + r * 0.1 + gy
+    if (f.mouthOpen > 0.3) {
+      ctx.fillStyle = ink
+      ctx.beginPath()
+      ctx.ellipse(mx, my, r * 0.1, r * 0.13 * f.mouthOpen, 0, 0, Math.PI * 2)
+      ctx.fill()
+    } else {
+      ctx.strokeStyle = ink
+      ctx.lineWidth = lw
+      ctx.lineCap = 'round'
+      const w = r * 0.13
+      const c = f.mouthCurve * r * 0.12 // + down-belly (smile), − up-belly (frown)
+      ctx.beginPath()
+      ctx.moveTo(mx - w, my)
+      ctx.quadraticCurveTo(mx, my + c, mx + w, my)
+      ctx.stroke()
+    }
   }
+}
+
+interface FaceStyle {
+  eyeScale: number
+  happyEyes: boolean
+  mouthCurve: number // + smile, − frown
+  mouthOpen: number // 0..1
+  brow: number // 0 none, + sad (inner up), − angry (inner down)
+}
+
+// Per-emotion face parameters for the placeholder companion.
+const FACES: Record<string, FaceStyle> = {
+  neutral: { eyeScale: 1, happyEyes: false, mouthCurve: 0.5, mouthOpen: 0, brow: 0 },
+  happy: { eyeScale: 1, happyEyes: true, mouthCurve: 1, mouthOpen: 0, brow: 0 },
+  excited: { eyeScale: 1.3, happyEyes: false, mouthCurve: 1, mouthOpen: 0.7, brow: 0 },
+  sad: { eyeScale: 0.9, happyEyes: false, mouthCurve: -0.8, mouthOpen: 0, brow: 1 },
+  surprised: { eyeScale: 1.45, happyEyes: false, mouthCurve: 0, mouthOpen: 0.9, brow: 0 },
+  angry: { eyeScale: 0.9, happyEyes: false, mouthCurve: -0.5, mouthOpen: 0, brow: -1 },
+  thinking: { eyeScale: 1, happyEyes: false, mouthCurve: 0.15, mouthOpen: 0, brow: 0 }
 }
 
 function clamp(v: number, lo: number, hi: number): number {
