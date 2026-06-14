@@ -24,6 +24,7 @@ export function App(): JSX.Element {
   const [hooks, setHooks] = useState<HooksStatus | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [projectDir, setProjectDir] = useState<string | null>(null)
+  const [voiceEnabled, setVoiceEnabled] = useState(false)
   const idleTimer = useRef<number | undefined>(undefined)
   const noticeTimer = useRef<number | undefined>(undefined)
 
@@ -31,7 +32,10 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.companion.detectCli().then(setCli)
     window.companion.hooksStatus().then(setHooks)
-    window.companion.getSettings().then((s) => setProjectDir(s.projectDir))
+    window.companion.getSettings().then((s) => {
+      setProjectDir(s.projectDir)
+      setVoiceEnabled(s.voice)
+    })
   }, [])
 
   const flashNotice = useCallback((text: string) => {
@@ -99,6 +103,12 @@ export function App(): JSX.Element {
     flashNotice(`Start directory: ${dir} — session restarted.`)
   }, [projectDir, flashNotice])
 
+  const toggleVoice = useCallback(async () => {
+    const next = !voiceEnabled
+    setVoiceEnabled(next) // AvatarStage's effect cancels any active speech when turned off
+    await window.companion.setSettings({ voice: next })
+  }, [voiceEnabled])
+
   const needsGuidance = cli && !cli.found
   const reactionsOn = hooks?.installed ?? false
   const dirLabel = projectDir ? basename(projectDir) : '…'
@@ -127,6 +137,13 @@ export function App(): JSX.Element {
             ⚡
           </button>
           <button
+            className={`icon-btn${voiceEnabled ? ' active' : ''}`}
+            onClick={toggleVoice}
+            title={voiceEnabled ? 'voice on — click to mute' : 'speak replies aloud (TTS)'}
+          >
+            {voiceEnabled ? '🔊' : '🔈'}
+          </button>
+          <button
             className="icon-btn"
             onClick={() => setShowTerminal((v) => !v)}
             title={showTerminal ? 'hide terminal' : 'show terminal'}
@@ -147,7 +164,12 @@ export function App(): JSX.Element {
 
       <main className="stage">
         <section className="avatar-pane">
-          <AvatarStage modelUrl={MODEL_URL} pose={pose} expression={expression} />
+          <AvatarStage
+            modelUrl={MODEL_URL}
+            pose={pose}
+            expression={expression}
+            voiceEnabled={voiceEnabled}
+          />
           <ChatBox onSend={handleSend} />
         </section>
 

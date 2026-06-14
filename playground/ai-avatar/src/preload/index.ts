@@ -54,6 +54,11 @@ const api = {
     const handler = (_e: unknown, cue: AvatarCue): void => cb(cue)
     ipcRenderer.on(Channels.AvatarCue, handler)
     return () => ipcRenderer.removeListener(Channels.AvatarCue, handler)
+  },
+  onAvatarSpeak: (cb: (text: string) => void): (() => void) => {
+    const handler = (_e: unknown, text: string): void => cb(text)
+    ipcRenderer.on(Channels.AvatarSpeak, handler)
+    return () => ipcRenderer.removeListener(Channels.AvatarSpeak, handler)
   }
 }
 

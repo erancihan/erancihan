@@ -10,9 +10,22 @@ directly, _or_ talk to the character — both drive the **same** Claude Code ses
 > spawned with `ANTHROPIC_API_KEY` stripped, so the session always runs on your
 > subscription login.
 
-This implements **Phases 1–3** from [`PLAN.md`](./PLAN.md).
+This implements **Phases 1–4** from [`PLAN.md`](./PLAN.md).
 
-## What works now (Phase 3)
+## What works now (Phase 4)
+
+- ✅ **Voice + lip-sync (free, no key).** Toggle 🔈/🔊 in the title bar to speak assistant
+  replies aloud via the browser's built-in **Web Speech API** (system voices — no Azure/
+  ElevenLabs, no API key). The avatar's mouth lip-syncs while it talks (word-boundary
+  pulses + a talking flap — the AudioWorklet-free fallback from the plan). Replies are
+  cleaned for speech first (code blocks / links / markdown stripped, truncated).
+  - Off by default; the setting is persisted. Reading the reply uses the same transcript
+    the emotion pass already loads on `Stop`.
+- ✅ **Refined idle** — occasional natural double-blink alongside breathing/sway/gaze.
+
+Like emotion, voice needs reaction hooks installed (⚡), since it's triggered by `Stop`.
+
+## What works (Phase 3)
 
 - ✅ **Emotion → expression.** When a turn ends (`Stop`), the app asynchronously runs a
   short headless `claude -p` (same login, no API key, `--model haiku`) to classify the
@@ -57,8 +70,8 @@ its config.
     provided. See [`resources/models/README.md`](./resources/models/README.md).
 - ✅ Activity-driven pose changes as a fallback when reaction hooks aren't installed.
 
-Later phases (voice/lip-sync, model & personality customization, optional MCP avatar
-bridge) are described in [`PLAN.md`](./PLAN.md).
+Later phases (model & personality customization, optional MCP avatar bridge) are
+described in [`PLAN.md`](./PLAN.md).
 
 ## Prerequisites
 
@@ -131,10 +144,12 @@ src/
       PlaceholderController.ts   Canvas2D companion (no assets, always available)
       Live2DController.ts        pixi-live2d-display backend (used when a model exists)
       createAvatarController.ts  picks Live2D, falls back to placeholder
-      AvatarStage.tsx            React host + gaze/click/cue wiring
+      VoiceController.ts         Web Speech API TTS + lip-sync mouth driver
+      AvatarStage.tsx            React host + gaze/click/cue/voice wiring
   shared/ipc.ts          typed IPC contract shared across processes
   shared/hookEvents.ts   pure event→cue mapping + managed-hook list
   shared/emotion.ts      pure prompt builder, emotion parser, transcript extractor
+  shared/voice.ts        pure reply→speech text cleaner
 resources/
   hooks/cue.mjs          installed hook forwarder → posts cues to the bridge
   models/                drop Live2D models here (not committed; see README)
@@ -144,7 +159,8 @@ resources/
 **Data flow:** typing in `Terminal` _or_ `ChatBox` → `companion.sendInput` → `PtyService`
 stdin → the real `claude` session (native tools/MCP/permissions) → output streams back to
 `Terminal`. In parallel, Claude Code **hooks** → `cue.mjs` → `hooks/bridge` → renderer →
-`AvatarController` switches pose; on `Stop`, `cli/emotion.ts` runs `claude -p` → expression.
+`AvatarController` switches pose; on `Stop`, the reply text drives `cli/emotion.ts`
+(`claude -p` → expression) and, when 🔊 is on, `VoiceController` (Web Speech TTS + lip-sync).
 No Anthropic key anywhere in the flow.
 
 ## License

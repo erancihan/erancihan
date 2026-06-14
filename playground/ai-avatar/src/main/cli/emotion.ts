@@ -10,8 +10,17 @@ import {
   type Emotion
 } from '../../shared/emotion.js'
 
+/** Read a Claude Code transcript and return the last assistant reply text, if any. */
+export async function readLastAssistantReply(transcriptPath: string): Promise<string | undefined> {
+  try {
+    return extractLastAssistantText(await readFile(transcriptPath, 'utf8'))
+  } catch {
+    return undefined // transcript unreadable — skip
+  }
+}
+
 /**
- * Classifies the emotional tone of the last assistant reply by running a short headless
+ * Classifies the emotional tone of an assistant reply by running a short headless
  * `claude -p` on the same Claude Code login (no API key). Fully async and cancelable so it
  * NEVER delays the interactive session: it kicks off after the Stop hook fires, and a new
  * request cancels any in-flight one. Any failure is a silent no-op (the avatar simply keeps
@@ -23,14 +32,8 @@ export class EmotionService {
 
   constructor(private readonly onEmotion: (emotion: Emotion) => void) {}
 
-  /** Read the transcript's last assistant message and classify its tone. */
-  async classifyFromTranscript(transcriptPath: string): Promise<void> {
-    let text: string | undefined
-    try {
-      text = extractLastAssistantText(await readFile(transcriptPath, 'utf8'))
-    } catch {
-      return // transcript unreadable — skip
-    }
+  /** Classify the tone of an already-extracted reply. */
+  async classify(text: string): Promise<void> {
     if (!text) return
 
     const command = await this.resolveCommand()

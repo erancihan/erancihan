@@ -11,7 +11,8 @@ function defaults(): AppSettings {
   return {
     projectDir: homedir(),
     avatarModel: 'sample',
-    personality: ''
+    personality: '',
+    voice: false
   }
 }
 

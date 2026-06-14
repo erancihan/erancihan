@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { detectClaude } from './cli/detect.js'
 import { PtyService } from './cli/ptyService.js'
-import { EmotionService } from './cli/emotion.js'
+import { EmotionService, readLastAssistantReply } from './cli/emotion.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { HookBridge } from './hooks/bridge.js'
 import type { HookSignal } from '../shared/hookEvents.js'
@@ -106,7 +106,13 @@ function createWindow(): void {
     (signal: HookSignal) => {
       if (signal.event !== 'Stop') return
       const transcript = signal.data?.transcript_path
-      if (typeof transcript === 'string') void emotion.classifyFromTranscript(transcript)
+      if (typeof transcript !== 'string') return
+      // Read the reply once, then drive both emotion (claude -p) and TTS off it.
+      void readLastAssistantReply(transcript).then((text) => {
+        if (!text) return
+        void emotion.classify(text)
+        sendToRenderer(Channels.AvatarSpeak, text)
+      })
     }
   )
   bridge.start().catch((err) => console.error('[bridge] failed to start:', err))

@@ -42,6 +42,8 @@ export class PlaceholderController implements AvatarController {
   private blinking = false
   private pokeUntil = 0
   private expression = 'neutral'
+  private speaking = false
+  private mouthOpen = 0
 
   async mount(host: HTMLElement): Promise<void> {
     const canvas = document.createElement('canvas')
@@ -74,6 +76,15 @@ export class PlaceholderController implements AvatarController {
 
   setExpression(expression: string): void {
     this.expression = expression
+  }
+
+  setSpeaking(active: boolean): void {
+    this.speaking = active
+    if (!active) this.mouthOpen = 0
+  }
+
+  setMouthOpen(value: number): void {
+    this.mouthOpen = clamp(value, 0, 1)
   }
 
   lookAt(clientX: number, clientY: number): void {
@@ -124,7 +135,8 @@ export class PlaceholderController implements AvatarController {
       if (this.blink >= 2) {
         this.blinking = false
         this.blink = 0
-        this.nextBlinkAt = this.t + 2 + Math.abs(Math.sin(this.t)) * 3
+        // ~20% of the time blink twice in quick succession; otherwise wait 2–5s.
+        this.nextBlinkAt = this.t + (Math.random() < 0.2 ? 0.16 : 2 + Math.random() * 3)
       }
     }
     const eyeOpen = this.blinking ? Math.abs(1 - this.blink) : 1
@@ -285,10 +297,17 @@ export class PlaceholderController implements AvatarController {
       ctx.fill()
     }
 
-    // Mouth: open (O) when agape, else a curve whose sign is smile (+) vs frown (−).
+    // Mouth: talking (lip-sync) overrides everything; else open (O) when agape, else a
+    // curve whose sign is smile (+) vs frown (−).
     const mx = x + gx
     const my = y + r * 0.1 + gy
-    if (f.mouthOpen > 0.3) {
+    if (this.speaking) {
+      const open = 0.12 + this.mouthOpen * 0.9
+      ctx.fillStyle = ink
+      ctx.beginPath()
+      ctx.ellipse(mx, my, r * 0.11, r * 0.14 * open, 0, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (f.mouthOpen > 0.3) {
       ctx.fillStyle = ink
       ctx.beginPath()
       ctx.ellipse(mx, my, r * 0.1, r * 0.13 * f.mouthOpen, 0, 0, Math.PI * 2)

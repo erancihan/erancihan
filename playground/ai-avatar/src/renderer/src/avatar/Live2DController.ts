@@ -100,6 +100,20 @@ export class Live2DController implements AvatarController {
     }
   }
 
+  setSpeaking(active: boolean): void {
+    if (!active) this.setMouthOpen(0)
+  }
+
+  setMouthOpen(value: number): void {
+    // Drive the standard Cubism mouth-open parameter, best-effort across model versions.
+    try {
+      const core = this.model?.internalModel?.coreModel
+      core?.setParameterValueById?.('ParamMouthOpenY', Math.max(0, Math.min(1, value)))
+    } catch {
+      // Model lacks the parameter — ignore.
+    }
+  }
+
   lookAt(clientX: number, clientY: number): void {
     this.model?.focus?.(clientX, clientY)
   }

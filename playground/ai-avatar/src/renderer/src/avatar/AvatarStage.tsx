@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AvatarPose } from '../../../shared/ipc.js'
 import type { AvatarController } from './AvatarController.js'
 import { createAvatarController } from './createAvatarController.js'
+import { VoiceController } from './VoiceController.js'
 
 interface AvatarStageProps {
   /** model3.json URL, or null to use the placeholder backend. */
@@ -10,6 +11,8 @@ interface AvatarStageProps {
   pose: AvatarPose
   /** Optional named expression (Phase 3). */
   expression?: string
+  /** Speak assistant replies aloud with lip-sync (Phase 4). */
+  voiceEnabled?: boolean
 }
 
 /**
@@ -18,10 +21,20 @@ interface AvatarStageProps {
  * Subscribes to avatar cues here too, so Phase 2 hooks light up the character with no
  * further wiring.
  */
-export function AvatarStage({ modelUrl, pose, expression }: AvatarStageProps): JSX.Element {
+export function AvatarStage({
+  modelUrl,
+  pose,
+  expression,
+  voiceEnabled
+}: AvatarStageProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const controllerRef = useRef<AvatarController | null>(null)
+  const voiceRef = useRef<VoiceController | null>(null)
+  const poseRef = useRef<AvatarPose>(pose)
   const [backend, setBackend] = useState<'live2d' | 'placeholder' | 'loading'>('loading')
+
+  // Keep a live ref to the current pose so speech can restore it when it ends.
+  poseRef.current = pose
 
   // Mount once; rebuild only when the model source changes.
   useEffect(() => {
@@ -62,6 +75,25 @@ export function AvatarStage({ modelUrl, pose, expression }: AvatarStageProps): J
     window.addEventListener('mousemove', onMove)
     return () => window.removeEventListener('mousemove', onMove)
   }, [])
+
+  // Voice + lip-sync: speak assistant replies (Stop → main → here) when enabled.
+  useEffect(() => {
+    if (!voiceRef.current) voiceRef.current = new VoiceController()
+    const voice = voiceRef.current
+
+    const off = window.companion.onAvatarSpeak((text: string) => {
+      const controller = controllerRef.current
+      if (!voiceEnabled || !controller) return
+      voice.speak(text, controller, {
+        onStart: () => controller.setPose('speaking'),
+        onEnd: () => controller.setPose(poseRef.current)
+      })
+    })
+    return () => {
+      off()
+      voice.cancel()
+    }
+  }, [voiceEnabled])
 
   return (
     <div

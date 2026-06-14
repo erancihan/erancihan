@@ -18,6 +18,12 @@ export interface AvatarController {
   /** Named expression blend (real .exp3 in Phase 3; tint shift in the placeholder). */
   setExpression(expression: string): void
 
+  /** Toggle the talking state — drives lip-sync mouth animation (Phase 4). */
+  setSpeaking(active: boolean): void
+
+  /** Open the mouth 0..1 (lip-sync amplitude). */
+  setMouthOpen(value: number): void
+
   /** Look toward a point in viewport coordinates (gaze tracking, Phase 3). */
   lookAt(clientX: number, clientY: number): void
 

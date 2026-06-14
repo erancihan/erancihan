@@ -50,6 +50,8 @@ export interface AppSettings {
   avatarModel: string
   /** Personality text appended to Claude Code context (Phase 5). */
   personality: string
+  /** Speak assistant replies aloud via the browser's TTS (Phase 4). */
+  voice: boolean
 }
 
 /** IPC channel names. Centralized to avoid stringly-typed drift across processes. */
@@ -58,6 +60,7 @@ export const Channels = {
   TerminalData: 'terminal:data',
   TerminalExit: 'terminal:exit',
   AvatarCue: 'avatar:cue',
+  AvatarSpeak: 'avatar:speak',
   // renderer -> main (invocations)
   CliDetect: 'cli:detect',
   TerminalStart: 'terminal:start',
