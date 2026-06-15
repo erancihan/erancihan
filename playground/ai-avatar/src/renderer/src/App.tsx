@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AvatarCue, AvatarPose, CliStatus, HooksStatus } from '../../shared/ipc.js'
+import type { ModelInfo } from '../../shared/models.js'
 import { AvatarStage } from './avatar/AvatarStage.js'
 import { TerminalView } from './components/Terminal.js'
 import { ChatBox } from './components/ChatBox.js'
+import { Settings } from './components/Settings.js'
 
-// MVP: no bundled Live2D model is shipped, so we run the placeholder backend.
-// Drop a model under resources/models/<id> and point this at its model3.json URL
-// to switch backends — nothing else changes (see AvatarController).
-const MODEL_URL: string | null = null
+const PLACEHOLDER_MODEL = 'placeholder'
 
 /** Last path segment, cross-platform — the renderer has no node `path`. */
 function basename(p: string): string {
@@ -25,6 +24,11 @@ export function App(): JSX.Element {
   const [notice, setNotice] = useState<string | null>(null)
   const [projectDir, setProjectDir] = useState<string | null>(null)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [selectedModel, setSelectedModel] = useState(PLACEHOLDER_MODEL)
+  const [personality, setPersonality] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
+  const [sessionNonce, setSessionNonce] = useState(0) // bump to restart the session
   const idleTimer = useRef<number | undefined>(undefined)
   const noticeTimer = useRef<number | undefined>(undefined)
 
@@ -32,9 +36,12 @@ export function App(): JSX.Element {
   useEffect(() => {
     window.companion.detectCli().then(setCli)
     window.companion.hooksStatus().then(setHooks)
+    window.companion.listModels().then(setModels)
     window.companion.getSettings().then((s) => {
       setProjectDir(s.projectDir)
       setVoiceEnabled(s.voice)
+      setSelectedModel(s.avatarModel || PLACEHOLDER_MODEL)
+      setPersonality(s.personality)
     })
   }, [])
 
@@ -109,9 +116,30 @@ export function App(): JSX.Element {
     await window.companion.setSettings({ voice: next })
   }, [voiceEnabled])
 
+  // Switch avatar model live (AvatarStage reloads on the resolved modelUrl change).
+  const selectModel = useCallback(async (id: string) => {
+    setSelectedModel(id)
+    await window.companion.setSettings({ avatarModel: id })
+  }, [])
+
+  // Persist personality and restart the session so --append-system-prompt takes effect.
+  const applyPersonality = useCallback(
+    async (text: string) => {
+      setPersonality(text)
+      await window.companion.setSettings({ personality: text })
+      setSessionNonce((n) => n + 1)
+      flashNotice(text.trim() ? 'Personality applied — session restarted.' : 'Personality cleared.')
+    },
+    [flashNotice]
+  )
+
   const needsGuidance = cli && !cli.found
   const reactionsOn = hooks?.installed ?? false
   const dirLabel = projectDir ? basename(projectDir) : '…'
+  const modelUrl =
+    selectedModel !== PLACEHOLDER_MODEL
+      ? models.find((m) => m.id === selectedModel)?.modelUrl ?? null
+      : null
 
   return (
     <div className="app" data-pose={pose}>
@@ -145,6 +173,13 @@ export function App(): JSX.Element {
           </button>
           <button
             className="icon-btn"
+            onClick={() => setShowSettings(true)}
+            title="settings"
+          >
+            ⚙
+          </button>
+          <button
+            className="icon-btn"
             onClick={() => setShowTerminal((v) => !v)}
             title={showTerminal ? 'hide terminal' : 'show terminal'}
           >
@@ -162,10 +197,27 @@ export function App(): JSX.Element {
 
       {notice && <div className="toast">{notice}</div>}
 
+      {showSettings && (
+        <Settings
+          onClose={() => setShowSettings(false)}
+          projectDir={projectDir}
+          onChangeDir={changeDir}
+          models={models}
+          selectedModel={selectedModel}
+          onSelectModel={selectModel}
+          personality={personality}
+          onApplyPersonality={applyPersonality}
+          voiceEnabled={voiceEnabled}
+          onToggleVoice={toggleVoice}
+          reactionsOn={reactionsOn}
+          onToggleReactions={toggleHooks}
+        />
+      )}
+
       <main className="stage">
         <section className="avatar-pane">
           <AvatarStage
-            modelUrl={MODEL_URL}
+            modelUrl={modelUrl}
             pose={pose}
             expression={expression}
             voiceEnabled={voiceEnabled}
@@ -195,7 +247,7 @@ export function App(): JSX.Element {
                     only thing that remounts → exactly one session per directory. */}
                 {projectDir && (
                   <TerminalView
-                    key={projectDir}
+                    key={`${projectDir}|${sessionNonce}`}
                     onStatus={handleStatus}
                     onOutput={handleOutput}
                   />

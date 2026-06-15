@@ -1,9 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron'
 import { join } from 'node:path'
 import { detectClaude } from './cli/detect.js'
 import { PtyService } from './cli/ptyService.js'
 import { EmotionService, readLastAssistantReply } from './cli/emotion.js'
 import { loadSettings, saveSettings } from './settings.js'
+import { listModels, MODEL_SCHEME, serveModelRequest } from './models.js'
+import { buildPersonalityArgs } from '../shared/models.js'
 import { HookBridge } from './hooks/bridge.js'
 import type { HookSignal } from '../shared/hookEvents.js'
 import {
@@ -30,6 +32,22 @@ function hookScriptPath(): string {
 function bridgeRuntimeFile(): string {
   return join(app.getPath('userData'), 'companion-bridge.json')
 }
+
+/** Root folder avatar models are discovered + served from (dev vs packaged differ). */
+function modelsDir(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'models')
+    : join(app.getAppPath(), 'resources', 'models')
+}
+
+// Must run before app `ready`: lets the renderer fetch model files over a port-free,
+// app-private scheme (fetch + <img> + streaming), keeping CSP simple.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: MODEL_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+  }
+])
 
 /**
  * Build the InstallContext for the CURRENT project dir. The hook command re-runs the
@@ -143,7 +161,12 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
     }
     const settings = loadSettings()
     pty.start(
-      { command: status.path, cwd: settings.projectDir, size },
+      {
+        command: status.path,
+        cwd: settings.projectDir,
+        args: buildPersonalityArgs(settings.personality),
+        size
+      },
       {
         onData: (data) => send(Channels.TerminalData, data),
         onExit: (code) => send(Channels.TerminalExit, code)
@@ -171,6 +194,9 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
   })
 
+  // Avatar models discovered under resources/models (Phase 5).
+  ipcMain.handle(Channels.ModelsList, () => listModels(modelsDir()))
+
   // Reaction hooks (Phase 2): scoped to the current project, reversible.
   ipcMain.handle(Channels.HooksStatus, () => hooksStatus(installContext()))
   ipcMain.handle(Channels.HooksInstall, () => installHooks(installContext()))
@@ -178,6 +204,8 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
 }
 
 app.whenReady().then(() => {
+  // Serve model files (model3.json, textures, moc3, …) to the renderer.
+  protocol.handle(MODEL_SCHEME, (req) => serveModelRequest(modelsDir(), req.url))
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

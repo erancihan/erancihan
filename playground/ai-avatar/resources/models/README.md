@@ -10,12 +10,18 @@ resources/models/<model-id>/
   textures/...
   motions/...        # Idle, TapBody, etc.
   expressions/...    # *.exp3.json (used in Phase 3)
+  companion.json     # optional: { "name", "license", "author" } (shown in Settings)
 ```
 
-Then point the renderer at it: set `MODEL_URL` in `src/renderer/src/App.tsx` to the
-model's `model3.json` URL (and serve this folder; see the project README). When a model
-is present and loads, the app uses the Live2D backend; otherwise it transparently falls
-back to the built-in Canvas2D placeholder companion — so the app always runs.
+The app **auto-discovers** any folder here that contains a `*.model3.json`. Open ⚙
+Settings → Avatar model to select it; its files are served to the renderer over the
+`companion-model://` protocol. When a model loads, the app uses the Live2D backend;
+otherwise it transparently falls back to the built-in Canvas2D placeholder companion — so
+the app always runs. (Live2D rendering also needs the Cubism runtime — see
+`resources/runtime/README.md`.)
+
+`companion.json` is optional metadata; its `license`/`author` show in the Settings panel
+so you can verify a model's license before distributing.
 
 ## Licensing
 

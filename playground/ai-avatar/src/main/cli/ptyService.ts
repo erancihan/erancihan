@@ -13,6 +13,8 @@ export interface StartOptions {
   command: string
   /** Working directory for the session. */
   cwd: string
+  /** Extra CLI args, e.g. ['--append-system-prompt', '<personality>'] (Phase 5). */
+  args?: string[]
   size: TerminalSize
 }
 
@@ -66,7 +68,7 @@ export class PtyService {
     // Restart cleanly if a session already exists.
     this.dispose()
 
-    const child = this.spawnFn(opts.command, [], {
+    const child = this.spawnFn(opts.command, opts.args ?? [], {
       name: 'xterm-color',
       cols: opts.size.cols,
       rows: opts.size.rows,

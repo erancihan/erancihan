@@ -10,7 +10,7 @@ import type { AppSettings } from '../shared/ipc.js'
 function defaults(): AppSettings {
   return {
     projectDir: homedir(),
-    avatarModel: 'sample',
+    avatarModel: 'placeholder',
     personality: '',
     voice: false
   }

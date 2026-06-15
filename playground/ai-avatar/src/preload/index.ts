@@ -7,6 +7,7 @@ import {
   type HooksStatus,
   type TerminalSize
 } from '../shared/ipc.js'
+import type { ModelInfo } from '../shared/models.js'
 
 /** Result of asking main to start the embedded `claude` session. */
 export interface TerminalStartResult {
@@ -27,6 +28,7 @@ const api = {
     ipcRenderer.invoke(Channels.SettingsSet, partial),
   pickDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke(Channels.DialogPickDirectory),
+  listModels: (): Promise<ModelInfo[]> => ipcRenderer.invoke(Channels.ModelsList),
 
   quit: (): void => ipcRenderer.send(Channels.AppQuit),
 

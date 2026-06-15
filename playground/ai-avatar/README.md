@@ -10,9 +10,23 @@ directly, _or_ talk to the character — both drive the **same** Claude Code ses
 > spawned with `ANTHROPIC_API_KEY` stripped, so the session always runs on your
 > subscription login.
 
-This implements **Phases 1–4** from [`PLAN.md`](./PLAN.md).
+This implements **Phases 1–5** from [`PLAN.md`](./PLAN.md).
 
-## What works now (Phase 4)
+## What works now (Phase 5)
+
+- ✅ **Settings panel** (⚙ in the title bar): one place for avatar model, personality,
+  start directory, and the reactions/voice toggles.
+- ✅ **Swap avatar models.** Any folder under `resources/models/<id>` with a
+  `*.model3.json` is discovered and selectable; its files are served to the renderer over
+  a port-free custom protocol (`companion-model://`). Selecting one switches the avatar
+  live (and falls back to the placeholder if the Cubism runtime is missing).
+- ✅ **Per-model license metadata.** An optional `companion.json`
+  (`{ "name", "license", "author" }`) in a model folder surfaces its name + license in the
+  panel — verify a model's license before distributing.
+- ✅ **Personality presets.** Default / Cheerful / Terse / Mentor / Playful, or your own
+  text — applied to Claude Code via `--append-system-prompt` (restarts the session).
+
+## What works (Phase 4)
 
 - ✅ **Voice + lip-sync (free, no key).** Toggle 🔈/🔊 in the title bar to speak assistant
   replies aloud via the browser's built-in **Web Speech API** (system voices — no Azure/
@@ -70,8 +84,8 @@ its config.
     provided. See [`resources/models/README.md`](./resources/models/README.md).
 - ✅ Activity-driven pose changes as a fallback when reaction hooks aren't installed.
 
-Later phases (model & personality customization, optional MCP avatar bridge) are
-described in [`PLAN.md`](./PLAN.md).
+The only later item left is the optional MCP avatar bridge (let Claude Desktop drive the
+window too) — see [`PLAN.md`](./PLAN.md).
 
 ## Prerequisites
 
@@ -131,6 +145,7 @@ src/
     cli/detect.ts        find `claude`, parse version, guide install/login
     cli/ptyService.ts    spawn ONE interactive `claude` PTY (no API key in env)
     cli/emotion.ts       headless `claude -p` tone classification on Stop (async)
+    models.ts            discover models + serve them over companion-model://
     settings.ts          app prefs only — never any Anthropic credential
     hooks/bridge.ts      localhost cue server (ephemeral port + token) → renderer
     hooks/install.ts     write/remove scoped, reversible Claude Code hook config
@@ -139,6 +154,7 @@ src/
     App.tsx              layout + pose state machine
     components/Terminal.tsx   xterm.js view of the live session (typeable)
     components/ChatBox.tsx    avatar input -> same PTY stdin
+    components/Settings.tsx   model / personality / dir / toggles panel
     avatar/
       AvatarController.ts        the load-bearing interface (every phase builds on it)
       PlaceholderController.ts   Canvas2D companion (no assets, always available)
@@ -150,6 +166,7 @@ src/
   shared/hookEvents.ts   pure event→cue mapping + managed-hook list
   shared/emotion.ts      pure prompt builder, emotion parser, transcript extractor
   shared/voice.ts        pure reply→speech text cleaner
+  shared/models.ts       model metadata, personality presets/args (pure)
 resources/
   hooks/cue.mjs          installed hook forwarder → posts cues to the bridge
   models/                drop Live2D models here (not committed; see README)
