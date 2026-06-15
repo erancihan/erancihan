@@ -3,9 +3,9 @@ import { join } from 'node:path'
 import { detectClaude } from './cli/detect.js'
 import { PtyService } from './cli/ptyService.js'
 import { EmotionService, readLastAssistantReply } from './cli/emotion.js'
+import { EMOTION_TAG_INSTRUCTION, stripEmotionTags } from '../shared/emotion.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { listModels, MODEL_SCHEME, serveModelRequest } from './models.js'
-import { buildPersonalityArgs } from '../shared/models.js'
 import { HookBridge } from './hooks/bridge.js'
 import type { HookSignal } from '../shared/hookEvents.js'
 import {
@@ -31,6 +31,15 @@ function hookScriptPath(): string {
 /** Runtime file the bridge publishes its live {port, token} to. */
 function bridgeRuntimeFile(): string {
   return join(app.getPath('userData'), 'companion-bridge.json')
+}
+
+/**
+ * CLI args for the session's appended system prompt: always the emotion-tag instruction,
+ * plus the user's personality preset (Phase 5). One combined --append-system-prompt.
+ */
+function buildSessionArgs(personality: string): string[] {
+  const append = [EMOTION_TAG_INSTRUCTION, personality.trim()].filter(Boolean).join('\n\n')
+  return append ? ['--append-system-prompt', append] : []
 }
 
 /** Root folder avatar models are discovered + served from (dev vs packaged differ). */
@@ -125,10 +134,15 @@ function createWindow(): void {
       if (signal.event !== 'Stop') return
       const transcript = signal.data?.transcript_path
       if (typeof transcript !== 'string') return
-      // Read the reply once, then drive both emotion (claude -p) and TTS off it.
+      // Read the reply once, then drive emotion + TTS off it.
       void readLastAssistantReply(transcript).then((text) => {
         if (!text) return
-        void emotion.classify(text)
+        // Inline [emotion] tags are primary (free, already in the reply). Only fall back
+        // to the headless claude -p classifier when the reply carries no tag.
+        const { emotions } = stripEmotionTags(text)
+        const last = emotions[emotions.length - 1]
+        if (last) sendToRenderer(Channels.AvatarCue, { expression: last } as AvatarCue)
+        else void emotion.classify(text)
         sendToRenderer(Channels.AvatarSpeak, text)
       })
     }
@@ -164,7 +178,7 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
       {
         command: status.path,
         cwd: settings.projectDir,
-        args: buildPersonalityArgs(settings.personality),
+        args: buildSessionArgs(settings.personality),
         size
       },
       {

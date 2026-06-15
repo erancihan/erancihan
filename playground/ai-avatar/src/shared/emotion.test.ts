@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildEmotionPrompt, extractLastAssistantText, parseEmotion } from './emotion.js'
+import {
+  buildEmotionPrompt,
+  extractLastAssistantText,
+  parseEmotion,
+  splitForTagStream,
+  stripEmotionTags
+} from './emotion.js'
 
 describe('parseEmotion', () => {
   it('reads a bare emotion word', () => {
@@ -58,5 +64,40 @@ describe('extractLastAssistantText', () => {
   it('returns undefined when there is no assistant message', () => {
     const jsonl = JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } })
     expect(extractLastAssistantText(jsonl)).toBeUndefined()
+  })
+})
+
+describe('stripEmotionTags', () => {
+  it('strips tags and reports them, case-insensitively', () => {
+    const { clean, emotions } = stripEmotionTags('Oh no [Sad] that failed [angry]')
+    expect(clean).toBe('Oh no  that failed ')
+    expect(emotions).toEqual(['sad', 'angry'])
+  })
+  it('leaves non-emotion brackets alone', () => {
+    expect(stripEmotionTags('arr[0] and [whatever]').clean).toBe('arr[0] and [whatever]')
+  })
+})
+
+describe('splitForTagStream', () => {
+  it('extracts a complete tag from a chunk', () => {
+    const r = splitForTagStream('', 'done [happy] ok')
+    expect(r.text).toBe('done  ok')
+    expect(r.emotions).toEqual(['happy'])
+    expect(r.carry).toBe('')
+  })
+
+  it('reassembles a tag split across two chunks', () => {
+    const a = splitForTagStream('', 'great [exc')
+    expect(a.text).toBe('great ')
+    expect(a.carry).toBe('[exc')
+    const b = splitForTagStream(a.carry, 'ited] done')
+    expect(b.emotions).toEqual(['excited'])
+    expect(b.text).toBe(' done')
+  })
+
+  it('never buffers ANSI escape sequences', () => {
+    const r = splitForTagStream('', '\x1b[0m\x1b[32mhi')
+    expect(r.text).toBe('\x1b[0m\x1b[32mhi')
+    expect(r.carry).toBe('')
   })
 })

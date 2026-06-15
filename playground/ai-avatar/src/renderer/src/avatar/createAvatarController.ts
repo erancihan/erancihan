@@ -1,5 +1,5 @@
 import type { AvatarController } from './AvatarController.js'
-import { Live2DController } from './Live2DController.js'
+import { Live2DController, type Live2DMaps } from './Live2DController.js'
 import { PlaceholderController } from './PlaceholderController.js'
 
 export interface AvatarChoice {
@@ -17,10 +17,11 @@ export interface AvatarChoice {
  */
 export async function createAvatarController(
   host: HTMLElement,
-  modelUrl: string | null
+  modelUrl: string | null,
+  maps: Live2DMaps = {}
 ): Promise<AvatarChoice> {
   if (modelUrl) {
-    const live2d = new Live2DController(modelUrl)
+    const live2d = new Live2DController(modelUrl, maps)
     try {
       await live2d.mount(host)
       return { controller: live2d, backend: 'live2d' }

@@ -81,8 +81,12 @@ export function App(): JSX.Element {
 
   const handleSend = useCallback(() => {
     setPose('listening')
+    setExpression('neutral') // new turn resets last turn's emotion
     scheduleIdle(2200)
   }, [scheduleIdle])
+
+  // Live inline [emotion] tags parsed from the terminal stream (mid-reply).
+  const handleEmotion = useCallback((emotion: string) => setExpression(emotion), [])
 
   const handleStatus = useCallback((status: CliStatus, ok: boolean) => {
     setCli(status)
@@ -136,10 +140,9 @@ export function App(): JSX.Element {
   const needsGuidance = cli && !cli.found
   const reactionsOn = hooks?.installed ?? false
   const dirLabel = projectDir ? basename(projectDir) : '…'
-  const modelUrl =
-    selectedModel !== PLACEHOLDER_MODEL
-      ? models.find((m) => m.id === selectedModel)?.modelUrl ?? null
-      : null
+  const activeModel =
+    selectedModel !== PLACEHOLDER_MODEL ? models.find((m) => m.id === selectedModel) : undefined
+  const modelUrl = activeModel?.modelUrl ?? null
 
   return (
     <div className="app" data-pose={pose}>
@@ -221,6 +224,8 @@ export function App(): JSX.Element {
             pose={pose}
             expression={expression}
             voiceEnabled={voiceEnabled}
+            expressionMap={activeModel?.expressionMap}
+            motionMap={activeModel?.motionMap}
           />
           <ChatBox onSend={handleSend} />
         </section>
@@ -250,6 +255,7 @@ export function App(): JSX.Element {
                     key={`${projectDir}|${sessionNonce}`}
                     onStatus={handleStatus}
                     onOutput={handleOutput}
+                    onEmotion={handleEmotion}
                   />
                 )}
               </>

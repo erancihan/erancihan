@@ -1,6 +1,9 @@
 // Pure helpers for avatar-model discovery and personality presets — no Node/DOM imports,
 // so they unit-test cleanly and are shared across processes.
 
+/** Maps our emotion/pose labels to a model's own .exp3 / motion-group names or indices. */
+export type AvatarMap = Record<string, string | number>
+
 /** A discovered avatar model, surfaced to the Settings UI. */
 export interface ModelInfo {
   /** Folder name under resources/models. */
@@ -12,6 +15,10 @@ export interface ModelInfo {
   author?: string
   /** URL the renderer loads the model3.json from (custom protocol). */
   modelUrl: string
+  /** Our 7 emotion labels → this model's expression names/indices (optional). */
+  expressionMap?: AvatarMap
+  /** Our pose labels → this model's motion groups (optional). */
+  motionMap?: AvatarMap
 }
 
 /** Optional metadata file shape: resources/models/<id>/companion.json */
@@ -19,18 +26,31 @@ export interface ModelMeta {
   name?: string
   license?: string
   author?: string
+  expressionMap?: AvatarMap
+  motionMap?: AvatarMap
 }
 
-/** Normalize optional metadata into display fields. Pure. */
-export function normalizeMeta(id: string, meta: ModelMeta | undefined): {
-  name: string
-  license?: string
-  author?: string
-} {
+/** Keep only string→(string|number) entries — defends against malformed companion.json. */
+function sanitizeMap(map: unknown): AvatarMap | undefined {
+  if (!map || typeof map !== 'object') return undefined
+  const out: AvatarMap = {}
+  for (const [k, v] of Object.entries(map as Record<string, unknown>)) {
+    if (typeof v === 'string' || typeof v === 'number') out[k] = v
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/** Normalize optional metadata into display + mapping fields. Pure. */
+export function normalizeMeta(
+  id: string,
+  meta: ModelMeta | undefined
+): { name: string; license?: string; author?: string; expressionMap?: AvatarMap; motionMap?: AvatarMap } {
   return {
     name: meta?.name?.trim() || id,
     license: meta?.license?.trim() || undefined,
-    author: meta?.author?.trim() || undefined
+    author: meta?.author?.trim() || undefined,
+    expressionMap: sanitizeMap(meta?.expressionMap),
+    motionMap: sanitizeMap(meta?.motionMap)
   }
 }
 

@@ -1,5 +1,13 @@
 import type { AvatarPose } from '../../../shared/ipc.js'
+import type { AvatarMap } from '../../../shared/models.js'
 import type { AvatarController } from './AvatarController.js'
+
+export interface Live2DMaps {
+  /** Emotion label → this model's .exp3 name/index. */
+  expressionMap?: AvatarMap
+  /** Pose label → this model's motion group. */
+  motionMap?: AvatarMap
+}
 
 // Cubism Core is a global injected by resources/runtime/live2dcubismcore.min.js.
 // It is NOT bundled here (proprietary redistribution rules), so we feature-detect it.
@@ -32,7 +40,10 @@ export class Live2DController implements AvatarController {
   private host: HTMLElement | null = null
   private resizeObserver: ResizeObserver | null = null
 
-  constructor(private readonly modelUrl: string) {}
+  constructor(
+    private readonly modelUrl: string,
+    private readonly maps: Live2DMaps = {}
+  ) {}
 
   async mount(host: HTMLElement): Promise<void> {
     if (!window.Live2DCubismCore) {
@@ -84,7 +95,8 @@ export class Live2DController implements AvatarController {
   }
 
   setPose(pose: AvatarPose): void {
-    const group = POSE_MOTION[pose]
+    // Prefer the model's own motion group from companion.json's motionMap.
+    const group = this.maps.motionMap?.[pose] ?? POSE_MOTION[pose]
     try {
       this.model?.motion?.(group)
     } catch {
@@ -93,8 +105,10 @@ export class Live2DController implements AvatarController {
   }
 
   setExpression(expression: string): void {
+    // Map our emotion label to this model's .exp3 name/index when provided.
+    const target = this.maps.expressionMap?.[expression] ?? expression
     try {
-      this.model?.expression?.(expression)
+      this.model?.expression?.(target)
     } catch {
       // Unknown expression — ignore.
     }

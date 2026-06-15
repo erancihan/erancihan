@@ -21,7 +21,23 @@ the app always runs. (Live2D rendering also needs the Cubism runtime — see
 `resources/runtime/README.md`.)
 
 `companion.json` is optional metadata; its `license`/`author` show in the Settings panel
-so you can verify a model's license before distributing.
+so you can verify a model's license before distributing. It can also map the companion's
+emotions/poses to this model's own expressions and motion groups:
+
+```json
+{
+  "name": "Hiyori",
+  "license": "Live2D Free Material License",
+  "author": "Live2D Inc.",
+  "expressionMap": { "happy": "f01", "sad": "f02", "angry": 3, "surprised": "f04" },
+  "motionMap": { "working": "TapBody", "idle": "Idle" }
+}
+```
+
+`expressionMap` keys are the 7 emotion labels (`neutral, happy, sad, surprised, angry,
+excited, thinking`); values are the model's `.exp3` names or indices. `motionMap` keys are
+poses (`idle, listening, thinking, working, speaking, alert`). Both are optional — when a
+key is absent the app falls back to best-effort name guessing.
 
 ## Licensing
 

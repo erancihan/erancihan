@@ -3,12 +3,16 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { CliStatus } from '../../../shared/ipc.js'
+import type { Emotion } from '../../../shared/emotion.js'
+import { splitForTagStream } from '../../../shared/emotion.js'
 
 interface TerminalViewProps {
   /** Called with the CLI status once the session start is attempted. */
   onStatus: (status: CliStatus, ok: boolean) => void
   /** Activity signal so the avatar can react before Phase-2 hooks exist. */
   onOutput: () => void
+  /** Live inline [emotion] tags parsed from the stream (mid-reply expression). */
+  onEmotion: (emotion: Emotion) => void
 }
 
 /**
@@ -16,12 +20,15 @@ interface TerminalViewProps {
  * the user can type directly here, and the avatar chat box writes to the same stdin.
  * IO crosses to the Node side only through the preload `companion` bridge.
  */
-export function TerminalView({ onStatus, onOutput }: TerminalViewProps): JSX.Element {
+export function TerminalView({ onStatus, onOutput, onEmotion }: TerminalViewProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
+
+    // Carry between PTY chunks so an [emotion] tag split across reads is still caught.
+    let tagCarry = ''
 
     const term = new XTerm({
       cursorBlink: true,
@@ -47,9 +54,13 @@ export function TerminalView({ onStatus, onOutput }: TerminalViewProps): JSX.Ele
     // Renderer -> PTY stdin.
     const inputSub = term.onData((data) => window.companion.sendInput(data))
 
-    // PTY stdout -> renderer.
+    // PTY stdout -> renderer. Strip inline [emotion] tags from the visible stream and
+    // drive the avatar expression live; ANSI escapes pass through untouched.
     const offData = window.companion.onTerminalData((data) => {
-      term.write(data)
+      const { text, emotions, carry } = splitForTagStream(tagCarry, data)
+      tagCarry = carry
+      term.write(text)
+      emotions.forEach(onEmotion)
       onOutput()
     })
     const offExit = window.companion.onTerminalExit((code) => {

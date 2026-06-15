@@ -1,6 +1,8 @@
 // Pure helper to turn a raw assistant reply into something pleasant for TTS.
 // No Node/DOM imports, so it unit-tests cleanly.
 
+import { stripEmotionTags } from './emotion.js'
+
 const MAX_SPEAK_CHARS = 600
 
 /**
@@ -9,7 +11,7 @@ const MAX_SPEAK_CHARS = 600
  * truncate to a sentence boundary near the limit so replies don't drone on. Pure.
  */
 export function cleanForSpeech(text: string): string {
-  let s = text
+  let s = stripEmotionTags(text).clean // never speak the avatar's [emotion] tags
 
   s = s.replace(/```[\s\S]*?```/g, ' ') // fenced code blocks
   s = s.replace(/`[^`]*`/g, ' ') // inline code

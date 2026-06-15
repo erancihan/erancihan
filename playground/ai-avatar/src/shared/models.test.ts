@@ -20,7 +20,23 @@ describe('normalizeMeta', () => {
   })
   it('keeps provided fields', () => {
     const m = normalizeMeta('x', { name: 'Hiyori', license: 'personal use', author: 'Live2D' })
-    expect(m).toEqual({ name: 'Hiyori', license: 'personal use', author: 'Live2D' })
+    expect(m.name).toBe('Hiyori')
+    expect(m.license).toBe('personal use')
+    expect(m.author).toBe('Live2D')
+  })
+
+  it('passes through expression/motion maps, dropping invalid entries', () => {
+    const m = normalizeMeta('x', {
+      expressionMap: { happy: 'f03', anger: 2, bad: { x: 1 } as never },
+      motionMap: { working: 'TapBody' }
+    })
+    expect(m.expressionMap).toEqual({ happy: 'f03', anger: 2 })
+    expect(m.motionMap).toEqual({ working: 'TapBody' })
+  })
+
+  it('omits maps entirely when absent or empty', () => {
+    expect(normalizeMeta('x', undefined).expressionMap).toBeUndefined()
+    expect(normalizeMeta('x', { expressionMap: {} }).expressionMap).toBeUndefined()
   })
 })
 

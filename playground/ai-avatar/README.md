@@ -41,18 +41,21 @@ Like emotion, voice needs reaction hooks installed (⚡), since it's triggered b
 
 ## What works (Phase 3)
 
-- ✅ **Emotion → expression.** When a turn ends (`Stop`), the app asynchronously runs a
-  short headless `claude -p` (same login, no API key, `--model haiku`) to classify the
-  reply's tone, then blends the matching expression onto the avatar. The classification
-  never blocks the session and is cancelled if a new turn starts.
+- ✅ **Emotion → expression.** The session is instructed (via the system-prompt append) to
+  emit inline `[emotion]` tags. These are the **primary** signal: parsed live from the
+  terminal stream — so the expression can change **mid-reply** and even **without hooks**
+  installed — and stripped from both the visible terminal and the spoken text. When a reply
+  carries no tag, the app falls back to a short headless `claude -p` classification on
+  `Stop` (same login, no API key, `--model haiku`; async, cancelled on a new turn).
   - The built-in placeholder companion renders real emotion faces (happy `^_^`, sad,
     surprised, angry brows, excited, thinking, neutral); a Live2D model uses its `.exp3`
-    expressions best-effort.
+    expressions, mapped per-model via `companion.json`'s `expressionMap` (best-effort
+    otherwise).
 - ✅ **Gaze tracking** (avatar follows the cursor) and **click reactions** (poke) — present
   since Phase 1, now alongside emotion.
 
-Requires reaction hooks installed (⚡), since the emotion pass is triggered by the `Stop`
-hook's transcript.
+(The `claude -p` fallback and TTS still need reaction hooks (⚡) for the `Stop` trigger;
+the live `[emotion]` tags work regardless.)
 
 ## What works (Phase 2)
 

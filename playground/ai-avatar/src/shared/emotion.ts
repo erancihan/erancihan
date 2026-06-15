@@ -16,6 +16,59 @@ export type Emotion = (typeof EMOTIONS)[number]
 
 const MAX_CLASSIFY_CHARS = 2000
 
+/**
+ * Instruction appended to the session's system prompt so Claude emits inline emotion tags.
+ * Parsed live from the terminal stream (mid-reply) and on Stop (primary, replacing the
+ * extra `claude -p` round-trip). Adopted from Open-LLM-VTuber's `[emotion]` convention.
+ */
+export const EMOTION_TAG_INSTRUCTION =
+  'Avatar emotion cues: when your emotional tone shifts, include a single tag from this ' +
+  'exact set inline, in square brackets: [neutral] [happy] [sad] [surprised] [angry] ' +
+  '[excited] [thinking]. Use only those, sparingly, placed where the tone applies. They ' +
+  'drive a companion avatar expression and are stripped from display.'
+
+const TAG_BODY = EMOTIONS.join('|')
+
+/** Remove inline emotion tags from text, returning the cleaned text and any tags found. */
+export function stripEmotionTags(text: string): { clean: string; emotions: Emotion[] } {
+  const emotions: Emotion[] = []
+  const re = new RegExp(`\\[(${TAG_BODY})\\]`, 'gi')
+  const clean = text.replace(re, (_m, e: string) => {
+    emotions.push(e.toLowerCase() as Emotion)
+    return ''
+  })
+  return { clean, emotions }
+}
+
+const MAX_TAG_LEN = 12
+
+/**
+ * Stream-safe emotion-tag splitter for the live terminal feed. Strips complete tags and
+ * holds back ONLY a trailing partial emotion tag (`[` + letters) so a tag split across
+ * chunks is still caught. Crucially it never buffers ANSI escapes (`ESC[0m` etc.) — those
+ * contain digits/terminators, so the `[letters` test rejects them and they pass through
+ * untouched. Pure: caller threads `carry` between calls.
+ */
+export function splitForTagStream(
+  carry: string,
+  chunk: string
+): { text: string; emotions: Emotion[]; carry: string } {
+  const buf = carry + chunk
+  let scan = buf
+  let nextCarry = ''
+  const lastOpen = buf.lastIndexOf('[')
+  if (lastOpen !== -1) {
+    const tail = buf.slice(lastOpen)
+    // Only a pure "[letters" tail could be the start of a real emotion tag.
+    if (tail.length <= MAX_TAG_LEN && /^\[[a-z]*$/i.test(tail)) {
+      scan = buf.slice(0, lastOpen)
+      nextCarry = tail
+    }
+  }
+  const { clean, emotions } = stripEmotionTags(scan)
+  return { text: clean, emotions, carry: nextCarry }
+}
+
 /** Build the classification prompt for `claude -p`. Pure. */
 export function buildEmotionPrompt(replyText: string): string {
   const snippet = replyText.slice(-MAX_CLASSIFY_CHARS)

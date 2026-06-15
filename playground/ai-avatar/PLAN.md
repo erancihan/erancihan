@@ -162,8 +162,33 @@ load-bearing abstraction is `AvatarController`, which every later phase builds o
    (Azure viseme stream, or browser AudioWorklet fallback); refined idle/blink.
 5. **Phase 5 — Customization:** swap avatar models/outfits; personality presets
    (via `CLAUDE.md` / `--append-system-prompt`); per-model license metadata in UI.
-6. **(Optional, later) MCP avatar bridge:** ship an MCP server (`set_avatar_state` /
+6. **Phase 6 — Voice input + real lip-sync (adopted):** mic ASR + VAD → same PTY
+   stdin; barge-in (talking cancels the avatar); switch TTS to an audio-returning,
+   no-key engine (Edge TTS / local) and drive `setMouthOpen` from audio amplitude.
+7. **(Optional, later) MCP avatar bridge:** ship an MCP server (`set_avatar_state` /
    `say`) so the official Claude Desktop can also animate the companion window.
+
+## Adopted enhancements (from Open-LLM-VTuber)
+
+See [`docs/open-llm-vtuber-ideas.md`](./docs/open-llm-vtuber-ideas.md) for the full
+inspection. We keep our distinguishing **no-API-key, drive-the-real-`claude`-CLI** brain
+(their multi-backend LLM layer is explicitly *not* adopted) and our zero-asset placeholder
+fallback. Adopted, folded into existing phases:
+
+- **Inline `[emotion]` tags (folds into Phase 3) — highest value.** Instruct Claude via
+  `--append-system-prompt` to emit one of our 7 emotion tags inline (e.g. `[happy]`) when
+  tone shifts. Parse + strip tags from the reply (cheap regex, before TTS), drive the
+  expression instantly with no extra model round-trip and mid-reply changes. Keep the
+  `claude -p` classifier only as a fallback when no tag is present.
+- **Per-model `expressionMap`/`motionMap` (folds into Phase 5).** Grow
+  `resources/models/<id>/companion.json` with an optional map from our emotion labels to a
+  model's `.exp3` names/indices (and motion groups); `Live2DController` consults it instead
+  of guessing. Backward compatible (best-effort default when absent).
+- **Real amplitude lip-sync (Phase 6).** Our `setMouthOpen(0..1)` interface already
+  supports it — only `VoiceController` + the TTS source change.
+- **Smaller, later:** subtitle/caption panel; "inner thoughts" display (maps onto the
+  hook tool/think stream); screenshot/region → multimodal `claude` paste; declarative
+  per-character persona config.
 
 ## Verification
 
