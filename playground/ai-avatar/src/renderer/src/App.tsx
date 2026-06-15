@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AvatarCue, AvatarPose, CliStatus, HooksStatus } from '../../shared/ipc.js'
+import type { AsrStatus, AvatarCue, AvatarPose, CliStatus, HooksStatus } from '../../shared/ipc.js'
 import type { ModelInfo } from '../../shared/models.js'
 import { AvatarStage } from './avatar/AvatarStage.js'
+import { MicCapture } from './avatar/MicCapture.js'
 import { TerminalView } from './components/Terminal.js'
 import { ChatBox } from './components/ChatBox.js'
 import { Settings } from './components/Settings.js'
@@ -29,20 +30,29 @@ export function App(): JSX.Element {
   const [personality, setPersonality] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [sessionNonce, setSessionNonce] = useState(0) // bump to restart the session
+  const [micOn, setMicOn] = useState(false)
+  const [asr, setAsr] = useState<AsrStatus | null>(null)
   const idleTimer = useRef<number | undefined>(undefined)
   const noticeTimer = useRef<number | undefined>(undefined)
+  const micRef = useRef<MicCapture | null>(null)
+
+  const micPrefRef = useRef(false)
+  const micAutoStarted = useRef(false)
 
   // Detect the CLI up front so we can show install/login guidance instead of crashing.
   useEffect(() => {
     window.companion.detectCli().then(setCli)
     window.companion.hooksStatus().then(setHooks)
     window.companion.listModels().then(setModels)
+    window.companion.asrStatus().then(setAsr)
     window.companion.getSettings().then((s) => {
       setProjectDir(s.projectDir)
       setVoiceEnabled(s.voice)
       setSelectedModel(s.avatarModel || PLACEHOLDER_MODEL)
       setPersonality(s.personality)
+      micPrefRef.current = s.mic
     })
+    return () => micRef.current?.stop()
   }, [])
 
   const flashNotice = useCallback((text: string) => {
@@ -87,6 +97,54 @@ export function App(): JSX.Element {
 
   // Live inline [emotion] tags parsed from the terminal stream (mid-reply).
   const handleEmotion = useCallback((emotion: string) => setExpression(emotion), [])
+
+  // Voice input (Phase 6): mic → offline ASR → same PTY stdin; speech start = barge-in.
+  const startMic = useCallback(async (): Promise<boolean> => {
+    const status = asr ?? (await window.companion.asrStatus())
+    setAsr(status)
+    if (!status?.available) {
+      flashNotice(`Voice input unavailable: ${status?.reason ?? 'no ASR model'}`)
+      return false
+    }
+    if (!micRef.current) micRef.current = new MicCapture()
+    await micRef.current.start({
+      onSpeechStart: () => {
+        window.dispatchEvent(new Event('companion:bargein')) // stop avatar TTS
+        setPose('listening')
+      },
+      onUtterance: async (samples, sr) => {
+        const text = await window.companion.transcribe(samples, sr)
+        if (text) {
+          window.companion.sendInput(text + '\r') // same stdin as the chat box
+          setExpression('neutral')
+        }
+      },
+      onError: (e) => {
+        flashNotice(`Mic: ${e}`)
+        setMicOn(false)
+        void window.companion.setSettings({ mic: false })
+      }
+    })
+    setMicOn(true)
+    return true
+  }, [asr, flashNotice])
+
+  const toggleMic = useCallback(async () => {
+    if (micOn) {
+      micRef.current?.stop()
+      setMicOn(false)
+      await window.companion.setSettings({ mic: false })
+    } else if (await startMic()) {
+      await window.companion.setSettings({ mic: true })
+    }
+  }, [micOn, startMic])
+
+  // Auto-resume mic if it was on last session and an ASR model is available.
+  useEffect(() => {
+    if (micAutoStarted.current || !asr || !micPrefRef.current) return
+    micAutoStarted.current = true
+    if (asr.available) void startMic()
+  }, [asr, startMic])
 
   const handleStatus = useCallback((status: CliStatus, ok: boolean) => {
     setCli(status)
@@ -175,6 +233,19 @@ export function App(): JSX.Element {
             {voiceEnabled ? '🔊' : '🔈'}
           </button>
           <button
+            className={`icon-btn${micOn ? ' active' : ''}`}
+            onClick={toggleMic}
+            title={
+              micOn
+                ? 'listening — click to stop'
+                : asr?.available === false
+                  ? `voice input unavailable: ${asr.reason ?? 'no ASR model'}`
+                  : 'voice input (speak to the companion)'
+            }
+          >
+            {micOn ? '🎙️' : '🎤'}
+          </button>
+          <button
             className="icon-btn"
             onClick={() => setShowSettings(true)}
             title="settings"
@@ -214,6 +285,10 @@ export function App(): JSX.Element {
           onToggleVoice={toggleVoice}
           reactionsOn={reactionsOn}
           onToggleReactions={toggleHooks}
+          micOn={micOn}
+          onToggleMic={toggleMic}
+          asrAvailable={asr?.available ?? false}
+          asrReason={asr?.reason}
         />
       )}
 

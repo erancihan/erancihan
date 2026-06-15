@@ -17,6 +17,11 @@ interface SettingsProps {
   onToggleVoice: () => void
   reactionsOn: boolean
   onToggleReactions: () => void
+  micOn: boolean
+  onToggleMic: () => void
+  /** False when no ASR model is installed (voice input disabled). */
+  asrAvailable: boolean
+  asrReason?: string
 }
 
 const PLACEHOLDER = 'placeholder'
@@ -125,6 +130,20 @@ export function Settings(props: SettingsProps): JSX.Element {
               <input type="checkbox" checked={props.voiceEnabled} onChange={props.onToggleVoice} />
               Speak replies aloud (TTS)
             </label>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={props.micOn}
+                disabled={!props.asrAvailable}
+                onChange={props.onToggleMic}
+              />
+              Voice input — speak to the companion (offline ASR)
+            </label>
+            {!props.asrAvailable && (
+              <p className="settings-note muted">
+                Voice input needs an offline ASR model. {props.asrReason}
+              </p>
+            )}
           </div>
         </section>
 

@@ -149,22 +149,27 @@ load-bearing abstraction is `AvatarController`, which every later phase builds o
 
 ## Phased implementation
 
-1. **Phase 1 — Core (MVP):** Electron shell + transparent always-on-top window;
+Status as of 2026-06-15 — Phases 1–5 shipped and committed; both adopted fold-ins shipped.
+
+1. ✅ **Phase 1 — Core (MVP):** Electron shell + transparent always-on-top window;
    `claude` detect/login guidance; embedded interactive `claude` via PTY + xterm.js;
-   avatar chat box forwarding to the same session; render sample Live2D model with idle
-   animation. Coding works immediately because it's real Claude Code.
-2. **Phase 2 — Reactions:** install/manage Claude Code hooks; map
-   prompt-submit/tool-use/stop → avatar listen/think/work/idle poses; permission
-   prompts surfaced in-UI/forwarded to the terminal.
-3. **Phase 3 — Emotion & interactivity:** `claude -p` emotion classification →
-   expression blends (`.exp3.json`); gaze/mouse tracking via `lookAt`; click reactions.
-4. **Phase 4 — Voice & lip-sync:** TTS of replies; viseme-driven mouth shapes
-   (Azure viseme stream, or browser AudioWorklet fallback); refined idle/blink.
-5. **Phase 5 — Customization:** swap avatar models/outfits; personality presets
-   (via `CLAUDE.md` / `--append-system-prompt`); per-model license metadata in UI.
-6. **Phase 6 — Voice input + real lip-sync (adopted):** mic ASR + VAD → same PTY
-   stdin; barge-in (talking cancels the avatar); switch TTS to an audio-returning,
-   no-key engine (Edge TTS / local) and drive `setMouthOpen` from audio amplitude.
+   avatar chat box forwarding to the same session; idle-animated avatar (Canvas2D
+   placeholder, Live2D when a model is present). Coding works immediately.
+2. ✅ **Phase 2 — Reactions:** Claude Code hooks → localhost cue bridge → avatar
+   listen/think/work/idle poses; permission/notification prompts surfaced in-UI.
+3. ✅ **Phase 3 — Emotion & interactivity:** inline `[emotion]` tags (primary) with a
+   `claude -p` fallback → expression blends; gaze/mouse tracking; click reactions.
+4. ✅ **Phase 4 — Voice & lip-sync:** free Web Speech API TTS of replies; boundary/flap
+   lip-sync (AudioWorklet-free fallback); refined idle/double-blink.
+5. ✅ **Phase 5 — Customization:** swap avatar models (`companion-model://`); personality
+   presets via `--append-system-prompt`; per-model license metadata in UI.
+6. ✅ **Phase 6 — Voice input + real lip-sync:**
+   - ✅ Voice input: mic + energy VAD → offline sherpa-onnx ASR (user-supplied model in
+     `resources/asr/`) → same PTY stdin; barge-in cancels the avatar's speech.
+   - ✅ Real lip-sync: offline sherpa-onnx TTS (user-supplied voice in `resources/tts/`)
+     synthesizes the reply; the renderer plays it through Web Audio and drives
+     `setMouthOpen` from real signal amplitude (AnalyserNode). Web Speech API stays as the
+     no-model fallback. No API key, fully offline.
 7. **(Optional, later) MCP avatar bridge:** ship an MCP server (`set_avatar_state` /
    `say`) so the official Claude Desktop can also animate the companion window.
 
@@ -173,20 +178,20 @@ load-bearing abstraction is `AvatarController`, which every later phase builds o
 See [`docs/open-llm-vtuber-ideas.md`](./docs/open-llm-vtuber-ideas.md) for the full
 inspection. We keep our distinguishing **no-API-key, drive-the-real-`claude`-CLI** brain
 (their multi-backend LLM layer is explicitly *not* adopted) and our zero-asset placeholder
-fallback. Adopted, folded into existing phases:
+fallback.
 
-- **Inline `[emotion]` tags (folds into Phase 3) — highest value.** Instruct Claude via
-  `--append-system-prompt` to emit one of our 7 emotion tags inline (e.g. `[happy]`) when
-  tone shifts. Parse + strip tags from the reply (cheap regex, before TTS), drive the
-  expression instantly with no extra model round-trip and mid-reply changes. Keep the
-  `claude -p` classifier only as a fallback when no tag is present.
-- **Per-model `expressionMap`/`motionMap` (folds into Phase 5).** Grow
-  `resources/models/<id>/companion.json` with an optional map from our emotion labels to a
-  model's `.exp3` names/indices (and motion groups); `Live2DController` consults it instead
-  of guessing. Backward compatible (best-effort default when absent).
-- **Real amplitude lip-sync (Phase 6).** Our `setMouthOpen(0..1)` interface already
-  supports it — only `VoiceController` + the TTS source change.
-- **Smaller, later:** subtitle/caption panel; "inner thoughts" display (maps onto the
+- ✅ **Inline `[emotion]` tags (Phase 3) — shipped.** The session is instructed via
+  `--append-system-prompt` to emit one of our 7 emotion tags inline (e.g. `[happy]`).
+  Parsed live from the terminal stream (mid-reply, ANSI-safe) and on `Stop`; stripped from
+  the visible terminal and from TTS. `claude -p` now runs only as a fallback when no tag is
+  present.
+- ✅ **Per-model `expressionMap`/`motionMap` (Phase 5) — shipped.**
+  `resources/models/<id>/companion.json` may map our emotion/pose labels to a model's
+  `.exp3` names/indices and motion groups; `Live2DController` consults it (best-effort
+  default when absent).
+- ✅ **Real amplitude lip-sync (Phase 6) — shipped.** Offline sherpa-onnx TTS feeds Web
+  Audio; an `AnalyserNode` drives `setMouthOpen` from the waveform. Web Speech fallback.
+- ⏳ **Smaller, later:** subtitle/caption panel; "inner thoughts" display (maps onto the
   hook tool/think stream); screenshot/region → multimodal `claude` paste; declarative
   per-character persona config.
 

@@ -14,4 +14,11 @@ resources/models/*/
 resources/runtime/*.js
 !resources/runtime/README.md
 
+# Offline ASR/TTS model files are NOT committed (size + license).
+# See resources/asr/README.md and resources/tts/README.md.
+resources/asr/*
+!resources/asr/README.md
+resources/tts/*
+!resources/tts/README.md
+
 .DS_Store

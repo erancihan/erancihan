@@ -1,4 +1,5 @@
 import { cleanForSpeech } from '../../../shared/voice.js'
+import { rms } from '../../../shared/vad.js'
 import type { AvatarController } from './AvatarController.js'
 
 interface SpeakHandlers {
@@ -7,40 +8,136 @@ interface SpeakHandlers {
 }
 
 /**
- * Free, no-key TTS via the browser's Web Speech API, with mouth-driven lip-sync.
+ * Speaks assistant replies with lip-sync, no API key. Two engines:
  *
- * The Web Speech API doesn't expose the audio signal, so we approximate visemes: while
- * speaking we oscillate the mouth open/closed (a talking flap), and snap it wide on each
- * word `boundary` event for emphasis. This is the AudioWorklet-free fallback from the plan
- * — no Azure/ElevenLabs key, no paid service.
+ *  - **Offline neural TTS** (sherpa-onnx, when a voice is installed): the reply is
+ *    synthesized to audio in the main process; here we play it through Web Audio and drive
+ *    the mouth from REAL signal amplitude via an AnalyserNode → true lip-sync.
+ *  - **Web Speech API** fallback (no audio buffer exposed): a talking flap + word-boundary
+ *    pulses approximate visemes.
+ *
+ * Either way nothing is keyed or paid; the neural path is also fully offline.
  */
 export class VoiceController {
   private readonly synth = window.speechSynthesis
   private flapTimer = 0
+  private raf = 0
   private active = false
-
-  get supported(): boolean {
-    return typeof this.synth !== 'undefined'
-  }
+  private audioCtx: AudioContext | null = null
+  private source: AudioBufferSourceNode | null = null
+  private ttsAvailable: boolean | null = null // cached after first probe
 
   speak(text: string, controller: AvatarController, handlers: SpeakHandlers = {}): void {
-    if (!this.supported) return
     const clean = cleanForSpeech(text)
     if (!clean) return
-
     this.cancel()
-    const utter = new SpeechSynthesisUtterance(clean)
+    void this.resolveTts().then((useNeural) => {
+      if (useNeural) this.speakNeural(clean, controller, handlers)
+      else this.speakWebSpeech(clean, controller, handlers)
+    })
+  }
+
+  cancel(): void {
+    this.active = false
+    this.stopFlap()
+    if (this.raf) {
+      cancelAnimationFrame(this.raf)
+      this.raf = 0
+    }
+    try {
+      this.source?.stop()
+    } catch {
+      // already stopped
+    }
+    this.source = null
+    void this.audioCtx?.close().catch(() => {})
+    this.audioCtx = null
+    try {
+      this.synth?.cancel()
+    } catch {
+      // ignore
+    }
+  }
+
+  private async resolveTts(): Promise<boolean> {
+    if (this.ttsAvailable === null) {
+      try {
+        this.ttsAvailable = (await window.companion.ttsStatus()).available
+      } catch {
+        this.ttsAvailable = false
+      }
+    }
+    return this.ttsAvailable
+  }
+
+  /** Offline neural TTS → Web Audio playback with amplitude-driven lip-sync. */
+  private async speakNeural(
+    text: string,
+    controller: AvatarController,
+    handlers: SpeakHandlers
+  ): Promise<void> {
+    const audio = await window.companion.synthesize(text).catch(() => null)
+    if (!audio || audio.samples.length === 0) {
+      this.speakWebSpeech(text, controller, handlers) // synth failed → fall back
+      return
+    }
+
+    const ctx = new AudioContext()
+    this.audioCtx = ctx
+    const buffer = ctx.createBuffer(1, audio.samples.length, audio.sampleRate)
+    buffer.getChannelData(0).set(audio.samples)
+
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 256
+    source.connect(analyser)
+    analyser.connect(ctx.destination)
+    this.source = source
+
+    const frame = new Float32Array(analyser.fftSize)
+    this.active = true
+    controller.setSpeaking(true)
+    handlers.onStart?.()
+
+    const tick = (): void => {
+      analyser.getFloatTimeDomainData(frame)
+      controller.setMouthOpen(Math.min(1, rms(frame) * 9)) // scale RMS → mouth open
+      this.raf = requestAnimationFrame(tick)
+    }
+    tick()
+
+    source.onended = (): void => {
+      if (!this.active) return
+      this.active = false
+      if (this.raf) cancelAnimationFrame(this.raf)
+      this.raf = 0
+      controller.setSpeaking(false)
+      void ctx.close().catch(() => {})
+      this.audioCtx = null
+      handlers.onEnd?.()
+    }
+    source.start()
+  }
+
+  /** Web Speech API fallback: flap + boundary pulses (no real audio signal available). */
+  private speakWebSpeech(
+    text: string,
+    controller: AvatarController,
+    handlers: SpeakHandlers
+  ): void {
+    if (typeof this.synth === 'undefined') return
+    const utter = new SpeechSynthesisUtterance(text)
     utter.rate = 1.05
     utter.pitch = 1.05
 
-    utter.onstart = () => {
+    utter.onstart = (): void => {
       this.active = true
       controller.setSpeaking(true)
       handlers.onStart?.()
       this.startFlap(controller)
     }
-    // Snap the mouth wide on each spoken word for a bit of sync.
-    utter.onboundary = () => controller.setMouthOpen(0.85)
+    utter.onboundary = (): void => controller.setMouthOpen(0.85)
     const finish = (): void => {
       if (!this.active) return
       this.active = false
@@ -54,19 +151,8 @@ export class VoiceController {
     this.synth.speak(utter)
   }
 
-  cancel(): void {
-    this.stopFlap()
-    if (this.active) this.active = false
-    try {
-      this.synth.cancel()
-    } catch {
-      // ignore
-    }
-  }
-
   private startFlap(controller: AvatarController): void {
     this.stopFlap()
-    // Wiggle the mouth between roughly closed and open to read as talking.
     this.flapTimer = window.setInterval(() => {
       controller.setMouthOpen(0.2 + Math.random() * 0.6)
     }, 90)

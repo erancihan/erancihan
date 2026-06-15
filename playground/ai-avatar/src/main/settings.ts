@@ -12,7 +12,8 @@ function defaults(): AppSettings {
     projectDir: homedir(),
     avatarModel: 'placeholder',
     personality: '',
-    voice: false
+    voice: false,
+    mic: false
   }
 }
 

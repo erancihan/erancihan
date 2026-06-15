@@ -105,6 +105,13 @@ export function AvatarStage({
     }
   }, [voiceEnabled])
 
+  // Barge-in: when the user starts speaking (mic), stop the avatar talking immediately.
+  useEffect(() => {
+    const onBarge = (): void => voiceRef.current?.cancel()
+    window.addEventListener('companion:bargein', onBarge)
+    return () => window.removeEventListener('companion:bargein', onBarge)
+  }, [])
+
   return (
     <div
       className="avatar-stage"

@@ -52,6 +52,23 @@ export interface AppSettings {
   personality: string
   /** Speak assistant replies aloud via the browser's TTS (Phase 4). */
   voice: boolean
+  /** Listen to the microphone and type transcripts into the session (Phase 6). */
+  mic: boolean
+}
+
+/** Availability of an offline engine + its user-supplied model (Phase 6). */
+export interface EngineStatus {
+  available: boolean
+  reason?: string
+  modelDir: string
+}
+export type AsrStatus = EngineStatus
+export type TtsStatus = EngineStatus
+
+/** Synthesized speech audio returned by the offline TTS engine. */
+export interface TtsAudio {
+  samples: Float32Array
+  sampleRate: number
 }
 
 /** IPC channel names. Centralized to avoid stringly-typed drift across processes. */
@@ -73,7 +90,11 @@ export const Channels = {
   HooksInstall: 'hooks:install',
   HooksUninstall: 'hooks:uninstall',
   DialogPickDirectory: 'dialog:pickDirectory',
-  ModelsList: 'models:list'
+  ModelsList: 'models:list',
+  AsrStatus: 'asr:status',
+  AsrTranscribe: 'asr:transcribe',
+  TtsStatus: 'tts:status',
+  TtsSynthesize: 'tts:synthesize'
 } as const
 
 export interface TerminalSize {

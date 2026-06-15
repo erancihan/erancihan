@@ -10,9 +10,24 @@ directly, _or_ talk to the character — both drive the **same** Claude Code ses
 > spawned with `ANTHROPIC_API_KEY` stripped, so the session always runs on your
 > subscription login.
 
-This implements **Phases 1–5** from [`PLAN.md`](./PLAN.md).
+This implements **Phases 1–6** from [`PLAN.md`](./PLAN.md).
 
-## What works now (Phase 5)
+## What works now (Phase 6 — voice in/out)
+
+- ✅ **Talk to the companion (offline ASR).** Click 🎤 to listen; a local energy VAD
+  segments your speech, **sherpa-onnx** transcribes it fully offline (no API key, no
+  cloud), and the transcript is typed into the **same** `claude` session as the chat box.
+- ✅ **Barge-in.** Starting to speak stops the avatar mid-sentence.
+- ✅ **Real amplitude lip-sync.** With an offline **sherpa-onnx TTS** voice installed,
+  replies are synthesized locally and the avatar's mouth follows the actual audio waveform
+  (Web Audio `AnalyserNode` → `setMouthOpen`). Falls back to the Web Speech API + flap when
+  no voice is installed.
+- The ASR/TTS models are **user-supplied** under `resources/asr/` and `resources/tts/`
+  (size/license) — until present, those features fall back / disable and the UI says so. See
+  [`resources/asr/README.md`](./resources/asr/README.md) and
+  [`resources/tts/README.md`](./resources/tts/README.md).
+
+## What works (Phase 5)
 
 - ✅ **Settings panel** (⚙ in the title bar): one place for avatar model, personality,
   start directory, and the reactions/voice toggles.
@@ -149,6 +164,8 @@ src/
     cli/ptyService.ts    spawn ONE interactive `claude` PTY (no API key in env)
     cli/emotion.ts       headless `claude -p` tone classification on Stop (async)
     models.ts            discover models + serve them over companion-model://
+    asr.ts               offline sherpa-onnx speech-to-text (user-supplied model)
+    tts.ts               offline sherpa-onnx text-to-speech (user-supplied voice)
     settings.ts          app prefs only — never any Anthropic credential
     hooks/bridge.ts      localhost cue server (ephemeral port + token) → renderer
     hooks/install.ts     write/remove scoped, reversible Claude Code hook config
@@ -164,12 +181,15 @@ src/
       Live2DController.ts        pixi-live2d-display backend (used when a model exists)
       createAvatarController.ts  picks Live2D, falls back to placeholder
       VoiceController.ts         Web Speech API TTS + lip-sync mouth driver
-      AvatarStage.tsx            React host + gaze/click/cue/voice wiring
+      MicCapture.ts              mic → 16kHz frames → energy VAD → utterances
+      AvatarStage.tsx            React host + gaze/click/cue/voice/barge-in wiring
   shared/ipc.ts          typed IPC contract shared across processes
   shared/hookEvents.ts   pure event→cue mapping + managed-hook list
   shared/emotion.ts      pure prompt builder, emotion parser, transcript extractor
   shared/voice.ts        pure reply→speech text cleaner
   shared/models.ts       model metadata, personality presets/args (pure)
+  shared/vad.ts          energy voice-activity detection (pure)
+  shared/asr.ts          ASR config path resolution (pure)
 resources/
   hooks/cue.mjs          installed hook forwarder → posts cues to the bridge
   models/                drop Live2D models here (not committed; see README)

@@ -6,6 +6,8 @@ import { EmotionService, readLastAssistantReply } from './cli/emotion.js'
 import { EMOTION_TAG_INSTRUCTION, stripEmotionTags } from '../shared/emotion.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { listModels, MODEL_SCHEME, serveModelRequest } from './models.js'
+import { AsrService } from './asr.js'
+import { TtsService } from './tts.js'
 import { HookBridge } from './hooks/bridge.js'
 import type { HookSignal } from '../shared/hookEvents.js'
 import {
@@ -20,6 +22,8 @@ import { Channels, type AppSettings, type AvatarCue, type TerminalSize } from '.
 const pty = new PtyService()
 let mainWindow: BrowserWindow | null = null
 let bridge: HookBridge | null = null
+let asr: AsrService | null = null
+let tts: TtsService | null = null
 
 /** Absolute path to the bundled hook forwarder (dev vs packaged differ). */
 function hookScriptPath(): string {
@@ -47,6 +51,20 @@ function modelsDir(): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'models')
     : join(app.getAppPath(), 'resources', 'models')
+}
+
+/** Folder a user drops a sherpa-onnx ASR model + config.json into (Phase 6). */
+function asrDir(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'asr')
+    : join(app.getAppPath(), 'resources', 'asr')
+}
+
+/** Folder a user drops a sherpa-onnx TTS voice + config.json into (Phase 6). */
+function ttsDir(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'tts')
+    : join(app.getAppPath(), 'resources', 'tts')
 }
 
 // Must run before app `ready`: lets the renderer fetch model files over a port-free,
@@ -99,6 +117,16 @@ function createWindow(): void {
   })
 
   mainWindow.setAlwaysOnTop(true, 'floating')
+
+  // Allow microphone access for voice input (Phase 6); deny everything else.
+  const grantMedia = (permission: string): boolean =>
+    permission === 'media' || permission === 'audioCapture' || permission === 'microphone'
+  mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, cb) =>
+    cb(grantMedia(permission))
+  )
+  mainWindow.webContents.session.setPermissionCheckHandler((_wc, permission) =>
+    grantMedia(permission)
+  )
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
 
@@ -211,6 +239,18 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
   // Avatar models discovered under resources/models (Phase 5).
   ipcMain.handle(Channels.ModelsList, () => listModels(modelsDir()))
 
+  // Offline voice input (Phase 6): status + transcription of mic utterances.
+  ipcMain.handle(Channels.AsrStatus, () => asr?.status())
+  ipcMain.handle(
+    Channels.AsrTranscribe,
+    (_e, payload: { samples: Float32Array; sampleRate: number }) =>
+      asr?.transcribe(payload.samples, payload.sampleRate) ?? ''
+  )
+
+  // Offline neural TTS (Phase 6): synthesize replies to audio for real lip-sync.
+  ipcMain.handle(Channels.TtsStatus, () => tts?.status())
+  ipcMain.handle(Channels.TtsSynthesize, (_e, text: string) => tts?.synthesize(text) ?? null)
+
   // Reaction hooks (Phase 2): scoped to the current project, reversible.
   ipcMain.handle(Channels.HooksStatus, () => hooksStatus(installContext()))
   ipcMain.handle(Channels.HooksInstall, () => installHooks(installContext()))
@@ -220,6 +260,8 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
 app.whenReady().then(() => {
   // Serve model files (model3.json, textures, moc3, …) to the renderer.
   protocol.handle(MODEL_SCHEME, (req) => serveModelRequest(modelsDir(), req.url))
+  asr = new AsrService(asrDir())
+  tts = new TtsService(ttsDir())
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

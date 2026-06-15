@@ -2,10 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   Channels,
   type AppSettings,
+  type AsrStatus,
   type AvatarCue,
   type CliStatus,
   type HooksStatus,
-  type TerminalSize
+  type TerminalSize,
+  type TtsAudio,
+  type TtsStatus
 } from '../shared/ipc.js'
 import type { ModelInfo } from '../shared/models.js'
 
@@ -29,6 +32,14 @@ const api = {
   pickDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke(Channels.DialogPickDirectory),
   listModels: (): Promise<ModelInfo[]> => ipcRenderer.invoke(Channels.ModelsList),
+
+  asrStatus: (): Promise<AsrStatus> => ipcRenderer.invoke(Channels.AsrStatus),
+  transcribe: (samples: Float32Array, sampleRate: number): Promise<string> =>
+    ipcRenderer.invoke(Channels.AsrTranscribe, { samples, sampleRate }),
+
+  ttsStatus: (): Promise<TtsStatus> => ipcRenderer.invoke(Channels.TtsStatus),
+  synthesize: (text: string): Promise<TtsAudio | null> =>
+    ipcRenderer.invoke(Channels.TtsSynthesize, text),
 
   quit: (): void => ipcRenderer.send(Channels.AppQuit),
 
