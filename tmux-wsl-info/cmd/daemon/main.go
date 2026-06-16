@@ -2,12 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -36,6 +38,10 @@ func main() {
 
 	// Start wsl-info.exe as a persistent subprocess
 	cmd := exec.Command(exe, "-interval", fmt.Sprintf("%d", *interval))
+
+	// Capture stderr for diagnostics
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	// Create stdin pipe to allow wsl-info.exe to detect parent exit
 	stdinPipe, err := cmd.StdinPipe()
@@ -98,7 +104,13 @@ func main() {
 		}
 		os.Remove(*outFile)
 	case err := <-doneCh:
-		msg := fmt.Sprintf("error: wsl-info.exe exited: %v", err)
+		stderrStr := strings.TrimSpace(stderrBuf.String())
+		var msg string
+		if stderrStr != "" {
+			msg = fmt.Sprintf("error: wsl-info.exe failed: %s", stderrStr)
+		} else {
+			msg = fmt.Sprintf("error: wsl-info.exe exited: %v", err)
+		}
 		os.WriteFile(*outFile, []byte(msg), 0644)
 		fmt.Fprintln(os.Stderr, msg)
 		os.Exit(1)

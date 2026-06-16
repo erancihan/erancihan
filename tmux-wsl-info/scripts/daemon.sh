@@ -18,7 +18,7 @@ stop_daemon() {
 
 start_daemon() {
     stop_daemon
-    nohup "$DAEMON" -interval "${WSL_CACHE_TTL:-1}" </dev/null >/dev/null 2>&1 &
+    nohup "$DAEMON" -interval "${WSL_CACHE_TTL:-1}" </dev/null >/tmp/tmux-wsl-info-daemon.log 2>&1 &
     disown
 }
 
