@@ -98,6 +98,39 @@ body,
   color: var(--muted);
 }
 
+/* "Inner thoughts" — current tool activity from the hook stream. */
+.activity-tag {
+  font-size: 10px;
+  font-style: italic;
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  transition: color 0.4s ease, background 0.4s ease;
+}
+
+/* Subtitle of the spoken reply, shown while TTS plays. */
+.caption {
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  text-align: center;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  border-radius: 14px;
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: var(--shadow);
+  max-height: 5.2em;
+  overflow-y: auto;
+  user-select: text;
+  animation: toast-in 0.2s ease;
+}
+
 .titlebar-actions {
   display: flex;
   gap: 4px;

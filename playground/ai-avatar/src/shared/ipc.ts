@@ -91,6 +91,7 @@ export const Channels = {
   HooksUninstall: 'hooks:uninstall',
   DialogPickDirectory: 'dialog:pickDirectory',
   ModelsList: 'models:list',
+  PersonasList: 'personas:list',
   AsrStatus: 'asr:status',
   AsrTranscribe: 'asr:transcribe',
   TtsStatus: 'tts:status',

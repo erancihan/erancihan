@@ -6,6 +6,7 @@ import { EmotionService, readLastAssistantReply } from './cli/emotion.js'
 import { EMOTION_TAG_INSTRUCTION, stripEmotionTags } from '../shared/emotion.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { listModels, MODEL_SCHEME, serveModelRequest } from './models.js'
+import { listCustomPersonas } from './personas.js'
 import { AsrService } from './asr.js'
 import { TtsService } from './tts.js'
 import { HookBridge } from './hooks/bridge.js'
@@ -65,6 +66,13 @@ function ttsDir(): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'tts')
     : join(app.getAppPath(), 'resources', 'tts')
+}
+
+/** Folder holding user-defined persona JSON files (declarative customization). */
+function personasDir(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'personas')
+    : join(app.getAppPath(), 'resources', 'personas')
 }
 
 // Must run before app `ready`: lets the renderer fetch model files over a port-free,
@@ -238,6 +246,9 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
 
   // Avatar models discovered under resources/models (Phase 5).
   ipcMain.handle(Channels.ModelsList, () => listModels(modelsDir()))
+
+  // User-defined personas under resources/personas (declarative customization).
+  ipcMain.handle(Channels.PersonasList, () => listCustomPersonas(personasDir()))
 
   // Offline voice input (Phase 6): status + transcription of mic utterances.
   ipcMain.handle(Channels.AsrStatus, () => asr?.status())

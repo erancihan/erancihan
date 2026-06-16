@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import type { ModelInfo } from '../../../shared/models.js'
-import { PERSONALITY_PRESETS } from '../../../shared/models.js'
+import type { ModelInfo, PersonalityPreset } from '../../../shared/models.js'
 
 interface SettingsProps {
   onClose: () => void
@@ -11,6 +10,8 @@ interface SettingsProps {
   onSelectModel: (id: string) => void
   /** Current personality text (already persisted value). */
   personality: string
+  /** Built-in + user-defined personas for the preset dropdown. */
+  personas: PersonalityPreset[]
   /** Persist personality and restart the session. */
   onApplyPersonality: (text: string) => void
   voiceEnabled: boolean
@@ -39,7 +40,7 @@ export function Settings(props: SettingsProps): JSX.Element {
 
   // Choosing a preset fills the editable textarea; the text is what actually applies.
   const onPreset = (id: string): void => {
-    const preset = PERSONALITY_PRESETS.find((p) => p.id === id)
+    const preset = props.personas.find((p) => p.id === id)
     if (preset) setDraftPersonality(preset.prompt)
   }
 
@@ -86,7 +87,7 @@ export function Settings(props: SettingsProps): JSX.Element {
               <option value="" disabled>
                 Choose a preset…
               </option>
-              {PERSONALITY_PRESETS.map((p) => (
+              {props.personas.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
                 </option>

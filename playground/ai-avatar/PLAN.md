@@ -191,9 +191,13 @@ fallback.
   default when absent).
 - ✅ **Real amplitude lip-sync (Phase 6) — shipped.** Offline sherpa-onnx TTS feeds Web
   Audio; an `AnalyserNode` drives `setMouthOpen` from the waveform. Web Speech fallback.
-- ⏳ **Smaller, later:** subtitle/caption panel; "inner thoughts" display (maps onto the
-  hook tool/think stream); screenshot/region → multimodal `claude` paste; declarative
-  per-character persona config.
+- ✅ **Subtitle/caption panel** — the spoken reply shows as captions while TTS plays.
+- ✅ **"Inner thoughts" display** — current tool activity (from the hook stream) shown as
+  a title-bar chip, e.g. "editing files", "running a command".
+- ✅ **Declarative persona config** — drop `resources/personas/<id>.json` to add a
+  personality to the Settings dropdown (no code); merges with built-ins.
+- ⏳ **Visual perception** — screenshot/region capture → paste into the `claude` session
+  (Claude Code is multimodal). Medium effort; not yet built.
 
 ## Verification
 

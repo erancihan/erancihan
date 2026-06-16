@@ -100,3 +100,23 @@ export function buildPersonalityArgs(personality: string): string[] {
   const text = personality.trim()
   return text ? ['--append-system-prompt', text] : []
 }
+
+/**
+ * Parse a user-supplied persona file (resources/personas/<id>.json) into a preset.
+ * Requires a non-empty `label` and `prompt`; returns null otherwise. Pure.
+ */
+export function parsePersona(raw: unknown, id: string): PersonalityPreset | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const label = typeof o.label === 'string' ? o.label.trim() : ''
+  const prompt = typeof o.prompt === 'string' ? o.prompt : ''
+  if (!label || !prompt.trim()) return null
+  return { id: typeof o.id === 'string' && o.id.trim() ? o.id.trim() : id, label, prompt }
+}
+
+/** Merge built-in presets with custom personas, custom winning on id collision. */
+export function mergePersonas(custom: PersonalityPreset[]): PersonalityPreset[] {
+  const byId = new Map(PERSONALITY_PRESETS.map((p) => [p.id, p]))
+  for (const p of custom) byId.set(p.id, p)
+  return [...byId.values()]
+}

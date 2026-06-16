@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapEventToCue } from './hookEvents.js'
+import { describeActivity, mapEventToCue } from './hookEvents.js'
 
 describe('mapEventToCue', () => {
   it('maps prompt submit to thinking', () => {
@@ -24,5 +24,19 @@ describe('mapEventToCue', () => {
 
   it('returns null for unknown events', () => {
     expect(mapEventToCue({ event: 'SomethingElse' })).toBeNull()
+  })
+})
+
+describe('describeActivity', () => {
+  it('maps known tools to friendly labels', () => {
+    expect(describeActivity('PreToolUse:Edit')).toBe('editing files')
+    expect(describeActivity('PostToolUse:Bash')).toBe('running a command')
+  })
+  it('falls back to "using <tool>" for unknown tools', () => {
+    expect(describeActivity('PreToolUse:CustomMcpTool')).toBe('using CustomMcpTool')
+  })
+  it('returns null when there is no tool', () => {
+    expect(describeActivity('Stop')).toBeNull()
+    expect(describeActivity(undefined)).toBeNull()
   })
 })

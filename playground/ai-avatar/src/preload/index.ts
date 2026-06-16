@@ -10,7 +10,7 @@ import {
   type TtsAudio,
   type TtsStatus
 } from '../shared/ipc.js'
-import type { ModelInfo } from '../shared/models.js'
+import type { ModelInfo, PersonalityPreset } from '../shared/models.js'
 
 /** Result of asking main to start the embedded `claude` session. */
 export interface TerminalStartResult {
@@ -32,6 +32,7 @@ const api = {
   pickDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke(Channels.DialogPickDirectory),
   listModels: (): Promise<ModelInfo[]> => ipcRenderer.invoke(Channels.ModelsList),
+  listPersonas: (): Promise<PersonalityPreset[]> => ipcRenderer.invoke(Channels.PersonasList),
 
   asrStatus: (): Promise<AsrStatus> => ipcRenderer.invoke(Channels.AsrStatus),
   transcribe: (samples: Float32Array, sampleRate: number): Promise<string> =>

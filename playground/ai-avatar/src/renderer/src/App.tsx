@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AsrStatus, AvatarCue, AvatarPose, CliStatus, HooksStatus } from '../../shared/ipc.js'
-import type { ModelInfo } from '../../shared/models.js'
+import type { ModelInfo, PersonalityPreset } from '../../shared/models.js'
+import { mergePersonas } from '../../shared/models.js'
+import { describeActivity } from '../../shared/hookEvents.js'
 import { AvatarStage } from './avatar/AvatarStage.js'
 import { MicCapture } from './avatar/MicCapture.js'
 import { TerminalView } from './components/Terminal.js'
@@ -26,12 +28,15 @@ export function App(): JSX.Element {
   const [projectDir, setProjectDir] = useState<string | null>(null)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [models, setModels] = useState<ModelInfo[]>([])
+  const [customPersonas, setCustomPersonas] = useState<PersonalityPreset[]>([])
   const [selectedModel, setSelectedModel] = useState(PLACEHOLDER_MODEL)
   const [personality, setPersonality] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [sessionNonce, setSessionNonce] = useState(0) // bump to restart the session
   const [micOn, setMicOn] = useState(false)
   const [asr, setAsr] = useState<AsrStatus | null>(null)
+  const [caption, setCaption] = useState<string | null>(null)
+  const [activity, setActivity] = useState<string | null>(null)
   const idleTimer = useRef<number | undefined>(undefined)
   const noticeTimer = useRef<number | undefined>(undefined)
   const micRef = useRef<MicCapture | null>(null)
@@ -44,6 +49,7 @@ export function App(): JSX.Element {
     window.companion.detectCli().then(setCli)
     window.companion.hooksStatus().then(setHooks)
     window.companion.listModels().then(setModels)
+    window.companion.listPersonas().then(setCustomPersonas)
     window.companion.asrStatus().then(setAsr)
     window.companion.getSettings().then((s) => {
       setProjectDir(s.projectDir)
@@ -76,9 +82,12 @@ export function App(): JSX.Element {
         setPose(cue.pose)
         // A new turn starting resets last turn's emotion until it's reclassified.
         if (cue.pose === 'thinking' || cue.pose === 'listening') setExpression('neutral')
+        if (cue.pose === 'idle') setActivity(null) // turn ended → clear inner-thought
       }
       if (cue.expression) setExpression(cue.expression) // from the emotion agent on Stop
       if (cue.message) flashNotice(cue.message)
+      const act = describeActivity(cue.source) // "inner thoughts" from the tool stream
+      if (act) setActivity(act)
     })
   }, [flashNotice])
 
@@ -209,6 +218,7 @@ export function App(): JSX.Element {
           <span className="dot" aria-hidden />
           <span className="title">companion</span>
           <span className="pose-tag">{pose}</span>
+          {activity && <span className="activity-tag">{activity}</span>}
         </div>
         <div className="titlebar-actions">
           <button
@@ -280,6 +290,7 @@ export function App(): JSX.Element {
           selectedModel={selectedModel}
           onSelectModel={selectModel}
           personality={personality}
+          personas={mergePersonas(customPersonas)}
           onApplyPersonality={applyPersonality}
           voiceEnabled={voiceEnabled}
           onToggleVoice={toggleVoice}
@@ -301,7 +312,9 @@ export function App(): JSX.Element {
             voiceEnabled={voiceEnabled}
             expressionMap={activeModel?.expressionMap}
             motionMap={activeModel?.motionMap}
+            onCaption={setCaption}
           />
+          {caption && <div className="caption">{caption}</div>}
           <ChatBox onSend={handleSend} />
         </section>
 

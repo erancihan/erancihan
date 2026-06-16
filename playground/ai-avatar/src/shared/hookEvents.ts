@@ -60,3 +60,32 @@ function toolSource(event: string, data?: Record<string, unknown>): string {
 function messageOf(data?: Record<string, unknown>): string | undefined {
   return typeof data?.message === 'string' ? data.message : undefined
 }
+
+// Friendly "inner thoughts" labels for tool activity, keyed by Claude Code tool name.
+const TOOL_ACTIVITY: Record<string, string> = {
+  Edit: 'editing files',
+  MultiEdit: 'editing files',
+  Write: 'writing a file',
+  NotebookEdit: 'editing a notebook',
+  Read: 'reading files',
+  NotebookRead: 'reading a notebook',
+  Bash: 'running a command',
+  Grep: 'searching the code',
+  Glob: 'searching the code',
+  LS: 'looking around',
+  WebFetch: 'browsing the web',
+  WebSearch: 'searching the web',
+  Task: 'spawning a subagent',
+  TodoWrite: 'planning'
+}
+
+/**
+ * Turn a cue `source` like "PreToolUse:Edit" into a human "inner thought" ("editing
+ * files"), or null when there's no tool to describe. Pure + tested.
+ */
+export function describeActivity(source?: string): string | null {
+  if (!source) return null
+  const tool = source.split(':')[1]
+  if (!tool) return null
+  return TOOL_ACTIVITY[tool] ?? `using ${tool}`
+}

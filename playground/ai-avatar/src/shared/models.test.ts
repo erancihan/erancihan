@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { buildPersonalityArgs, normalizeMeta, pickModel3File } from './models.js'
+import {
+  buildPersonalityArgs,
+  mergePersonas,
+  normalizeMeta,
+  parsePersona,
+  pickModel3File,
+  PERSONALITY_PRESETS
+} from './models.js'
 
 describe('pickModel3File', () => {
   it('finds the model3.json entry', () => {
@@ -47,5 +54,32 @@ describe('buildPersonalityArgs', () => {
   it('returns nothing for empty/blank text', () => {
     expect(buildPersonalityArgs('   ')).toEqual([])
     expect(buildPersonalityArgs('')).toEqual([])
+  })
+})
+
+describe('parsePersona', () => {
+  it('parses a valid persona, defaulting id to the file name', () => {
+    expect(parsePersona({ label: 'Pirate', prompt: 'Arr.' }, 'pirate')).toEqual({
+      id: 'pirate',
+      label: 'Pirate',
+      prompt: 'Arr.'
+    })
+  })
+  it('rejects personas missing label or prompt', () => {
+    expect(parsePersona({ prompt: 'x' }, 'a')).toBeNull()
+    expect(parsePersona({ label: 'x', prompt: '  ' }, 'a')).toBeNull()
+    expect(parsePersona('nope', 'a')).toBeNull()
+  })
+})
+
+describe('mergePersonas', () => {
+  it('appends custom personas and lets them override built-ins by id', () => {
+    const merged = mergePersonas([
+      { id: 'pirate', label: 'Pirate', prompt: 'Arr.' },
+      { id: 'terse', label: 'Terse!', prompt: 'short' }
+    ])
+    expect(merged.find((p) => p.id === 'pirate')?.label).toBe('Pirate')
+    expect(merged.find((p) => p.id === 'terse')?.label).toBe('Terse!') // overrode built-in
+    expect(merged.length).toBe(PERSONALITY_PRESETS.length + 1)
   })
 })
