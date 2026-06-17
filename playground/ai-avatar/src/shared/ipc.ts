@@ -95,7 +95,8 @@ export const Channels = {
   AsrStatus: 'asr:status',
   AsrTranscribe: 'asr:transcribe',
   TtsStatus: 'tts:status',
-  TtsSynthesize: 'tts:synthesize'
+  TtsSynthesize: 'tts:synthesize',
+  CaptureScreen: 'capture:screen'
 } as const
 
 export interface TerminalSize {

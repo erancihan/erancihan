@@ -42,6 +42,8 @@ const api = {
   synthesize: (text: string): Promise<TtsAudio | null> =>
     ipcRenderer.invoke(Channels.TtsSynthesize, text),
 
+  captureScreen: (): Promise<string | null> => ipcRenderer.invoke(Channels.CaptureScreen),
+
   quit: (): void => ipcRenderer.send(Channels.AppQuit),
 
   hooksStatus: (): Promise<HooksStatus> => ipcRenderer.invoke(Channels.HooksStatus),

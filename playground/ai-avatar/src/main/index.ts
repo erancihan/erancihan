@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  dialog,
+  ipcMain,
+  protocol,
+  screen,
+  shell
+} from 'electron'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { detectClaude } from './cli/detect.js'
 import { PtyService } from './cli/ptyService.js'
@@ -47,33 +57,45 @@ function buildSessionArgs(personality: string): string[] {
   return append ? ['--append-system-prompt', append] : []
 }
 
-/** Root folder avatar models are discovered + served from (dev vs packaged differ). */
-function modelsDir(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'models')
-    : join(app.getAppPath(), 'resources', 'models')
+/** Root resources folder (dev vs packaged differ). Models, runtime, asr, tts, personas live here. */
+function resourcesDir(): string {
+  return app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources')
+}
+/**
+ * Capture the primary display to a PNG and return its path (Phase 6 / visual perception).
+ * Hides our always-on-top window first so the companion isn't in the shot. Returns null on
+ * failure (e.g. macOS Screen Recording permission not yet granted).
+ */
+async function captureScreenshot(): Promise<string | null> {
+  const wasVisible = mainWindow?.isVisible() ?? false
+  if (wasVisible) mainWindow?.hide()
+  await new Promise((r) => setTimeout(r, 200)) // let the compositor drop our window
+  try {
+    const display = screen.getPrimaryDisplay()
+    const { width, height } = display.size
+    const sf = display.scaleFactor || 1
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: Math.round(width * sf), height: Math.round(height * sf) }
+    })
+    const primary = sources.find((s) => s.display_id === String(display.id)) ?? sources[0]
+    if (!primary || primary.thumbnail.isEmpty()) return null
+    const dir = join(app.getPath('userData'), 'screenshots')
+    mkdirSync(dir, { recursive: true })
+    const file = join(dir, `shot-${Date.now()}.png`)
+    writeFileSync(file, primary.thumbnail.toPNG())
+    return file
+  } catch {
+    return null
+  } finally {
+    if (wasVisible) mainWindow?.show()
+  }
 }
 
-/** Folder a user drops a sherpa-onnx ASR model + config.json into (Phase 6). */
-function asrDir(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'asr')
-    : join(app.getAppPath(), 'resources', 'asr')
-}
-
-/** Folder a user drops a sherpa-onnx TTS voice + config.json into (Phase 6). */
-function ttsDir(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'tts')
-    : join(app.getAppPath(), 'resources', 'tts')
-}
-
-/** Folder holding user-defined persona JSON files (declarative customization). */
-function personasDir(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'personas')
-    : join(app.getAppPath(), 'resources', 'personas')
-}
+const modelsDir = (): string => join(resourcesDir(), 'models')
+const asrDir = (): string => join(resourcesDir(), 'asr')
+const ttsDir = (): string => join(resourcesDir(), 'tts')
+const personasDir = (): string => join(resourcesDir(), 'personas')
 
 // Must run before app `ready`: lets the renderer fetch model files over a port-free,
 // app-private scheme (fetch + <img> + streaming), keeping CSP simple.
@@ -137,6 +159,13 @@ function createWindow(): void {
   )
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
+
+  // Surface renderer console in the dev terminal (helps debug avatar/model loading).
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    mainWindow.webContents.on('console-message', (_e, _level, message, line, source) =>
+      console.log('[renderer]', message, source ? `(${source}:${line})` : '')
+    )
+  }
 
   // Open target=_blank / external links in the real browser, not a new app window.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -262,6 +291,9 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
   ipcMain.handle(Channels.TtsStatus, () => tts?.status())
   ipcMain.handle(Channels.TtsSynthesize, (_e, text: string) => tts?.synthesize(text) ?? null)
 
+  // Visual perception: screenshot the screen → path the renderer feeds to the session.
+  ipcMain.handle(Channels.CaptureScreen, () => captureScreenshot())
+
   // Reaction hooks (Phase 2): scoped to the current project, reversible.
   ipcMain.handle(Channels.HooksStatus, () => hooksStatus(installContext()))
   ipcMain.handle(Channels.HooksInstall, () => installHooks(installContext()))
@@ -269,8 +301,8 @@ function registerIpc(send: (channel: string, payload: unknown) => void): void {
 }
 
 app.whenReady().then(() => {
-  // Serve model files (model3.json, textures, moc3, …) to the renderer.
-  protocol.handle(MODEL_SCHEME, (req) => serveModelRequest(modelsDir(), req.url))
+  // Serve model files (model3.json, textures, moc3) + the Cubism Core runtime to the renderer.
+  protocol.handle(MODEL_SCHEME, (req) => serveModelRequest(resourcesDir(), req.url))
   asr = new AsrService(asrDir())
   tts = new TtsService(ttsDir())
   createWindow()

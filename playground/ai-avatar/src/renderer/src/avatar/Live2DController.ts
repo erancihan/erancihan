@@ -2,6 +2,26 @@ import type { AvatarPose } from '../../../shared/ipc.js'
 import type { AvatarMap } from '../../../shared/models.js'
 import type { AvatarController } from './AvatarController.js'
 
+// Served by the main process from resources/runtime via the companion-model protocol.
+const CUBISM_CORE_URL = 'companion-model://m/runtime/live2dcubismcore.min.js'
+
+/**
+ * Ensure the Live2D Cubism Core global is present, injecting the runtime script once.
+ * Rejects if it can't load (no runtime file) → caller falls back to the placeholder.
+ */
+async function ensureCubismCore(): Promise<void> {
+  if (window.Live2DCubismCore) return
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = CUBISM_CORE_URL
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('Cubism Core runtime not found (resources/runtime)'))
+    document.head.appendChild(script)
+  })
+  if (!window.Live2DCubismCore) throw new Error('Cubism Core failed to initialize')
+}
+
 export interface Live2DMaps {
   /** Emotion label → this model's .exp3 name/index. */
   expressionMap?: AvatarMap
@@ -46,13 +66,16 @@ export class Live2DController implements AvatarController {
   ) {}
 
   async mount(host: HTMLElement): Promise<void> {
-    if (!window.Live2DCubismCore) {
-      throw new Error('Live2D Cubism Core runtime not loaded (resources/runtime missing)')
-    }
+    await ensureCubismCore()
 
-    // Dynamic imports keep PixiJS out of the critical path when we fall back.
+    // Dynamic imports keep PixiJS out of the critical path when we fall back. Use the
+    // cubism4-only entry so we don't pull in the Cubism 2 runtime (live2d.min.js).
     const PIXI: any = await import('pixi.js')
-    const mod: any = await import('pixi-live2d-display')
+    // PixiJS v6 generates shaders with eval, which our CSP forbids. Patch it to not —
+    // must run before any renderer is created.
+    const { install } = await import('@pixi/unsafe-eval')
+    install(PIXI)
+    const mod: any = await import('pixi-live2d-display/cubism4')
     const Live2DModel = mod.Live2DModel
 
     // pixi-live2d-display needs PIXI on window to auto-update models via the ticker.
@@ -86,12 +109,19 @@ export class Live2DController implements AvatarController {
 
   private fit(): void {
     if (!this.model || !this.host) return
-    const { clientWidth: w, clientHeight: h } = this.host
-    const scale = Math.min(w / this.model.width, h / this.model.height) * 0.9
+    const w = this.host.clientWidth
+    const h = this.host.clientHeight
+    if (!w || !h) return
+    // Reset scale to 1 FIRST: model.width/height return the *currently scaled* size, so
+    // re-fitting (ResizeObserver) without resetting compounds and the model balloons.
+    this.model.scale.set(1)
+    const natW = this.model.width || 1
+    const natH = this.model.height || 1
+    const scale = Math.min(w / natW, h / natH) * 0.9
+    this.model.anchor?.set?.(0.5, 0.5)
     this.model.scale.set(scale)
     this.model.x = w / 2
     this.model.y = h / 2
-    this.model.anchor?.set?.(0.5, 0.5)
   }
 
   setPose(pose: AvatarPose): void {

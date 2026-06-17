@@ -148,6 +148,19 @@ export function App(): JSX.Element {
     }
   }, [micOn, startMic])
 
+  // Visual perception: screenshot the screen and hand the path to the session (multimodal).
+  const shareScreen = useCallback(async () => {
+    flashNotice('Capturing screen…')
+    const path = await window.companion.captureScreen()
+    if (!path) {
+      flashNotice('Screenshot failed — grant Screen Recording permission and retry.')
+      return
+    }
+    window.companion.sendInput(`Take a look at this screenshot of my screen: ${path}\r`)
+    handleSend()
+    flashNotice('Sent a screenshot to the session.')
+  }, [flashNotice, handleSend])
+
   // Auto-resume mic if it was on last session and an ASR model is available.
   useEffect(() => {
     if (micAutoStarted.current || !asr || !micPrefRef.current) return
@@ -254,6 +267,13 @@ export function App(): JSX.Element {
             }
           >
             {micOn ? '🎙️' : '🎤'}
+          </button>
+          <button
+            className="icon-btn"
+            onClick={shareScreen}
+            title="show the session a screenshot of your screen"
+          >
+            📷
           </button>
           <button
             className="icon-btn"

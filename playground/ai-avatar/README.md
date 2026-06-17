@@ -26,6 +26,12 @@ This implements **Phases 1–6** from [`PLAN.md`](./PLAN.md).
   (size/license) — until present, those features fall back / disable and the UI says so. See
   [`resources/asr/README.md`](./resources/asr/README.md) and
   [`resources/tts/README.md`](./resources/tts/README.md).
+- ✅ **Visual perception** — 📷 captures your screen (hiding the companion first) and hands
+  the image path to the session, so multimodal `claude` can look at what's on your screen.
+
+Real **Live2D models** load too: drop a model under `resources/models/<id>/` plus the
+Cubism Core in `resources/runtime/`, then pick it in ⚙ Settings (uses `@pixi/unsafe-eval`
+for CSP-safe rendering; emotion/pose mapping via `companion.json`).
 
 ## What works (Phase 5)
 

@@ -65,6 +65,7 @@ export function AvatarStage({
       }
       controllerRef.current = choice.controller
       setBackend(choice.backend)
+      console.log(`[avatar] backend=${choice.backend}${choice.reason ? ` (${choice.reason})` : ''}`)
     })
 
     return () => {

@@ -6,7 +6,7 @@
     <!-- Lock down what the renderer can load; no remote code, styles/fonts inline-safe. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data: blob: companion-model:; connect-src 'self' companion-model:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'"
+      content="default-src 'self'; img-src 'self' data: blob: companion-model:; media-src 'self' companion-model: blob:; connect-src 'self' companion-model:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' companion-model:"
     />
     <title>Companion</title>
   </head>

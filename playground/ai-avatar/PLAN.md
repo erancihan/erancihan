@@ -196,8 +196,17 @@ fallback.
   a title-bar chip, e.g. "editing files", "running a command".
 - ✅ **Declarative persona config** — drop `resources/personas/<id>.json` to add a
   personality to the Settings dropdown (no code); merges with built-ins.
-- ⏳ **Visual perception** — screenshot/region capture → paste into the `claude` session
-  (Claude Code is multimodal). Medium effort; not yet built.
+- ✅ **Visual perception** — 📷 captures the primary display (hiding the companion first),
+  saves a PNG, and feeds its path to the session so multimodal `claude` can look at it.
+  (Region-select capture would be a later refinement.)
+
+### TODO / backlog
+- **Per-model transform config** — add optional `scale` and `x`/`y` offset (and maybe
+  anchor) to `companion.json` so each model's size + on-screen position can be tuned;
+  `Live2DController.fit()` would apply them. (Haru renders at an OK default size now; this
+  is for fine-tuning per model.)
+- **xterm `dimensions` TypeError** — harmless uncaught error from the terminal fitting
+  before its container has size (`@xterm/xterm`); guard the initial `fit()`.
 
 ## Verification
 

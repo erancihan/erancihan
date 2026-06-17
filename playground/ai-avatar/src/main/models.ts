@@ -10,9 +10,12 @@ import {
 
 export const MODEL_SCHEME = 'companion-model'
 
+/** URL the renderer loads the Live2D Cubism Core runtime from (resources/runtime). */
+export const CUBISM_CORE_URL = `${MODEL_SCHEME}://m/runtime/live2dcubismcore.min.js`
+
 /** Build a custom-protocol URL the renderer can load a model file from. */
 export function modelUrlFor(id: string, file: string): string {
-  return `${MODEL_SCHEME}://m/${encodeURIComponent(id)}/${encodeURIComponent(file)}`
+  return `${MODEL_SCHEME}://m/models/${encodeURIComponent(id)}/${encodeURIComponent(file)}`
 }
 
 /**
@@ -65,15 +68,16 @@ function contentTypeFor(path: string): string {
 }
 
 /**
- * Serve a single file from the models root for the custom protocol. Resolves the request
- * pathname under `modelsDir` and refuses anything that escapes it (path-traversal guard).
+ * Serve a single file from the resources root for the custom protocol — model files under
+ * `/models/...` and the Cubism Core under `/runtime/...`. Resolves the request pathname
+ * under `rootDir` and refuses anything that escapes it (path-traversal guard).
  */
-export async function serveModelRequest(modelsDir: string, requestUrl: string): Promise<Response> {
+export async function serveModelRequest(rootDir: string, requestUrl: string): Promise<Response> {
   try {
     const rel = decodeURIComponent(new URL(requestUrl).pathname).replace(/^\/+/, '')
-    const full = join(modelsDir, rel)
-    const root = modelsDir.endsWith(sep) ? modelsDir : modelsDir + sep
-    if (full !== modelsDir && !full.startsWith(root)) {
+    const full = join(rootDir, rel)
+    const root = rootDir.endsWith(sep) ? rootDir : rootDir + sep
+    if (full !== rootDir && !full.startsWith(root)) {
       return new Response('forbidden', { status: 403 })
     }
     const data = await readFile(full)
