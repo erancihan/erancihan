@@ -1,3 +1,6 @@
 [submodule "dotfiles"]
 	path = dotfiles
 	url = git@github.com:erancihan/dotfiles.git
+[submodule "tmux-wsl-info"]
+	path = tmux-wsl-info
+	url = git@github.com:erancihan/tmux-wsl-info.git
