@@ -10,5 +10,13 @@
   "activationEvents": [
     "*"
   ],
-  "main": "./extension.js"
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravity-usage-monitor.configureGroups",
+        "title": "Antigravity Quota: Configure Groups"
+      }
+    ]
+  }
 }
