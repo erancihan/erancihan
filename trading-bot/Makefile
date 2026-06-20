@@ -1,0 +1,45 @@
+.PHONY: help install install-live test demo backtest run status clean
+
+VENV ?= .venv
+PY := $(VENV)/bin/python
+PIP := $(VENV)/bin/pip
+
+help:
+	@echo "Targets:"
+	@echo "  install       create venv + install core deps (backtest/test only)"
+	@echo "  install-live  also install Alpaca SDK for paper/live trading"
+	@echo "  test          run the test suite"
+	@echo "  demo          offline backtest on synthetic data (no creds needed)"
+	@echo "  backtest      backtest config.yaml (needs creds or --csv)"
+	@echo "  run           paper/live trading loop (needs creds)"
+	@echo "  status        print broker account snapshot"
+
+$(VENV):
+	python3 -m venv $(VENV)
+	$(PIP) install --upgrade pip
+
+install: $(VENV)
+	$(PIP) install -e ".[dev]"
+
+install-live: $(VENV)
+	$(PIP) install -e ".[dev,live]"
+
+test:
+	$(PY) -m pytest
+
+demo:
+	$(PY) -m tradebot.cli demo --strategy sma_crossover
+	$(PY) -m tradebot.cli demo --strategy rsi_reversion
+
+backtest:
+	$(PY) -m tradebot.cli backtest --config config.yaml --out equity.csv
+
+run:
+	$(PY) -m tradebot.cli run --config config.yaml
+
+status:
+	$(PY) -m tradebot.cli status --config config.yaml
+
+clean:
+	rm -rf $(VENV) *.egg-info .pytest_cache __pycache__ */__pycache__ */*/__pycache__
+	rm -f *.db equity*.csv
