@@ -47,19 +47,25 @@ class Engine:
         strategy: Strategy,
         risk: RiskManager,
         storage: Storage | None = None,
+        mode_label: str | None = None,
+        enforce_live_ack: bool = True,
     ) -> None:
-        settings.require_live_ack()  # hard gate before anything can trade
+        # The live gate is skipped for dry-runs (no real broker can be reached).
+        if enforce_live_ack:
+            settings.require_live_ack()  # hard gate before anything can trade
         self.settings = settings
         self.broker = broker
         self.data = data_source
         self.strategy = strategy
         self.risk = risk
         self.storage = storage
+        # Label used for logs and storage tagging (e.g. "dry_run").
+        self._mode_label = mode_label or settings.mode
         self._session_start_equity: float | None = None
 
     @property
     def mode(self) -> str:
-        return self.settings.mode
+        return self._mode_label
 
     def _lookback_days(self) -> int:
         # Ensure enough history for the strategy plus headroom for weekends/holidays.

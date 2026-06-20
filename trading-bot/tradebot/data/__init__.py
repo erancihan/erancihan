@@ -3,9 +3,10 @@ the package (and the test suite) works without it installed."""
 
 from __future__ import annotations
 
+from .replay import ReplayData
 from .synthetic import load_csv, synthetic_ohlcv
 
-__all__ = ["synthetic_ohlcv", "load_csv", "get_alpaca_data"]
+__all__ = ["synthetic_ohlcv", "load_csv", "ReplayData", "get_alpaca_data"]
 
 
 def get_alpaca_data(*args, **kwargs):

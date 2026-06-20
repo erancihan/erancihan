@@ -101,7 +101,42 @@ make install-live
 .venv/bin/python -m tradebot.cli backtest --config config.yaml --out equity.csv
 ```
 
-### 3. Paper trade
+### 3. Dry-run forward-test
+
+A **dry-run** runs the *exact* real-time trading loop — data → strategy → risk →
+order — but fills orders against a **local virtual account** (seeded from
+`initial_cash`) instead of sending them anywhere. No money, no broker account,
+no order ever leaves the process. Positions and P&L evolve over time, so it's a
+true forward-test: the dress rehearsal between backtesting and paper trading.
+
+Fully offline (replays synthetic data — **no credentials, no network**):
+
+```bash
+make install
+.venv/bin/python -m tradebot.cli run --config config.yaml --replay --replay-periods 300
+# or replay your own history:
+.venv/bin/python -m tradebot.cli run --config config.yaml --replay-csv data/SPY.csv
+```
+
+Against **live** market data (needs a free Alpaca *data* key — still no trading
+account is used):
+
+```bash
+make install-live
+.venv/bin/python -m tradebot.cli run --config config.yaml --dry-run
+```
+
+`--dry-run` overlays whatever `mode` your config has (even `mode: live`) and
+simply suppresses real submits, so it never trips the live-money gate. On exit it
+prints a forward-test summary, and every simulated order + equity snapshot is
+written to the SQLite log tagged `dry_run`.
+
+> **What it does *not* model:** real fills (it uses last price ± fixed slippage,
+> instant and full), order rejects/partials, buying-power/PDT/settlement rules.
+> For realistic execution, graduate to `mode: paper`. The realism ladder is:
+> **backtest → dry-run → paper → live**.
+
+### 4. Paper trade
 
 1. Create a free Alpaca account, open **Paper Trading**, and generate API keys.
 2. `cp .env.example .env` and paste your **paper** key/secret.
@@ -114,7 +149,7 @@ make install-live
 .venv/bin/python -m tradebot.cli run --config config.yaml           # continuous loop
 ```
 
-### 4. Go live (only when you're sure)
+### 5. Go live (only when you're sure)
 
 Live trading is intentionally awkward to enable:
 

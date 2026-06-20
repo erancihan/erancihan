@@ -117,6 +117,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     from .engine import Engine
 
     settings = Settings.from_yaml(args.config)
+
+    # Replaying data only makes sense as a (offline) dry-run; imply the flag.
+    if getattr(args, "replay", False) or getattr(args, "replay_csv", None):
+        args.dry_run = True
+    if args.dry_run:
+        return _run_dry(settings, args)
+
     broker, data, strategy, risk, storage = _build_live_components(settings)
     engine = Engine(settings, broker, data, strategy, risk, storage)
 
@@ -128,6 +135,106 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         engine.run_forever(max_iterations=args.iterations)
     return 0
+
+
+def _run_dry(settings, args: argparse.Namespace) -> int:
+    """Forward-test: the real-time loop with simulated fills, no orders sent."""
+    from .broker.dryrun import DryRunBroker
+    from .engine import Engine
+    from .risk import RiskManager
+    from .storage import Storage
+    from .strategies import build_strategy
+
+    strategy = build_strategy(settings.strategy_name, settings.strategy_params)
+    risk = RiskManager(settings.risk)
+    storage = Storage(settings.db_path)
+
+    replay = bool(args.replay or args.replay_csv)
+    if replay:
+        data = _build_replay_data(settings, strategy, args)
+    else:
+        from .config import AlpacaCredentials
+        from .data import get_alpaca_data
+
+        creds = AlpacaCredentials.from_env()
+        if creds is None:
+            print(
+                "Dry-run needs market data. Either pass --replay for a fully "
+                "offline forward-test, or set ALPACA_API_KEY/ALPACA_API_SECRET "
+                "(a free, data-only key — no trading account is used).",
+                file=sys.stderr,
+            )
+            return 2
+        data = get_alpaca_data(creds.api_key, creds.api_secret, feed=creds.feed)
+
+    broker = DryRunBroker(
+        data,
+        timeframe=settings.timeframe,
+        initial_cash=settings.initial_cash,
+        slippage_bps=settings.slippage_bps,
+        commission=settings.commission,
+    )
+    engine = Engine(
+        settings, broker, data, strategy, risk, storage,
+        mode_label="dry_run", enforce_live_ack=False,
+    )
+
+    src = "replay" if replay else "live data"
+    print(
+        f"[DRY-RUN] Forward-test ({src}) on {settings.symbols} with "
+        f"{strategy.name}; virtual ${settings.initial_cash:,.0f}, no orders sent."
+    )
+    try:
+        if replay:
+            _drive_replay(engine, data, args)
+        elif args.once:
+            engine.rebalance()
+        else:
+            engine.run_forever(max_iterations=args.iterations)
+    except KeyboardInterrupt:
+        print("\n[DRY-RUN] Interrupted.")
+    finally:
+        _print_dryrun_summary(broker)
+        storage.close()
+    return 0
+
+
+def _build_replay_data(settings, strategy, args):
+    from .data.replay import ReplayData
+    from .data.synthetic import load_csv, synthetic_ohlcv
+
+    warmup = strategy.required_history + 2
+    if args.replay_csv:
+        frames = {settings.symbols[0]: load_csv(args.replay_csv)}
+    else:
+        frames = {
+            sym: synthetic_ohlcv(periods=args.replay_periods, seed=42 + i)
+            for i, sym in enumerate(settings.symbols)
+        }
+    return ReplayData(frames, warmup=warmup)
+
+
+def _drive_replay(engine, data, args) -> None:
+    import time
+
+    steps = 0
+    while True:
+        engine.rebalance()
+        steps += 1
+        if args.iterations and steps >= args.iterations:
+            break
+        if not data.has_next():
+            break
+        data.advance()
+        if args.speed:
+            time.sleep(args.speed)
+
+
+def _print_dryrun_summary(broker) -> None:
+    print("\n=== Dry-run forward-test summary ===")
+    for k, v in broker.summary().items():
+        print(f"  {k:>16}: {v}")
+    print()
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -176,10 +283,31 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--out", help="write equity curve CSV here")
     b.set_defaults(func=cmd_backtest)
 
-    r = sub.add_parser("run", help="run the paper/live trading loop")
+    r = sub.add_parser("run", help="run the paper/live/dry-run trading loop")
     r.add_argument("--config", required=True)
     r.add_argument("--once", action="store_true", help="single rebalance pass then exit")
     r.add_argument("--iterations", type=int, default=None, help="stop after N loops")
+    r.add_argument(
+        "--dry-run", dest="dry_run", action="store_true",
+        help="forward-test: run the live loop with simulated fills against a "
+             "virtual account; no orders are ever sent",
+    )
+    r.add_argument(
+        "--replay", action="store_true",
+        help="dry-run fully offline by replaying synthetic data (implies --dry-run, no creds)",
+    )
+    r.add_argument(
+        "--replay-csv", dest="replay_csv",
+        help="dry-run by replaying a local OHLCV CSV for the first symbol (implies --dry-run)",
+    )
+    r.add_argument(
+        "--replay-periods", dest="replay_periods", type=int, default=500,
+        help="number of synthetic bars to replay with --replay (default 500)",
+    )
+    r.add_argument(
+        "--speed", type=float, default=0.0,
+        help="seconds to sleep between replay steps (default 0 = as fast as possible)",
+    )
     r.set_defaults(func=cmd_run)
 
     s = sub.add_parser("status", help="print broker account snapshot")

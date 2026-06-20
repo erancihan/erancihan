@@ -11,6 +11,7 @@ help:
 	@echo "  test          run the test suite"
 	@echo "  demo          offline backtest on synthetic data (no creds needed)"
 	@echo "  backtest      backtest config.yaml (needs creds or --csv)"
+	@echo "  dryrun        offline real-time forward-test on replayed data (no creds)"
 	@echo "  run           paper/live trading loop (needs creds)"
 	@echo "  status        print broker account snapshot"
 
@@ -33,6 +34,9 @@ demo:
 
 backtest:
 	$(PY) -m tradebot.cli backtest --config config.yaml --out equity.csv
+
+dryrun:
+	$(PY) -m tradebot.cli run --config config.yaml --replay --replay-periods 300
 
 run:
 	$(PY) -m tradebot.cli run --config config.yaml

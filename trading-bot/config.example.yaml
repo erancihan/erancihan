@@ -4,6 +4,10 @@
 # Trading mode: backtest | paper | live
 #   paper  -> simulated fills on Alpaca's paper account (safe, default)
 #   live   -> REAL money; also requires TRADEBOT_LIVE_CONFIRM=I_UNDERSTAND
+#
+# Tip: add `--dry-run` (or `--replay` for fully offline) to `tradebot run` to
+# forward-test this exact config against a virtual account — no orders are sent,
+# regardless of the mode below. e.g. `tradebot run --config config.yaml --replay`
 mode: paper
 
 # Symbols to trade. Liquid ETFs are a sane place to start.
