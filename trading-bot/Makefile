@@ -12,6 +12,7 @@ help:
 	@echo "  demo          offline backtest on synthetic data (no creds needed)"
 	@echo "  backtest      backtest config.yaml (needs creds or --csv)"
 	@echo "  dryrun        offline real-time forward-test on replayed data (no creds)"
+	@echo "  arena         run the example algo competition (no creds)"
 	@echo "  run           paper/live trading loop (needs creds)"
 	@echo "  status        print broker account snapshot"
 
@@ -37,6 +38,9 @@ backtest:
 
 dryrun:
 	$(PY) -m tradebot.cli run --config config.yaml --replay --replay-periods 300
+
+arena:
+	$(PY) -m tradebot.cli arena run --algos ./algos --scenario scenarios/default.yaml --score sharpe
 
 run:
 	$(PY) -m tradebot.cli run --config config.yaml

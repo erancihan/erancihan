@@ -184,6 +184,56 @@ Add your own by subclassing `Strategy` and implementing
 `tradebot/strategies/registry.py`. Because strategies are pure functions of
 price data, they're trivial to unit-test (see `tests/test_strategies.py`).
 
+## Algorithm arena (competitions)
+
+Load multiple algorithms dynamically and rank them head-to-head over identical
+data — like a coding competition for trading strategies. Drop a decorated `.py`
+file in `algos/` (or point `--algos` at any path) and it's discovered, run, and
+scored automatically.
+
+```bash
+tradebot arena list  --algos ./algos                       # discover contestants
+tradebot arena run   --algos ./algos --score sharpe        # rank them
+tradebot arena validate algos/my_algo.py                   # smoke-test one file
+```
+
+A contestant is a class with the `@register` decorator, in **either** interface:
+
+```python
+# event-driven (look-ahead-safe: only sees the current bar + past via ctx)
+from tradebot.arena import register, Algo, Action
+
+@register(name="rsi_dip", author="you")
+class RsiDip(Algo):
+    def on_bar(self, bar, ctx) -> Action:
+        if ctx.rsi(14) < 30: return Action.long()
+        if ctx.rsi(14) > 55: return Action.flat()
+        return Action.hold()
+```
+
+```python
+# vectorized (reuse the Strategy interface)
+from tradebot.arena import register
+from tradebot.strategies import Strategy
+
+@register(name="my_trend")
+class MyTrend(Strategy):
+    def target_positions(self, bars): ...   # Series in {-1,0,+1}
+```
+
+Every contestant runs through the **same simulation core** (which a test proves
+matches the `Backtester`), over an identical `Scenario` — same data, capital, and
+cost/risk model — fed bar-by-bar so the future is never visible. Crashes and
+timeouts are isolated (one bad algo can't sink the field), and the leaderboard is
+ranked by a configurable metric (`sharpe` | `total_return` | `cagr` | `calmar`).
+Scenarios are reproducible YAML (`scenarios/default.yaml`); synthetic and CSV
+sources work fully offline. See [`algos/README.md`](algos/README.md) for the
+contestant guide.
+
+> ⚠️ The default runner executes algorithms **in-process** — only run code you
+> trust. The runner is abstracted so a sandboxed subprocess backend can drop in
+> for untrusted submissions.
+
 ## Running it for free, continuously
 
 For a $0 deployment, run the loop on any always-on machine you already have

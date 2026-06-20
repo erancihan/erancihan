@@ -263,6 +263,81 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_arena_list(args: argparse.Namespace) -> int:
+    from .arena.loader import discover
+
+    contestants, errors = discover(args.algos)
+    if not contestants:
+        print("No contestants found.", file=sys.stderr)
+    else:
+        print(f"{'name':<20} {'kind':<11} {'author':<12} tags")
+        print("-" * 60)
+        for c in contestants:
+            print(f"{c.name:<20} {c.kind:<11} {c.author:<12} {', '.join(c.tags)}")
+    for e in errors:
+        print(f"  ! load error: {e.path}: {e.message}", file=sys.stderr)
+    return 0
+
+
+def cmd_arena_run(args: argparse.Namespace) -> int:
+    from .arena.scenario import Scenario
+    from .arena.tournament import run_tournament
+
+    scenario = Scenario.from_yaml(args.scenario) if args.scenario else Scenario.default()
+    outcome = run_tournament(
+        args.algos, scenario, metric=args.score, time_budget_s=args.time_budget
+    )
+    print(outcome.leaderboard.table())
+    for e in outcome.load_errors:
+        print(f"  ! load error: {e.path}: {e.message}", file=sys.stderr)
+
+    if args.out:
+        import json
+
+        payload = {
+            "metric": outcome.leaderboard.metric,
+            "scenario": scenario.name,
+            "entries": [
+                {
+                    "rank": r.rank, "name": r.name, "author": r.author, "kind": r.kind,
+                    "status": r.status, "score": r.score,
+                    "total_return": None if r.result is None else r.total_return,
+                    "sharpe": None if r.result is None else r.sharpe,
+                    "max_drawdown": None if r.result is None else r.max_drawdown,
+                    "num_trades": r.num_trades, "error": r.error,
+                }
+                for r in outcome.leaderboard.entries
+            ],
+        }
+        with open(args.out, "w") as fh:
+            json.dump(payload, fh, indent=2)
+        print(f"Results written to {args.out}")
+    return 0
+
+
+def cmd_arena_validate(args: argparse.Namespace) -> int:
+    """Import one algo file and smoke-test it on a tiny synthetic scenario."""
+    from .arena.scenario import Scenario
+    from .arena.tournament import run_tournament
+
+    scenario = Scenario(name="validate", periods=120, seed=1)
+    outcome = run_tournament([args.path], scenario, metric="total_return")
+    if not outcome.leaderboard.entries and not outcome.load_errors:
+        print(f"No contestants registered in {args.path}", file=sys.stderr)
+        return 1
+    ok = True
+    for r in outcome.leaderboard.entries:
+        if r.ok:
+            print(f"  OK    {r.name}: return={r.total_return:.2%}, trades={r.num_trades}")
+        else:
+            ok = False
+            print(f"  FAIL  {r.name}: {r.status} - {r.error}", file=sys.stderr)
+    for e in outcome.load_errors:
+        ok = False
+        print(f"  FAIL  {e.path}: {e.message}", file=sys.stderr)
+    return 0 if ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="tradebot", description="Lean Alpaca trading bot.")
     p.add_argument("--version", action="version", version=f"tradebot {__version__}")
@@ -313,6 +388,27 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("status", help="print broker account snapshot")
     s.add_argument("--config", required=True)
     s.set_defaults(func=cmd_status)
+
+    arena = sub.add_parser("arena", help="run algorithm competitions")
+    asub = arena.add_subparsers(dest="arena_command", required=True)
+
+    al = asub.add_parser("list", help="discover & list contestants (no run)")
+    al.add_argument("--algos", required=True, nargs="+", help="algo files and/or folders")
+    al.set_defaults(func=cmd_arena_list)
+
+    av = asub.add_parser("validate", help="smoke-test one algo file")
+    av.add_argument("path", help="path to an algo .py file")
+    av.set_defaults(func=cmd_arena_validate)
+
+    ar = asub.add_parser("run", help="run a tournament and print a leaderboard")
+    ar.add_argument("--algos", required=True, nargs="+", help="algo files and/or folders")
+    ar.add_argument("--scenario", help="scenario YAML (default: built-in synthetic)")
+    ar.add_argument("--score", default="sharpe",
+                    help="ranking metric: sharpe|total_return|cagr|calmar (default sharpe)")
+    ar.add_argument("--time-budget", dest="time_budget", type=float, default=10.0,
+                    help="per-contestant wall-clock budget in seconds (default 10)")
+    ar.add_argument("--out", help="write the leaderboard to this JSON file")
+    ar.set_defaults(func=cmd_arena_run)
     return p
 
 
