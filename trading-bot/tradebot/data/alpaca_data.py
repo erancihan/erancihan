@@ -52,11 +52,26 @@ class AlpacaData:
 
         ``lookback`` is in days for daily bars, otherwise an approximate window.
         """
+        end = end or datetime.now(timezone.utc)
+        start = end - timedelta(days=lookback)
+        return self._fetch(symbol, timeframe, start, end)
+
+    def bars(
+        self,
+        symbol: str,
+        timeframe: str = "1day",
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> pd.DataFrame:
+        """Fetch bars over an explicit ``[start, end]`` window (used by the cache)."""
+        end = end or datetime.now(timezone.utc)
+        start = start or (end - timedelta(days=365))
+        return self._fetch(symbol, timeframe, start, end)
+
+    def _fetch(self, symbol: str, timeframe: str, start, end) -> pd.DataFrame:
         from alpaca.data.enums import DataFeed
         from alpaca.data.requests import StockBarsRequest
 
-        end = end or datetime.now(timezone.utc)
-        start = end - timedelta(days=lookback)
         req = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=self._timeframe(timeframe),

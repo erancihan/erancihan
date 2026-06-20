@@ -33,6 +33,11 @@ class Scenario:
     volatility: float = 0.012
     # csv params: {symbol: path}
     csv_paths: dict[str, str] = field(default_factory=dict)
+    # alpaca params (pulled once, then cached + replayed)
+    timeframe: str = "1day"
+    start: str | None = None
+    end: str | None = None
+    cache_dir: str = "data/cache"
 
     @classmethod
     def default(cls) -> "Scenario":
@@ -45,12 +50,18 @@ class Scenario:
         known = {
             "name", "symbols", "source", "initial_cash", "commission", "slippage_bps",
             "periods", "seed", "drift", "volatility", "csv_paths",
+            "timeframe", "start", "end", "cache_dir",
         }
         kwargs = {k: v for k, v in raw.items() if k in known}
         return cls(risk=risk, **kwargs)
 
-    def build_frames(self) -> dict[str, pd.DataFrame]:
-        """Materialise the OHLCV frames all contestants will trade."""
+    def build_frames(self, fetcher=None) -> dict[str, pd.DataFrame]:
+        """Materialise the OHLCV frames all contestants will trade.
+
+        ``fetcher`` is only used by the 'alpaca' source; when omitted a default
+        Alpaca-backed fetcher is built from environment credentials. Already-cached
+        data is served without any fetch, so cached rounds run fully offline.
+        """
         if self.source == "synthetic":
             return {
                 sym: synthetic_ohlcv(
@@ -65,8 +76,12 @@ class Scenario:
                 raise ValueError(f"csv_paths missing entries for: {missing}")
             return {sym: load_csv(self.csv_paths[sym]) for sym in self.symbols}
         if self.source == "alpaca":
-            raise NotImplementedError(
-                "The 'alpaca' data source (pull + local cache) lands in Phase 2; "
-                "use 'synthetic' or 'csv' for now."
-            )
+            from ..data.cache import BarCache, build_default_fetcher
+
+            cache = BarCache(self.cache_dir)
+            fetch = fetcher or build_default_fetcher()
+            return {
+                sym: cache.get(sym, self.timeframe, self.start, self.end, fetch)
+                for sym in self.symbols
+            }
         raise ValueError(f"Unknown scenario source: {self.source!r}")

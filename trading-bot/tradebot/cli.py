@@ -338,6 +338,22 @@ def cmd_arena_validate(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_data_pull(args: argparse.Namespace) -> int:
+    """Pull bars from Alpaca into the local cache for offline/repeatable use."""
+    from .data.cache import BarCache, build_default_fetcher
+
+    fetcher = build_default_fetcher()
+    if fetcher is None:
+        print("Missing ALPACA_API_KEY / ALPACA_API_SECRET in environment/.env",
+              file=sys.stderr)
+        return 2
+    cache = BarCache(args.cache_dir)
+    for symbol in args.symbols:
+        df = cache.get(symbol, args.timeframe, args.start, args.end, fetcher)
+        print(f"  {symbol}: {len(df)} bars -> {cache.path(symbol, args.timeframe)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="tradebot", description="Lean Alpaca trading bot.")
     p.add_argument("--version", action="version", version=f"tradebot {__version__}")
@@ -409,6 +425,16 @@ def build_parser() -> argparse.ArgumentParser:
                     help="per-contestant wall-clock budget in seconds (default 10)")
     ar.add_argument("--out", help="write the leaderboard to this JSON file")
     ar.set_defaults(func=cmd_arena_run)
+
+    data = sub.add_parser("data", help="market-data utilities")
+    dsub = data.add_subparsers(dest="data_command", required=True)
+    dp = dsub.add_parser("pull", help="download bars from Alpaca into the local cache")
+    dp.add_argument("--symbols", required=True, nargs="+")
+    dp.add_argument("--timeframe", default="1day")
+    dp.add_argument("--start", help="ISO date, e.g. 2023-01-01")
+    dp.add_argument("--end", help="ISO date, e.g. 2024-01-01")
+    dp.add_argument("--cache-dir", dest="cache_dir", default="data/cache")
+    dp.set_defaults(func=cmd_data_pull)
     return p
 
 

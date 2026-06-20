@@ -12,6 +12,9 @@ config.yaml
 *.sqlite3
 equity*.csv
 
+# Local market-data cache (pulled from Alpaca; reproducible, not source)
+data/cache/
+
 # Python
 __pycache__/
 *.py[cod]

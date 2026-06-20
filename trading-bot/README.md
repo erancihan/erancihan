@@ -230,6 +230,19 @@ Scenarios are reproducible YAML (`scenarios/default.yaml`); synthetic and CSV
 sources work fully offline. See [`algos/README.md`](algos/README.md) for the
 contestant guide.
 
+**Real data, pulled once and cached.** A scenario can compete over real Alpaca
+history. You pull it once into a local cache, then every run is offline and
+reproducible (the bars are fed bar-by-bar, "as if real time"):
+
+```bash
+tradebot data pull --symbols SPY QQQ --start 2023-01-01 --end 2024-01-01
+tradebot arena run --algos ./algos --scenario scenarios/alpaca_spy.yaml
+```
+
+The `BarCache` (`tradebot/data/cache.py`) downloads any missing range, merges it
+into the on-disk cache, and serves everything else from disk — so a given
+(symbol, timeframe, range) is fetched at most once.
+
 > ⚠️ The default runner executes algorithms **in-process** — only run code you
 > trust. The runner is abstracted so a sandboxed subprocess backend can drop in
 > for untrusted submissions.
