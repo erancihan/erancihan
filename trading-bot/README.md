@@ -253,6 +253,36 @@ into the on-disk cache, and serves everything else from disk — so a given
 > trust. The runner is abstracted so a sandboxed subprocess backend can drop in
 > for untrusted submissions.
 
+## Dashboard (web UI)
+
+A read-only FastAPI dashboard visualises everything the bot records: the equity
+curve, account stats, recent orders and positions (from the SQLite log, with a
+live Alpaca overlay when credentials are present), plus the **arena leaderboards**
+with each contestant's equity curve.
+
+```bash
+make install-web      # python web extra + npm install
+make web              # build the frontend, then serve at http://127.0.0.1:8000
+```
+
+Stack: server-side Jinja templates, **TypeScript** bundled with esbuild (no inline
+JS — everything is an imported, type-checked module), **Alpine.js** for reactivity,
+**Apache ECharts** for charts, **Tailwind** for styling. The layering is strict —
+`routes → services → repository`, with HTML *partials* reused for both first paint
+and Alpine's polling, and JSON endpoints feeding the charts. Nothing in the
+trading core imports FastAPI; the web layer is purely additive.
+
+Frontend dev loop:
+
+```bash
+cd frontend
+npm run typecheck     # strict tsc
+npm run watch:js      # rebuild bundle on change (also: watch:css)
+```
+
+> Built assets (`tradebot/web/static/`) are gitignored and reproduced by
+> `npm run build`. The dashboard is read-only — it never places orders.
+
 ## Running it for free, continuously
 
 For a $0 deployment, run the loop on any always-on machine you already have

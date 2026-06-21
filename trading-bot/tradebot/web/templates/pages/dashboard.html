@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · tradebot{% endblock %}
+{% block content %}
+<section class="space-y-6">
+  <h1 class="text-lg font-semibold text-slate-100">Dashboard</h1>
+
+  <div x-data="partialLoader('/partials/stats', 20000)" x-html="html">
+    {% include "components/stats.html" %}
+  </div>
+
+  <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4" x-data="equityChart()">
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-slate-300">Equity curve</h2>
+      <select class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
+              @change="setMode($event.target.value)">
+        <option value="">all modes</option>
+        {% for m in modes %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select>
+    </div>
+    <div x-ref="chart" class="h-72 w-full"></div>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div>
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">Recent orders</h2>
+      <div x-data="partialLoader('/partials/orders', 15000)" x-html="html">
+        {% include "components/orders_table.html" %}
+      </div>
+    </div>
+    <div>
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">Positions</h2>
+      <div x-data="partialLoader('/partials/positions', 15000)" x-html="html">
+        {% include "components/positions_table.html" %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -13,6 +13,7 @@ help:
 	@echo "  backtest      backtest config.yaml (needs creds or --csv)"
 	@echo "  dryrun        offline real-time forward-test on replayed data (no creds)"
 	@echo "  arena         run the example algo competition (no creds)"
+	@echo "  web           build the frontend and serve the dashboard"
 	@echo "  run           paper/live trading loop (needs creds)"
 	@echo "  status        print broker account snapshot"
 
@@ -25,6 +26,10 @@ install: $(VENV)
 
 install-live: $(VENV)
 	$(PIP) install -e ".[dev,live]"
+
+install-web: $(VENV)
+	$(PIP) install -e ".[dev,web]"
+	cd frontend && npm install
 
 test:
 	$(PY) -m pytest
@@ -41,6 +46,12 @@ dryrun:
 
 arena:
 	$(PY) -m tradebot.cli arena run --algos ./algos --scenario scenarios/default.yaml --score sharpe
+
+web-build:
+	cd frontend && npm run build
+
+web: web-build
+	$(PY) -m tradebot.web.server
 
 run:
 	$(PY) -m tradebot.cli run --config config.yaml

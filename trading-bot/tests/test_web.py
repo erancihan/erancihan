@@ -1,0 +1,90 @@
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("httpx")
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from tradebot.arena.scenario import Scenario  # noqa: E402
+from tradebot.arena.store import ArenaStore  # noqa: E402
+from tradebot.arena.tournament import run_tournament  # noqa: E402
+from tradebot.models import Order, Side  # noqa: E402
+from tradebot.storage import Storage  # noqa: E402
+from tradebot.web.app import create_app  # noqa: E402
+
+ALGOS = Path(__file__).resolve().parents[1] / "algos"
+
+
+def _seed_trading(path):
+    st = Storage(str(path))
+    st.record_equity(10_000, 5_000, "paper")
+    st.record_equity(10_100, 4_900, "paper")
+    st.record_equity(10_050, 4_950, "paper")
+    st.record_order(Order(symbol="SPY", qty=10, side=Side.BUY), "ord-1", "paper")
+    st.close()
+
+
+def _seed_arena(path):
+    scenario = Scenario(name="t", periods=120, seed=1)
+    outcome = run_tournament([str(ALGOS)], scenario, "total_return")
+    with ArenaStore(str(path)) as store:
+        store.record_run(scenario, "total_return", outcome)
+
+
+@pytest.fixture
+def client(tmp_path):
+    _seed_trading(tmp_path / "tradebot.db")
+    _seed_arena(tmp_path / "arena.db")
+    app = create_app(trading_db=str(tmp_path / "tradebot.db"),
+                     arena_db=str(tmp_path / "arena.db"))
+    return TestClient(app)
+
+
+def test_dashboard_renders(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Dashboard" in r.text
+    assert "Equity curve" in r.text
+    assert "SPY" in r.text                      # order rendered server-side
+
+
+def test_equity_api_returns_chronological_points(client):
+    data = client.get("/api/equity").json()
+    assert len(data["points"]) == 3
+    assert data["points"][0]["equity"] == 10_000.0
+    assert data["points"][-1]["equity"] == 10_050.0
+
+
+def test_equity_api_mode_filter(client):
+    assert len(client.get("/api/equity?mode=paper").json()["points"]) == 3
+    assert client.get("/api/equity?mode=live").json()["points"] == []
+
+
+def test_partials_reuse_components(client):
+    assert "SPY" in client.get("/partials/orders").text
+    assert "Total return" in client.get("/partials/stats").text
+    assert client.get("/partials/positions").status_code == 200
+
+
+def test_arena_page_and_api(client):
+    page = client.get("/arena")
+    assert page.status_code == 200
+    assert "buy_and_hold" in page.text and "Equity curves" in page.text
+
+    runs = client.get("/api/arena/runs").json()
+    assert len(runs) >= 1
+    detail = client.get(f"/api/arena/runs/{runs[0]['id']}").json()
+    assert len(detail["entries"]) == 3
+    assert detail["curves"] and detail["curves"][0]["equity"]
+
+
+def test_empty_databases_render_gracefully(tmp_path):
+    app = create_app(trading_db=str(tmp_path / "missing.db"),
+                     arena_db=str(tmp_path / "missing2.db"))
+    c = TestClient(app)
+    assert c.get("/").status_code == 200
+    assert c.get("/arena").status_code == 200
+    assert c.get("/api/equity").json()["points"] == []
+    assert c.get("/api/arena/runs").json() == []
