@@ -87,27 +87,48 @@ class Leaderboard:
         return self.entries[0] if self.entries and self.entries[0].ok else None
 
     def table(self) -> str:
-        header = (
-            f"{'#':>2}  {'name':<20} {'author':<12} {'kind':<10} "
-            f"{'score':>10} {'return':>9} {'sharpe':>8} {'maxDD':>8} "
-            f"{'trades':>6}  status"
-        )
-        lines = ["", "Leaderboard (ranked by " + self.metric + ")", header, "-" * len(header)]
-        for r in self.entries:
-            rank = str(r.rank) if r.rank is not None else "-"
-            score = f"{r.score:.3f}" if r.score is not None and isfinite(r.score) else "-"
-            if r.ok:
-                row = (
-                    f"{rank:>2}  {r.name:<20} {r.author:<12} {r.kind:<10} "
-                    f"{score:>10} {r.total_return:>9.2%} {r.sharpe:>8.2f} "
-                    f"{r.max_drawdown:>8.2%} {r.num_trades:>6}  ok"
-                )
-            else:
-                row = (
-                    f"{rank:>2}  {r.name:<20} {r.author:<12} {r.kind:<10} "
-                    f"{'-':>10} {'-':>9} {'-':>8} {'-':>8} {'-':>6}  "
-                    f"{r.status.upper()}: {r.error or ''}"
-                )
-            lines.append(row)
-        lines.append("")
-        return "\n".join(lines)
+        return render_table(self.metric, self.entries)
+
+
+def _finite(v) -> bool:
+    return v is not None and isfinite(v)
+
+
+def _pct(v) -> str:
+    return f"{v:.2%}" if _finite(v) else "-"
+
+
+def _num(v) -> str:
+    return f"{v:.2f}" if _finite(v) else "-"
+
+
+def render_table(metric: str, rows) -> str:
+    """Render a leaderboard from anything exposing the result attributes.
+
+    Works for live ``ContestantResult`` objects and for rows reconstructed from
+    storage, so a saved tournament prints identically to a fresh one.
+    """
+    header = (
+        f"{'#':>2}  {'name':<20} {'author':<12} {'kind':<10} "
+        f"{'score':>10} {'return':>9} {'sharpe':>8} {'maxDD':>8} "
+        f"{'trades':>6}  status"
+    )
+    lines = ["", f"Leaderboard (ranked by {metric})", header, "-" * len(header)]
+    for r in rows:
+        rank = str(r.rank) if r.rank is not None else "-"
+        score = f"{r.score:.3f}" if _finite(r.score) else "-"
+        if r.ok:
+            row = (
+                f"{rank:>2}  {r.name:<20} {r.author:<12} {r.kind:<10} "
+                f"{score:>10} {_pct(r.total_return):>9} {_num(r.sharpe):>8} "
+                f"{_pct(r.max_drawdown):>8} {r.num_trades:>6}  ok"
+            )
+        else:
+            row = (
+                f"{rank:>2}  {r.name:<20} {r.author:<12} {r.kind:<10} "
+                f"{'-':>10} {'-':>9} {'-':>8} {'-':>8} {'-':>6}  "
+                f"{r.status.upper()}: {r.error or ''}"
+            )
+        lines.append(row)
+    lines.append("")
+    return "\n".join(lines)

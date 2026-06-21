@@ -194,8 +194,14 @@ scored automatically.
 ```bash
 tradebot arena list  --algos ./algos                       # discover contestants
 tradebot arena run   --algos ./algos --score sharpe        # rank them
+tradebot arena run   --algos ./algos --save                # ...and persist the run
+tradebot arena history                                     # list past tournaments
+tradebot arena show  [run_id]                              # reprint a saved leaderboard
 tradebot arena validate algos/my_algo.py                   # smoke-test one file
 ```
+
+Saved runs (metadata, per-contestant results, and equity curves as JSON) go to a
+local SQLite DB (`arena.db`), ready for the dashboard to chart later.
 
 A contestant is a class with the `@register` decorator, in **either** interface:
 

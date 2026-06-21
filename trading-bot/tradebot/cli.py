@@ -291,6 +291,13 @@ def cmd_arena_run(args: argparse.Namespace) -> int:
     for e in outcome.load_errors:
         print(f"  ! load error: {e.path}: {e.message}", file=sys.stderr)
 
+    if args.save:
+        from .arena.store import ArenaStore
+
+        with ArenaStore(args.db) as store:
+            run_id = store.record_run(scenario, args.score, outcome)
+        print(f"Saved as run #{run_id} in {args.db}")
+
     if args.out:
         import json
 
@@ -336,6 +343,40 @@ def cmd_arena_validate(args: argparse.Namespace) -> int:
         ok = False
         print(f"  FAIL  {e.path}: {e.message}", file=sys.stderr)
     return 0 if ok else 1
+
+
+def cmd_arena_history(args: argparse.Namespace) -> int:
+    from .arena.store import ArenaStore
+
+    with ArenaStore(args.db) as store:
+        runs = store.list_runs()
+    if not runs:
+        print(f"No saved runs in {args.db}.")
+        return 0
+    print(f"{'#':>4}  {'when (UTC)':<19} {'scenario':<14} {'metric':<12} "
+          f"{'n':>3}  winner")
+    print("-" * 72)
+    for r in runs:
+        when = r["ts"][:19].replace("T", " ")   # YYYY-MM-DD HH:MM:SS
+        print(f"{r['id']:>4}  {when:<19} {r['scenario']:<14} {r['metric']:<12} "
+              f"{r['num_contestants']:>3}  {r['winner'] or '-'}")
+    return 0
+
+
+def cmd_arena_show(args: argparse.Namespace) -> int:
+    from .arena.store import ArenaStore
+
+    with ArenaStore(args.db) as store:
+        run_id = args.run_id if args.run_id is not None else store.latest_run_id()
+        if run_id is None:
+            print(f"No saved runs in {args.db}.", file=sys.stderr)
+            return 1
+        table = store.render_run(run_id)
+    if table is None:
+        print(f"Run #{run_id} not found in {args.db}.", file=sys.stderr)
+        return 1
+    print(f"Run #{run_id}{table}")
+    return 0
 
 
 def cmd_data_pull(args: argparse.Namespace) -> int:
@@ -424,7 +465,18 @@ def build_parser() -> argparse.ArgumentParser:
     ar.add_argument("--time-budget", dest="time_budget", type=float, default=10.0,
                     help="per-contestant wall-clock budget in seconds (default 10)")
     ar.add_argument("--out", help="write the leaderboard to this JSON file")
+    ar.add_argument("--save", action="store_true", help="persist this run to the arena DB")
+    ar.add_argument("--db", default="arena.db", help="arena results DB (default arena.db)")
     ar.set_defaults(func=cmd_arena_run)
+
+    ah = asub.add_parser("history", help="list past saved tournaments")
+    ah.add_argument("--db", default="arena.db")
+    ah.set_defaults(func=cmd_arena_history)
+
+    ash = asub.add_parser("show", help="print a saved tournament's leaderboard")
+    ash.add_argument("run_id", nargs="?", type=int, help="run id (default: latest)")
+    ash.add_argument("--db", default="arena.db")
+    ash.set_defaults(func=cmd_arena_show)
 
     data = sub.add_parser("data", help="market-data utilities")
     dsub = data.add_subparsers(dest="data_command", required=True)

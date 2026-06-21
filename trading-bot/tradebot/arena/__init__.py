@@ -34,6 +34,7 @@ from .interfaces import Action, Algo, Bar, Context
 from .result import ContestantResult, Leaderboard
 from .scenario import Scenario
 from .scoring import available as available_metrics
+from .store import ArenaStore
 from .tournament import TournamentOutcome, run_tournament
 
 __all__ = [
@@ -48,6 +49,7 @@ __all__ = [
     "Leaderboard",
     "ContestantResult",
     "TournamentOutcome",
+    "ArenaStore",
     "run_tournament",
     "available_metrics",
 ]
