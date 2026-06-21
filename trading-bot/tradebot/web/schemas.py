@@ -17,6 +17,14 @@ class EquitySeries(BaseModel):
     points: list[EquityPoint]
 
 
+class OrderRow(BaseModel):
+    ts: str
+    symbol: str
+    side: str
+    qty: float
+    mode: str
+
+
 class LeaderboardEntry(BaseModel):
     rank: int | None
     name: str

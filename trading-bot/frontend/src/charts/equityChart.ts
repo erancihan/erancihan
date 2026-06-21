@@ -1,10 +1,49 @@
-import type { EChartsOption } from "echarts";
+import type { EChartsOption, MarkPointComponentOption } from "echarts";
 
-import type { ArenaRunDetail, EquityCurve, EquitySeries } from "../types";
+import type {
+  ArenaRunDetail,
+  EquityCurve,
+  EquitySeries,
+  OrderRow,
+} from "../types";
 import { baseLineOption, LINE_COLORS } from "./theme";
 
 function shortTs(ts: string): string {
   return ts.slice(0, 19).replace("T", " ");
+}
+
+/** Place each order on the equity line at its nearest-in-time snapshot. */
+function orderMarkPoints(
+  series: EquitySeries,
+  orders: OrderRow[],
+): MarkPointComponentOption | undefined {
+  if (orders.length === 0 || series.points.length === 0) {
+    return undefined;
+  }
+  const times = series.points.map((p) => Date.parse(p.ts));
+  const data = orders.map((order) => {
+    const t = Date.parse(order.ts);
+    let best = 0;
+    let bestDiff = Infinity;
+    for (let i = 0; i < times.length; i += 1) {
+      const diff = Math.abs(times[i] - t);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+      }
+    }
+    const point = series.points[best];
+    const buy = order.side === "buy";
+    return {
+      name: `${order.side} ${order.qty} ${order.symbol}`,
+      coord: [shortTs(point.ts), point.equity],
+      value: buy ? "B" : "S",
+      symbol: "pin" as const,
+      symbolSize: 26,
+      itemStyle: { color: buy ? "#34d399" : "#f43f5e" },
+    };
+  });
+  return { label: { color: "#0f172a", fontSize: 10, fontWeight: "bold" }, data };
 }
 
 /** ECharts option for a single {index, equity} curve (the run page). */
@@ -26,8 +65,8 @@ export function curveOption(name: string, curve: EquityCurve): EChartsOption {
   return option;
 }
 
-/** ECharts option for a single equity curve (the dashboard). */
-export function equityOption(series: EquitySeries): EChartsOption {
+/** ECharts option for a single equity curve with buy/sell markers (dashboard). */
+export function equityOption(series: EquitySeries, orders: OrderRow[] = []): EChartsOption {
   const option = baseLineOption();
   option.xAxis = { ...option.xAxis, data: series.points.map((p) => shortTs(p.ts)) };
   option.series = [
@@ -40,6 +79,7 @@ export function equityOption(series: EquitySeries): EChartsOption {
       lineStyle: { color: LINE_COLORS[0], width: 2 },
       itemStyle: { color: LINE_COLORS[0] },
       data: series.points.map((p) => p.equity),
+      markPoint: orderMarkPoints(series, orders),
     },
   ];
   return option;

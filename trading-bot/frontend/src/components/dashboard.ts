@@ -2,7 +2,7 @@
 
 import * as echarts from "echarts";
 
-import { getEquity } from "../api/client";
+import { getEquity, getOrders } from "../api/client";
 import { refs } from "../alpine";
 import { equityOption } from "../charts/equityChart";
 
@@ -22,8 +22,9 @@ export function equityChart() {
       await this.load();
     },
     async load() {
-      const series = await getEquity(this.mode || undefined);
-      this.chart?.setOption(equityOption(series), true);
+      const mode = this.mode || undefined;
+      const [series, orders] = await Promise.all([getEquity(mode), getOrders(mode)]);
+      this.chart?.setOption(equityOption(series, orders), true);
     },
   };
 }

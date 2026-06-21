@@ -62,6 +62,11 @@ def test_equity_api_mode_filter(client):
     assert client.get("/api/equity?mode=live").json()["points"] == []
 
 
+def test_orders_api(client):
+    rows = client.get("/api/orders").json()
+    assert any(r["symbol"] == "SPY" and r["side"] == "buy" for r in rows)
+
+
 def test_partials_reuse_components(client):
     assert "SPY" in client.get("/partials/orders").text
     assert "Total return" in client.get("/partials/stats").text

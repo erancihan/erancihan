@@ -14,6 +14,7 @@ from ..schemas import (
     JobRequest,
     JobView,
     LeaderboardEntry,
+    OrderRow,
     RunSummary,
 )
 from ..services.jobs_service import VALID_KINDS
@@ -31,6 +32,16 @@ def equity(mode: str | None = None, limit: int = 2000,
         for r in rows
     ]
     return EquitySeries(mode=mode, points=points)
+
+
+@router.get("/orders", response_model=list[OrderRow])
+def orders(mode: str | None = None, limit: int = 100,
+           repo: TradingRepository = Depends(get_trading_repo)):
+    return [
+        OrderRow(ts=r["ts"], symbol=r["symbol"], side=r["side"],
+                 qty=float(r["qty"]), mode=r["mode"])
+        for r in repo.recent_orders(limit=limit, mode=mode)
+    ]
 
 
 @router.get("/arena/runs", response_model=list[RunSummary])

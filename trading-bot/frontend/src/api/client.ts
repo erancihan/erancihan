@@ -1,6 +1,12 @@
 // Typed wrappers around the JSON endpoints. The only place that knows URLs.
 
-import type { ArenaRunDetail, EquitySeries, JobRequest, JobView } from "../types";
+import type {
+  ArenaRunDetail,
+  EquitySeries,
+  JobRequest,
+  JobView,
+  OrderRow,
+} from "../types";
 
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -25,6 +31,11 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 export function getEquity(mode?: string): Promise<EquitySeries> {
   const params = mode ? `?mode=${encodeURIComponent(mode)}` : "";
   return getJson<EquitySeries>(`/api/equity${params}`);
+}
+
+export function getOrders(mode?: string): Promise<OrderRow[]> {
+  const params = mode ? `?mode=${encodeURIComponent(mode)}` : "";
+  return getJson<OrderRow[]>(`/api/orders${params}`);
 }
 
 export function getArenaRun(runId: number): Promise<ArenaRunDetail> {

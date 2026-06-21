@@ -12,6 +12,14 @@ export interface EquitySeries {
   points: EquityPoint[];
 }
 
+export interface OrderRow {
+  ts: string;
+  symbol: string;
+  side: string;
+  qty: number;
+  mode: string;
+}
+
 export interface ArenaCurve {
   name: string;
   index: string[];
