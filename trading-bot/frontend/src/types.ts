@@ -24,3 +24,26 @@ export interface ArenaRunDetail {
   metric: string;
   curves: ArenaCurve[];
 }
+
+export interface EquityCurve {
+  index: string[];
+  equity: number[];
+}
+
+export interface JobRequest {
+  kind: string;
+  strategy: string;
+  periods: number;
+  seed: number;
+  initial_cash: number;
+  params: Record<string, number>;
+}
+
+export interface JobView {
+  id: string;
+  kind: string;
+  state: string;
+  summary?: Record<string, number | string> | null;
+  equity?: EquityCurve | null;
+  error?: string | null;
+}

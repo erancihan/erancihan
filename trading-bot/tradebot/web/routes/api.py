@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..dependencies import get_arena_repo, get_trading_repo
 from ..repository import ArenaRepository, TradingRepository
@@ -11,9 +11,12 @@ from ..schemas import (
     ArenaRunDetail,
     EquityPoint,
     EquitySeries,
+    JobRequest,
+    JobView,
     LeaderboardEntry,
     RunSummary,
 )
+from ..services.jobs_service import VALID_KINDS
 
 router = APIRouter(prefix="/api")
 
@@ -59,3 +62,24 @@ def arena_run(run_id: int, repo: ArenaRepository = Depends(get_arena_repo)):
     run = detail["run"]
     return ArenaRunDetail(id=run["id"], scenario=run["scenario"], metric=run["metric"],
                           entries=entries, curves=curves)
+
+
+@router.post("/jobs")
+def create_job(req: JobRequest, request: Request):
+    if req.kind not in VALID_KINDS:
+        raise HTTPException(status_code=400, detail=f"kind must be one of {VALID_KINDS}")
+    job_id = request.app.state.jobs.submit(
+        req.kind,
+        {"strategy": req.strategy, "periods": req.periods, "seed": req.seed,
+         "initial_cash": req.initial_cash, "params": req.params or {}},
+    )
+    return {"job_id": job_id}
+
+
+@router.get("/jobs/{job_id}", response_model=JobView)
+def read_job(job_id: str, request: Request):
+    job = request.app.state.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return JobView(id=job.id, kind=job.kind, state=job.state,
+                   summary=job.summary, equity=job.equity, error=job.error)

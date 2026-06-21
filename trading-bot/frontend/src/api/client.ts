@@ -1,9 +1,21 @@
 // Typed wrappers around the JSON endpoints. The only place that knows URLs.
 
-import type { ArenaRunDetail, EquitySeries } from "../types";
+import type { ArenaRunDetail, EquitySeries, JobRequest, JobView } from "../types";
 
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) {
+    throw new Error(`Request failed (${response.status}): ${url}`);
+  }
+  return (await response.json()) as T;
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!response.ok) {
     throw new Error(`Request failed (${response.status}): ${url}`);
   }
@@ -25,4 +37,12 @@ export async function getPartial(url: string): Promise<string> {
     throw new Error(`Partial failed (${response.status}): ${url}`);
   }
   return response.text();
+}
+
+export function submitJob(body: JobRequest): Promise<{ job_id: string }> {
+  return postJson<{ job_id: string }>("/api/jobs", body);
+}
+
+export function getJob(id: string): Promise<JobView> {
+  return getJson<JobView>(`/api/jobs/${id}`);
 }

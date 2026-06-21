@@ -51,3 +51,28 @@ class RunSummary(BaseModel):
     metric: str
     num_contestants: int
     winner: str | None = None
+
+
+class EquityCurve(BaseModel):
+    index: list[str]
+    equity: list[float]
+
+
+class JobRequest(BaseModel):
+    kind: str
+    strategy: str = "sma_crossover"
+    periods: int = 500
+    seed: int = 42
+    initial_cash: float = 10_000.0
+    # Left untyped on purpose: coercing to float would turn integer params like
+    # `fast`/`period` into floats and break window-size / iloc indexing.
+    params: dict | None = None
+
+
+class JobView(BaseModel):
+    id: str
+    kind: str
+    state: str
+    summary: dict | None = None
+    equity: EquityCurve | None = None
+    error: str | None = None

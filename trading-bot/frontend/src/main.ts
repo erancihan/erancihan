@@ -5,6 +5,7 @@ import Alpine from "alpinejs";
 
 import { arenaChart } from "./components/arena";
 import { equityChart } from "./components/dashboard";
+import { jobRunner } from "./components/jobRunner";
 import { partialLoader } from "./components/partialLoader";
 
 declare global {
@@ -15,6 +16,7 @@ declare global {
 
 Alpine.data("equityChart", equityChart);
 Alpine.data("arenaChart", arenaChart);
+Alpine.data("jobRunner", jobRunner);
 Alpine.data("partialLoader", partialLoader);
 
 window.Alpine = Alpine;

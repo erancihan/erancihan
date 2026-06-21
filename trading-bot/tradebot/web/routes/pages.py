@@ -25,6 +25,11 @@ def dashboard(request: Request, repo: TradingRepository = Depends(get_trading_re
     return templates.TemplateResponse(request, "pages/dashboard.html", context)
 
 
+@router.get("/run", response_class=HTMLResponse)
+def run_page(request: Request):
+    return templates.TemplateResponse(request, "pages/run.html", {"active": "run"})
+
+
 @router.get("/arena", response_class=HTMLResponse)
 def arena(request: Request, repo: ArenaRepository = Depends(get_arena_repo)):
     runs = repo.list_runs()

@@ -1,10 +1,29 @@
 import type { EChartsOption } from "echarts";
 
-import type { ArenaRunDetail, EquitySeries } from "../types";
+import type { ArenaRunDetail, EquityCurve, EquitySeries } from "../types";
 import { baseLineOption, LINE_COLORS } from "./theme";
 
 function shortTs(ts: string): string {
   return ts.slice(0, 19).replace("T", " ");
+}
+
+/** ECharts option for a single {index, equity} curve (the run page). */
+export function curveOption(name: string, curve: EquityCurve): EChartsOption {
+  const option = baseLineOption();
+  option.xAxis = { ...option.xAxis, data: curve.index.map(shortTs) };
+  option.series = [
+    {
+      name,
+      type: "line",
+      smooth: true,
+      showSymbol: false,
+      areaStyle: { opacity: 0.08 },
+      lineStyle: { color: LINE_COLORS[0], width: 2 },
+      itemStyle: { color: LINE_COLORS[0] },
+      data: curve.equity,
+    },
+  ];
+  return option;
 }
 
 /** ECharts option for a single equity curve (the dashboard). */
