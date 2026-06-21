@@ -10,6 +10,10 @@ trading, a $0 minimum, free IEX market data, and a paper-trading sandbox that
 mirrors the live API. The only money at risk is capital *you* choose to deploy
 in live mode. Everything else — the SDK, the data, this code — is free and open.
 
+> **Contributing / picking this up?** Read [`CLAUDE.md`](CLAUDE.md) for the
+> architecture, invariants, gotchas, and dev workflow. Claude Code skills for
+> common tasks live in [`.claude/skills/`](.claude/skills/).
+
 > ⚠️ **Not financial advice.** Automated trading can lose money fast. The
 > defaults here are conservative and the bot runs in **paper mode** unless you
 > jump through deliberate hoops to enable live trading. Understand the code and
