@@ -60,7 +60,10 @@ tradebot arena history && tradebot arena show
   (`build_frames`); real data flows Alpaca → `data/cache.py BarCache` → frames.
 - **Isolation/sandboxing:** implement the `Runner` protocol in
   `tradebot/arena/runner.py` (the seam for a subprocess sandbox). Keep
-  `tournament.py` and `scoring.py` untouched.
+  `tournament.py` and `scoring.py` untouched. Note the in-process `time_budget_s`
+  is a **soft** timeout (daemon thread, non-blocking, marks `TIMEOUT` but can't
+  kill runaway code) — hard CPU/mem/wall-clock limits require the subprocess
+  runner.
 - **Persistence:** `tradebot/arena/store.py` (SQLite `arena_runs`/`arena_results`,
   equity curves as JSON). The web dashboard reads these.
 

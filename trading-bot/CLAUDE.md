@@ -136,6 +136,18 @@ build) on changes under `trading-bot/**`.
 
 ## Gotchas / lessons learned
 
+- **Arena timeouts are soft (in-process can't hard-kill).** The
+  `InProcessRunner` per-contestant `time_budget_s` (default 10s; CLI
+  `--time-budget`) is a wall-clock guard, not a hard limit — Python threads
+  can't be force-killed. The contestant runs on a **daemon** thread; on expiry
+  it's marked `TIMEOUT` and the tournament continues immediately (non-blocking),
+  but the orphaned thread keeps running in the background until it finishes (it
+  won't block process exit because it's a daemon). CPU/memory are **not**
+  bounded. Real hard limits (kill on timeout, CPU/mem caps) need the subprocess
+  runner — implement the `Runner` protocol seam in `arena/runner.py`. Do **not**
+  wrap the worker in a `ThreadPoolExecutor` context manager: its `__exit__`
+  calls `shutdown(wait=True)` and blocks until the (uninterruptible) task ends,
+  which silently defeats the timeout.
 - **Pydantic coercion:** typing a request field `dict[str, float]` coerces
   integer params (e.g. `fast`, `period`) to floats and breaks `rolling`/`.iloc`.
   `web/schemas.py JobRequest.params` is deliberately left untyped (`dict | None`).
@@ -157,7 +169,9 @@ browser-run backtests/dry-runs) · CI.
 
 Next candidates (not started):
 - Live wall-clock arena **league** (reuse scoring/result layer).
-- **Sandboxed subprocess runner** for untrusted arena code (seam in `runner.py`).
+- **Sandboxed subprocess runner** for untrusted arena code (seam in `runner.py`) —
+  also what gives *hard* CPU/mem/wall-clock limits; current in-process timeout is
+  soft (see Gotchas).
 - Candlestick price chart with order markers (needs storing bar data).
 - Live-account auto-refresh / websocket streaming.
 
