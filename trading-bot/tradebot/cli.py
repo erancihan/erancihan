@@ -285,7 +285,8 @@ def cmd_arena_run(args: argparse.Namespace) -> int:
 
     scenario = Scenario.from_yaml(args.scenario) if args.scenario else Scenario.default()
     outcome = run_tournament(
-        args.algos, scenario, metric=args.score, time_budget_s=args.time_budget
+        args.algos, scenario, metric=args.score, time_budget_s=args.time_budget,
+        isolation=args.isolation, cpu_seconds=args.cpu_seconds, memory_mb=args.memory_mb,
     )
     print(outcome.leaderboard.table())
     for e in outcome.load_errors:
@@ -464,6 +465,13 @@ def build_parser() -> argparse.ArgumentParser:
                     help="ranking metric: sharpe|total_return|cagr|calmar (default sharpe)")
     ar.add_argument("--time-budget", dest="time_budget", type=float, default=10.0,
                     help="per-contestant wall-clock budget in seconds (default 10)")
+    ar.add_argument("--isolation", choices=["process", "thread"], default="process",
+                    help="process = hard timeout + CPU/mem limits (default); "
+                         "thread = lightweight soft timeout")
+    ar.add_argument("--cpu-seconds", dest="cpu_seconds", type=int, default=None,
+                    help="hard CPU-time limit per contestant (process isolation)")
+    ar.add_argument("--memory-mb", dest="memory_mb", type=int, default=None,
+                    help="hard memory limit in MB per contestant (process isolation)")
     ar.add_argument("--out", help="write the leaderboard to this JSON file")
     ar.add_argument("--save", action="store_true", help="persist this run to the arena DB")
     ar.add_argument("--db", default="arena.db", help="arena results DB (default arena.db)")

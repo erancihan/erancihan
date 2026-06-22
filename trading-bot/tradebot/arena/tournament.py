@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ..risk import RiskManager
 from .loader import LoadError, discover
 from .result import Leaderboard
-from .runner import InProcessRunner, Runner
+from .runner import Runner, default_runner
 from .scenario import Scenario
 from .scoring import get_scorer
 from .simulation import SimConfig
@@ -25,11 +25,19 @@ def run_tournament(
     metric: str = "sharpe",
     runner: Runner | None = None,
     time_budget_s: float = 10.0,
+    isolation: str = "process",
+    cpu_seconds: int | None = None,
+    memory_mb: int | None = None,
 ) -> TournamentOutcome:
-    """Load contestants from ``paths`` and rank them over ``scenario``."""
+    """Load contestants from ``paths`` and rank them over ``scenario``.
+
+    By default each contestant runs in an isolated subprocess with a hard
+    timeout + CPU/memory limits (``isolation='process'``); pass
+    ``isolation='thread'`` for the lightweight in-process runner.
+    """
     scenario = scenario or Scenario.default()
     scorer = get_scorer(metric)  # validate metric early (raises on typo)
-    runner = runner or InProcessRunner(time_budget_s)
+    runner = runner or default_runner(time_budget_s, isolation, cpu_seconds, memory_mb)
 
     contestants, load_errors = discover(paths)
     frames = scenario.build_frames()

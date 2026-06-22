@@ -136,18 +136,22 @@ build) on changes under `trading-bot/**`.
 
 ## Gotchas / lessons learned
 
-- **Arena timeouts are soft (in-process can't hard-kill).** The
-  `InProcessRunner` per-contestant `time_budget_s` (default 10s; CLI
-  `--time-budget`) is a wall-clock guard, not a hard limit — Python threads
-  can't be force-killed. The contestant runs on a **daemon** thread; on expiry
-  it's marked `TIMEOUT` and the tournament continues immediately (non-blocking),
-  but the orphaned thread keeps running in the background until it finishes (it
-  won't block process exit because it's a daemon). CPU/memory are **not**
-  bounded. Real hard limits (kill on timeout, CPU/mem caps) need the subprocess
-  runner — implement the `Runner` protocol seam in `arena/runner.py`. Do **not**
-  wrap the worker in a `ThreadPoolExecutor` context manager: its `__exit__`
-  calls `shutdown(wait=True)` and blocks until the (uninterruptible) task ends,
-  which silently defeats the timeout.
+- **Arena isolation & timeouts.** `arena/runner.py` has two runners behind the
+  `Runner` protocol, chosen by `default_runner`:
+  - `SubprocessRunner` (**default** on POSIX, `--isolation process`): each
+    contestant runs in a forked process with a **hard** wall-clock timeout (the
+    process is killed on expiry) + optional CPU/memory `rlimit`s
+    (`--cpu-seconds` / `--memory-mb`). A runaway/hostile algo can't stall the
+    tournament or keep burning CPU. Results return via a `Queue` (consume with
+    the budget to avoid the queue-not-drained deadlock).
+  - `InProcessRunner` (`--isolation thread`): portable **soft** fallback — a
+    daemon thread + `join(timeout)`; marks `TIMEOUT` but can't force-kill the
+    thread (the daemon keeps running in the background; never blocks exit).
+  Lesson: never wrap a worker in a `ThreadPoolExecutor` context manager — its
+  `__exit__` does `shutdown(wait=True)` and blocks until the (uninterruptible)
+  task ends, silently defeating the timeout.
+  Subprocess uses `fork` (args passed by inherited memory, so non-picklable
+  contestant factories/frames are fine; only the result is pickled back).
 - **Pydantic coercion:** typing a request field `dict[str, float]` coerces
   integer params (e.g. `fast`, `period`) to floats and breaks `rolling`/`.iloc`.
   `web/schemas.py JobRequest.params` is deliberately left untyped (`dict | None`).
@@ -164,14 +168,14 @@ build) on changes under `trading-bot/**`.
 ## Roadmap
 
 Done: trading core · dry-run · arena (loading, both interfaces, Alpaca cache,
-persistence) · dashboard (equity+orders+positions+leaderboards, order markers,
-browser-run backtests/dry-runs) · CI.
+persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits) ·
+dashboard (equity+orders+positions+leaderboards, order markers, browser-run
+backtests/dry-runs) · CI.
 
 Next candidates (not started):
 - Live wall-clock arena **league** (reuse scoring/result layer).
-- **Sandboxed subprocess runner** for untrusted arena code (seam in `runner.py`) —
-  also what gives *hard* CPU/mem/wall-clock limits; current in-process timeout is
-  soft (see Gotchas).
+- Stronger sandboxing beyond `rlimit`s for truly hostile code (seccomp /
+  containers / dropped filesystem+network) — builds on `SubprocessRunner`.
 - Candlestick price chart with order markers (needs storing bar data).
 - Live-account auto-refresh / websocket streaming.
 
