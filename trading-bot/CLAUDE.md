@@ -172,6 +172,21 @@ persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits) 
 dashboard (equity+orders+positions+leaderboards, order markers, browser-run
 backtests/dry-runs) · CI.
 
+Planned fixes:
+- **Don't silently downgrade isolation (safety footgun).** `default_runner`
+  currently falls back from `SubprocessRunner` to the soft `InProcessRunner` when
+  fork is unavailable — so a caller asking for *hard* isolation can quietly get
+  *soft* limits, which is dangerous for untrusted competition code.
+  *Plan:* when `isolation='process'` and `fork_available()` is False, **raise** a
+  clear error that points at `--isolation thread` (the only explicit opt-in to
+  soft limits); never auto-downgrade. Optionally add `isolation='auto'` for
+  callers who *do* want graceful degradation (prefer process, warn, then fall
+  back). *Tests:* assert the raise (monkeypatch `fork_available`→False) and that
+  `thread` still returns `InProcessRunner`. *Docs:* update the runner docstring
+  and the isolation gotcha above. *Adjacent cleanup (optional, same file):* the
+  OK/ERROR/result wrapping is duplicated across both runners — extract a shared
+  `_finish(...)` helper.
+
 Next candidates (not started):
 - Live wall-clock arena **league** (reuse scoring/result layer).
 - Stronger sandboxing beyond `rlimit`s for truly hostile code (seccomp /
