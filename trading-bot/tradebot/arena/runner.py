@@ -2,21 +2,26 @@
 
 Two implementations behind one ``Runner`` protocol:
 
-- ``SubprocessRunner`` (default on POSIX) — runs each contestant in its own
-  forked process with a **hard** wall-clock timeout (the process is killed on
-  expiry) plus optional CPU/memory ``rlimit``s. Real isolation: a runaway or
-  hostile algorithm cannot stall the tournament or exhaust the host.
+- ``SubprocessRunner`` — runs each contestant in its own forked process with a
+  **hard** wall-clock timeout (the process is killed on expiry) plus optional
+  CPU/memory ``rlimit``s. Real isolation: a runaway or hostile algorithm cannot
+  stall the tournament or exhaust the host. POSIX/fork only.
 - ``InProcessRunner`` — runs on a daemon thread with a **soft** ``join(timeout)``.
   Portable and fast, but Python threads can't be force-killed, so a runaway
   algo's thread keeps consuming CPU in the background (it's a daemon, so it never
-  blocks process exit). Use where fork isn't available, or for trusted code.
+  blocks process exit). Use for trusted code, or where fork isn't available.
 
-``default_runner`` picks the subprocess runner when fork is available and falls
-back to the thread runner otherwise.
+``default_runner`` selects between them by ``isolation``:
+
+- ``"process"`` (default) — hard isolation; **raises** if fork is unavailable
+  rather than silently downgrading the guarantee to soft limits.
+- ``"thread"`` — soft in-process isolation (an explicit opt-in).
+- ``"auto"`` — process if possible, otherwise a *warned* fall back to thread.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 import multiprocessing as mp
 import queue as queue_mod
@@ -33,6 +38,10 @@ from .result import ERROR, OK, TIMEOUT, ContestantResult
 from .scoring import Scorer
 from .simulation import SimConfig, simulate
 
+log = logging.getLogger("tradebot.arena.runner")
+
+_ISOLATION_MODES = ("process", "thread", "auto")
+
 
 class Runner(Protocol):
     def run(
@@ -43,6 +52,20 @@ class Runner(Protocol):
         config: SimConfig,
         scorer: Scorer,
     ) -> ContestantResult: ...
+
+
+# Shared result wrappers (both runners produce identical OK/ERROR/TIMEOUT rows).
+def _ok(contestant, result, scorer: Scorer, duration: float) -> ContestantResult:
+    return ContestantResult(contestant, status=OK, score=float(scorer(result)),
+                            result=result, duration_s=duration)
+
+
+def _error(contestant, message: str, duration: float) -> ContestantResult:
+    return ContestantResult(contestant, status=ERROR, error=message, duration_s=duration)
+
+
+def _timeout(contestant, message: str, duration: float) -> ContestantResult:
+    return ContestantResult(contestant, status=TIMEOUT, error=message, duration_s=duration)
 
 
 # --------------------------------------------------------------------------- #
@@ -68,16 +91,11 @@ class InProcessRunner:
         duration = time.perf_counter() - start
 
         if thread.is_alive():
-            return ContestantResult(contestant, status=TIMEOUT,
-                                    error=f"exceeded {self.time_budget_s:g}s (soft)",
-                                    duration_s=duration)
+            return _timeout(contestant, f"exceeded {self.time_budget_s:g}s (soft)", duration)
         if "error" in box:
             exc = box["error"]
-            return ContestantResult(contestant, status=ERROR,
-                                    error=f"{type(exc).__name__}: {exc}", duration_s=duration)
-        result = box["result"]
-        return ContestantResult(contestant, status=OK, score=float(scorer(result)),
-                                result=result, duration_s=duration)
+            return _error(contestant, f"{type(exc).__name__}: {exc}", duration)
+        return _ok(contestant, box["result"], scorer, duration)
 
 
 # --------------------------------------------------------------------------- #
@@ -147,9 +165,7 @@ class SubprocessRunner:
         if message is None:
             self._kill(proc)
             reason = self._death_reason(proc.exitcode)
-            return ContestantResult(contestant, status=TIMEOUT,
-                                    error=f"exceeded {self.time_budget_s:g}s{reason}",
-                                    duration_s=duration)
+            return _timeout(contestant, f"exceeded {self.time_budget_s:g}s{reason}", duration)
 
         proc.join(1.0)
         if proc.is_alive():
@@ -157,9 +173,8 @@ class SubprocessRunner:
 
         status, payload = message
         if status == "ok":
-            return ContestantResult(contestant, status=OK, score=float(scorer(payload)),
-                                    result=payload, duration_s=duration)
-        return ContestantResult(contestant, status=ERROR, error=str(payload), duration_s=duration)
+            return _ok(contestant, payload, scorer, duration)
+        return _error(contestant, str(payload), duration)
 
     @staticmethod
     def _kill(proc) -> None:
@@ -184,8 +199,33 @@ class SubprocessRunner:
 
 def default_runner(time_budget_s: float = 10.0, isolation: str = "process",
                    cpu_seconds: int | None = None, memory_mb: int | None = None) -> Runner:
-    """Pick a runner. ``isolation='process'`` uses real subprocess isolation when
-    fork is available, else falls back to the in-process thread runner."""
-    if isolation == "process" and fork_available():
-        return SubprocessRunner(time_budget_s, cpu_seconds, memory_mb)
-    return InProcessRunner(time_budget_s)
+    """Select a runner from an isolation mode.
+
+    - ``"process"`` (default): hard subprocess isolation. **Raises** if fork is
+      unavailable — it never silently downgrades a hard guarantee to soft limits.
+    - ``"thread"``: the soft in-process runner (explicit opt-in to weak limits).
+    - ``"auto"``: process if fork is available, otherwise a warned fall back to
+      the in-process runner.
+    """
+    if isolation not in _ISOLATION_MODES:
+        raise ValueError(
+            f"Unknown isolation {isolation!r}; expected one of {_ISOLATION_MODES}."
+        )
+    if isolation == "thread":
+        return InProcessRunner(time_budget_s)
+    if not fork_available():
+        if isolation == "auto":
+            log.warning(
+                "Hard process isolation unavailable (no 'fork' start method); falling "
+                "back to soft in-process isolation — contestants are NOT killable and "
+                "have no CPU/memory limits."
+            )
+            return InProcessRunner(time_budget_s)
+        # isolation == "process": refuse to silently weaken the guarantee.
+        raise RuntimeError(
+            "Hard process isolation requires the 'fork' start method, which is "
+            "unavailable on this platform. Re-run with --isolation thread to accept "
+            "soft (non-killable, unlimited) limits, or --isolation auto to fall back "
+            "automatically."
+        )
+    return SubprocessRunner(time_budget_s, cpu_seconds, memory_mb)

@@ -465,9 +465,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="ranking metric: sharpe|total_return|cagr|calmar (default sharpe)")
     ar.add_argument("--time-budget", dest="time_budget", type=float, default=10.0,
                     help="per-contestant wall-clock budget in seconds (default 10)")
-    ar.add_argument("--isolation", choices=["process", "thread"], default="process",
-                    help="process = hard timeout + CPU/mem limits (default); "
-                         "thread = lightweight soft timeout")
+    ar.add_argument("--isolation", choices=["process", "thread", "auto"], default="process",
+                    help="process = hard timeout + CPU/mem limits, errors if 'fork' is "
+                         "unavailable (default); thread = lightweight soft timeout; "
+                         "auto = process if possible, else soft fallback")
     ar.add_argument("--cpu-seconds", dest="cpu_seconds", type=int, default=None,
                     help="hard CPU-time limit per contestant (process isolation)")
     ar.add_argument("--memory-mb", dest="memory_mb", type=int, default=None,

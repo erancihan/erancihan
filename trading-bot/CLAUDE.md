@@ -144,9 +144,12 @@ build) on changes under `trading-bot/**`.
     (`--cpu-seconds` / `--memory-mb`). A runaway/hostile algo can't stall the
     tournament or keep burning CPU. Results return via a `Queue` (consume with
     the budget to avoid the queue-not-drained deadlock).
-  - `InProcessRunner` (`--isolation thread`): portable **soft** fallback — a
+  - `InProcessRunner` (`--isolation thread`): portable **soft** runner — a
     daemon thread + `join(timeout)`; marks `TIMEOUT` but can't force-kill the
     thread (the daemon keeps running in the background; never blocks exit).
+  Modes (`default_runner`): `process` (default) **raises** if fork is unavailable
+  — it never silently downgrades hard→soft; `thread` is the explicit soft opt-in;
+  `auto` prefers process and warns before falling back to soft.
   Lesson: never wrap a worker in a `ThreadPoolExecutor` context manager — its
   `__exit__` does `shutdown(wait=True)` and blocks until the (uninterruptible)
   task ends, silently defeating the timeout.
@@ -168,24 +171,10 @@ build) on changes under `trading-bot/**`.
 ## Roadmap
 
 Done: trading core · dry-run · arena (loading, both interfaces, Alpaca cache,
-persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits) ·
+persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits,
+**strict isolation modes** — process/thread/auto, no silent downgrade) ·
 dashboard (equity+orders+positions+leaderboards, order markers, browser-run
 backtests/dry-runs) · CI.
-
-Planned fixes:
-- **Don't silently downgrade isolation (safety footgun).** `default_runner`
-  currently falls back from `SubprocessRunner` to the soft `InProcessRunner` when
-  fork is unavailable — so a caller asking for *hard* isolation can quietly get
-  *soft* limits, which is dangerous for untrusted competition code.
-  *Plan:* when `isolation='process'` and `fork_available()` is False, **raise** a
-  clear error that points at `--isolation thread` (the only explicit opt-in to
-  soft limits); never auto-downgrade. Optionally add `isolation='auto'` for
-  callers who *do* want graceful degradation (prefer process, warn, then fall
-  back). *Tests:* assert the raise (monkeypatch `fork_available`→False) and that
-  `thread` still returns `InProcessRunner`. *Docs:* update the runner docstring
-  and the isolation gotcha above. *Adjacent cleanup (optional, same file):* the
-  OK/ERROR/result wrapping is duplicated across both runners — extract a shared
-  `_finish(...)` helper.
 
 Next candidates (not started):
 - Live wall-clock arena **league** (reuse scoring/result layer).

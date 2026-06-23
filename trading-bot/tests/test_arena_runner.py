@@ -107,3 +107,24 @@ def test_subprocess_isolates_a_crash():
 def test_default_runner_is_subprocess_on_posix():
     assert isinstance(default_runner(isolation="process"), SubprocessRunner)
     assert isinstance(default_runner(isolation="thread"), InProcessRunner)
+
+
+def test_default_runner_thread_is_always_in_process():
+    assert isinstance(default_runner(isolation="thread"), InProcessRunner)
+
+
+def test_default_runner_rejects_unknown_isolation():
+    with pytest.raises(ValueError):
+        default_runner(isolation="bogus")
+
+
+def test_process_isolation_raises_when_fork_unavailable(monkeypatch):
+    # Pretend fork isn't available: 'process' must fail loudly, not downgrade.
+    monkeypatch.setattr("tradebot.arena.runner.fork_available", lambda: False)
+    with pytest.raises(RuntimeError, match="fork"):
+        default_runner(isolation="process")
+
+
+def test_auto_isolation_falls_back_to_thread_without_fork(monkeypatch):
+    monkeypatch.setattr("tradebot.arena.runner.fork_available", lambda: False)
+    assert isinstance(default_runner(isolation="auto"), InProcessRunner)

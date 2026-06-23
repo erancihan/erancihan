@@ -32,8 +32,10 @@ def run_tournament(
     """Load contestants from ``paths`` and rank them over ``scenario``.
 
     By default each contestant runs in an isolated subprocess with a hard
-    timeout + CPU/memory limits (``isolation='process'``); pass
-    ``isolation='thread'`` for the lightweight in-process runner.
+    timeout + CPU/memory limits (``isolation='process'``), which raises if fork
+    is unavailable rather than silently weakening isolation. Pass
+    ``isolation='thread'`` for the lightweight (soft) in-process runner, or
+    ``isolation='auto'`` to fall back to it automatically when fork is missing.
     """
     scenario = scenario or Scenario.default()
     scorer = get_scorer(metric)  # validate metric early (raises on typo)
