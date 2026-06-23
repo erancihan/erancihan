@@ -1,20 +1,36 @@
 # Roadmap — ECS Engine + Multi-Agent Negotiation Simulator
 
-This project is structured like a game engine. The long-term intent is that the
-**engine core is extractable** — a domain-agnostic, reusable foundation — and
-the negotiation simulator is just the first *application* built on top of it.
+This project is structured like a game engine, **built from scratch**. There is
+no third-party ECS — we own the entire stack so it can be understood, learned
+from, and extracted. The long-term intent is that the **engine core is
+reusable** (a domain-agnostic foundation), and the negotiation simulator is just
+the first *application* built on top of it.
+
+> Note: the original scaffold leaned on the `mlange-42/ark` ECS library. That
+> dependency is being removed — building our own ECS is the point, not a detour.
 
 ## Two layers
 
-### 1. Engine core (domain-agnostic, extractable)
+### 1. Engine core (domain-agnostic, extractable, zero third-party ECS)
 
 Knows nothing about cash, gold, or negotiation. It is the reusable skeleton:
 
-- **App / builder** — assemble the world, register plugins, configure the
-  schedule, run the loop.
-- **World** — ECS registry (wraps Ark): entities, components, resources.
-- **Resources** — typed global singletons (Time, RNG, Config; and domain ones
-  like Economy register here).
+- **ECS storage (sparse-set)** — the foundation. Built by hand:
+  - **Entity** = `{index, generation}` so recycled IDs can't alias stale
+    references (a dangling handle fails a generation check instead of pointing
+    at the wrong entity).
+  - **Component store** per type = a sparse set: a dense packed array of values
+    plus a sparse index mapping entity → dense slot. O(1) add / remove / has,
+    cache-friendly dense iteration.
+  - **Queries** = intersect the relevant sparse sets, iterate the smallest one
+    densely. (Archetype storage stays a possible future optimization; sparse-set
+    is the starting point with a clean upgrade path.)
+  - Go has no generic *methods*, only generic *functions* — so component access
+    is package-level generics (`Get[T]`, `Add[T]`, `Query2[A,B]`). This is the
+    same constraint that shaped Ark's API; we make our own call on it.
+- **World** — owns entity allocation, the component stores, and resources.
+- **Resources** — typed global singletons (Time, RNG, Config; domain ones like
+  Economy register here). Also hand-rolled.
 - **Schedule** — ordered stages run each tick:
   `Startup` (once) then `First → PreUpdate → Update → PostUpdate → Last`.
   Systems register into a stage; order within the schedule is deterministic.
@@ -36,6 +52,8 @@ Knows nothing about cash, gold, or negotiation. It is the reusable skeleton:
   core stays transport-agnostic.
 - **Plugin** — a unit that registers components, resources, systems, and events
   into the App. Movement, Economy, and Negotiation are each plugins.
+- **App / builder** — assemble the world, register plugins, configure the
+  schedule, run the loop.
 
 ### 2. Negotiation app (domain)
 
@@ -76,8 +94,8 @@ broadcasting — is engine/domain systems, never an agent concern.
 
 ## Boundary discipline (so extraction is `git mv`, not a rewrite)
 
-- `engine/...` imports nothing domain-specific; the domain depends on the engine
-  only.
+- `engine/...` imports nothing domain-specific **and no third-party ECS**; the
+  domain depends on the engine only.
 - Enforce with an **architecture test** that walks imports and fails if any
   `engine/` package imports the app. Keep a single Go module for now; extracting
   later becomes a `git mv` + a new `go.mod`.
@@ -100,44 +118,52 @@ broadcasting — is engine/domain systems, never an agent concern.
 
 ## Phases
 
-### Phase 1 — Engine core skeleton, validated by porting known-good
-Stand up `engine/`: App builder, World, Schedule (stages), Resources, Event bus,
-Time/fixed-timestep loop, Plugin, Command buffer, Controller/Actor abstraction,
-Snapshot + Observer stage. Prove the abstractions by **re-homing the already
-working pieces** — the loop, movement, broadcast, and control RPC — onto the
-engine with unchanged behavior. Add the import-boundary architecture test.
+### Phase 1 — Hand-rolled sparse-set ECS
+Build the foundation: `Entity{index, generation}` with a free-list allocator;
+generic sparse-set component stores (`Add[T]` / `Remove[T]` / `Get[T]` /
+`Has[T]`); multi-component queries via set intersection (`Query2`, `Query3`,
+…); and a typed resource registry. Unit-tested in isolation, with no engine or
+domain code on top yet. Remove the `mlange-42/ark` dependency from `go.mod`.
 
-### Phase 2 — Actor control plane + negotiation referee
+### Phase 2 — Engine services, validated by porting known-good
+On top of the ECS: App builder, Schedule (stages), Event bus, Time/fixed-
+timestep loop, Plugin, Command buffer, Controller/Actor abstraction, Snapshot +
+Observer stage. Prove the abstractions by **re-homing the already working
+pieces** — the loop, movement, broadcast, and control RPC — onto the engine
+with unchanged behavior. Add the import-boundary architecture test.
+
+### Phase 3 — Actor control plane + negotiation referee
 Implement the actor model end to end: Observations out, Commands in, deadline
 enforced; internal in-process and external gRPC controllers behind one
 interface. Turn the negotiation system into a **referee** that consults brains
-and applies protocol rules — remove the hardcoded random rolls in
-`advanceNegotiations`. Finally drain the proposal queue. Accepted negotiations
-emit a `Deal` (recorded as an event; settlement comes next).
+and applies protocol rules — remove the hardcoded random rolls. Finally drain
+the proposal queue. Accepted negotiations emit a `Deal` (recorded as an event;
+settlement comes next).
 
-### Phase 3 — Economy plugin (world system + singleton resource)
+### Phase 4 — Economy plugin (world system + singleton resource)
 `Economy` / `Ledger` as a resource; a settlement system consumes `Deal`s,
 validates conservation (can't spend what you don't hold), transfers atomically,
 and appends to a transaction ledger. Fully engine-owned — agents only *agree* to
 deals via negotiation logic. Surface balances / ledger via stats or a read RPC.
 
-### Phase 4 — Movement plugin: steering + optional override
+### Phase 5 — Movement plugin: steering + optional override
 Enrich the ported movement plugin: split **steering** (default velocity) from
 **physics integration** (always runs). A marker component lets steering skip
 entities whose agent supplies a `Move` hook; those take velocity from their
 brain. Integration stays uniform.
 
-### Phase 5 — Tests & determinism
-Engine-core tests (schedule order, fixed timestep, command buffer, deadline
-handling) separate from domain tests. Domain **conservation invariant** (total
-cash/assets constant unless explicitly minted/burned). Seeded integration run
-asserting on outputs.
+### Phase 6 — Tests & determinism
+ECS-core tests (entity recycling/generations, store correctness, query
+intersection) and engine tests (schedule order, fixed timestep, command buffer,
+deadline handling), separate from domain tests. Domain **conservation
+invariant** (total cash/assets constant unless explicitly minted/burned). Seeded
+integration run asserting on outputs.
 
-### Phase 6 — Visualizer interactivity & polish
+### Phase 7 — Visualizer interactivity & polish
 Control buttons wired to `ControlSimulation` (pause / step / reset). Honor
 `max_fps` (per-subscriber rate limiting). Entity inspector and ledger view.
 
-### Phase 7 — SDK completeness + extraction validation (future / stretch)
+### Phase 8 — SDK completeness + extraction validation (future / stretch)
 Java build file and richer example brains per language. Then prove the core is
 truly extractable: split `engine/` into its own Go module and stand up a tiny
 second demo domain (e.g. boids/flocking or predator-prey) that reuses the engine
