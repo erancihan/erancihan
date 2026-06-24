@@ -32,12 +32,15 @@ type App struct {
 	started bool
 }
 
-// New returns an App with an empty world and schedule.
+// New returns an App with an empty world and schedule. The event-clear system
+// is registered first in StageFirst so each tick begins with a clean event bus.
 func New() *App {
-	return &App{
+	a := &App{
 		World:    ecs.NewWorld(),
 		schedule: newSchedule(),
 	}
+	a.AddSystem(StageFirst, clearEventsSystem)
+	return a
 }
 
 // WithTickRate sets the target ticks per second. 0 = unbounded.
@@ -80,6 +83,10 @@ func (a *App) start() {
 		return
 	}
 	ecs.SetResource(a.World, Time{Delta: a.delta()})
+	// Pre-create the messaging resources so cross-goroutine submitters never
+	// race to create them; only their internally-guarded queues mutate after.
+	eventsOf(a.World)
+	commandsOf(a.World)
 	for _, sys := range a.startup {
 		sys(a.World)
 	}
