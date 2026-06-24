@@ -64,7 +64,7 @@ trading-bot/
 `tradebot/arena/`: `api.py` (@register), `loader.py` (importlib discovery),
 `interfaces.py` (Algo/Action/Context), `adapters.py` (Policy), `simulation.py`
 (stepped core), `scenario.py`, `runner.py`, `scoring.py`, `result.py`,
-`tournament.py`, `store.py`.
+`tournament.py`, `league.py` (standings over a season), `store.py`.
 
 `tradebot/web/`: `app.py` (factory), `repository.py` (read-only SQLite),
 `services/` (metrics, account, jobs), `routes/` (pages, partials, api),
@@ -174,10 +174,14 @@ Done: trading core · dry-run · arena (loading, both interfaces, Alpaca cache,
 persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits,
 **strict isolation modes** — process/thread/auto, no silent downgrade) ·
 dashboard (equity+orders+positions+leaderboards, order markers, browser-run
-backtests/dry-runs) · CI.
+backtests/dry-runs) · CI · arena **league** (`arena league` — standings evolve
+over a replayed season; `league.py` reuses the tournament + scoring/result layer).
 
 Next candidates (not started):
-- Live wall-clock arena **league** (reuse scoring/result layer).
+- **True real-time** league over live Alpaca data + multi-day persistence. The
+  league *mechanics* (evolving standings, final ranking) already exist in
+  `league.py` and would be reused unchanged; this adds a streaming feed +
+  durable season state (survive restarts).
 - Stronger sandboxing beyond `rlimit`s for truly hostile code (seccomp /
   containers / dropped filesystem+network) — builds on `SubprocessRunner`.
 - Candlestick price chart with order markers (needs storing bar data).

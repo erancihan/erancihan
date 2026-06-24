@@ -50,6 +50,7 @@ Validate and run:
 ```bash
 tradebot arena validate algos/my_algo.py
 tradebot arena run --algos ./algos --score sharpe --save
+tradebot arena league --algos ./algos --snapshots 10   # standings over a season
 tradebot arena history && tradebot arena show
 ```
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 from .api import register, registered
 from .contestant import Contestant
 from .interfaces import Action, Algo, Bar, Context
+from .league import LeagueResult, Standing, StandingsSnapshot, run_league
 from .result import ContestantResult, Leaderboard
 from .scenario import Scenario
 from .scoring import available as available_metrics
@@ -51,5 +52,9 @@ __all__ = [
     "TournamentOutcome",
     "ArenaStore",
     "run_tournament",
+    "run_league",
+    "LeagueResult",
+    "Standing",
+    "StandingsSnapshot",
     "available_metrics",
 ]

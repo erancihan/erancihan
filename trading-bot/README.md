@@ -199,6 +199,7 @@ scored automatically.
 tradebot arena list  --algos ./algos                       # discover contestants
 tradebot arena run   --algos ./algos --score sharpe        # rank them
 tradebot arena run   --algos ./algos --save                # ...and persist the run
+tradebot arena league --algos ./algos --snapshots 10       # standings evolve over a season
 tradebot arena history                                     # list past tournaments
 tradebot arena show  [run_id]                              # reprint a saved leaderboard
 tradebot arena validate algos/my_algo.py                   # smoke-test one file
