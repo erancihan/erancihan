@@ -3,7 +3,6 @@ module github.com/erancihan/negotiation-ecs/backend-go
 go 1.24.0
 
 require (
-	github.com/mlange-42/ark v0.4.1
 	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.6
 )
