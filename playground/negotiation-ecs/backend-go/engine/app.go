@@ -14,8 +14,11 @@ const defaultDelta = 0.05
 // App wires together the world, the schedule, and the run loop. Build it with
 // New, register systems and plugins, then call Run.
 type App struct {
-	// World is the ECS world all systems operate on.
+	// World is the ECS world all systems operate on. It is replaced on reset.
 	World *ecs.World
+
+	// Control accepts pause/resume/step/reset requests from outside the loop.
+	Control *Control
 
 	schedule *Schedule
 	startup  []System
@@ -37,6 +40,7 @@ type App struct {
 func New() *App {
 	a := &App{
 		World:    ecs.NewWorld(),
+		Control:  newControl(),
 		schedule: newSchedule(),
 	}
 	a.AddSystem(StageFirst, clearEventsSystem)
@@ -93,6 +97,21 @@ func (a *App) start() {
 	a.started = true
 }
 
+// Start performs one-time initialization (install resources, run startup
+// systems) without advancing any ticks. Call it before serving requests that
+// read world state, so resources exist before the first RPC arrives. It is
+// idempotent and called automatically by Step/Run.
+func (a *App) Start() { a.start() }
+
+// reset rebuilds the world to its initial state: a fresh world, resources and
+// startup systems re-run, clock back to zero. Startup systems must (re-)install
+// any resources they depend on, since the previous world is discarded.
+func (a *App) reset() {
+	a.World = ecs.NewWorld()
+	a.started = false
+	a.start()
+}
+
 // Step runs exactly one tick: advance the clock, then run the schedule. It runs
 // startup first if it has not yet happened, so Step is usable on its own (tests,
 // single-stepping a paused simulation).
@@ -123,8 +142,7 @@ func (a *App) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				return nil
 			case <-ticker.C:
-				a.Step()
-				if a.reachedMax() {
+				if a.advance() && a.reachedMax() {
 					return nil
 				}
 			}
@@ -136,11 +154,31 @@ func (a *App) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		default:
-			a.Step()
-			if a.reachedMax() {
-				return nil
+			if a.advance() {
+				if a.reachedMax() {
+					return nil
+				}
+			} else {
+				// Paused in unbounded mode — yield instead of busy-spinning.
+				time.Sleep(time.Millisecond)
 			}
 		}
+	}
+}
+
+// advance applies pending control requests and runs at most one tick. It returns
+// true if a tick actually ran (false when reset or paused without a step).
+func (a *App) advance() bool {
+	paused, step, reset := a.Control.take()
+	switch {
+	case reset:
+		a.reset()
+		return false
+	case paused && !step:
+		return false
+	default:
+		a.Step()
+		return true
 	}
 }
 

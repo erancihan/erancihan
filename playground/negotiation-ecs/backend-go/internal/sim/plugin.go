@@ -28,9 +28,13 @@ func (p Plugin) Build(a *engine.App) {
 		seed = rand.Int63()
 	}
 
-	ecs.SetResource(a.World, cfg)
-	ecs.SetResource(a.World, RNG{R: rand.New(rand.NewSource(seed))})
-
+	// Install resources in a startup system (not here) so they are re-created on
+	// reset, which discards the world and re-runs startup. The seed is captured,
+	// so a reset reproduces the same run.
+	a.AddStartupSystem(func(w *ecs.World) {
+		ecs.SetResource(w, cfg)
+		ecs.SetResource(w, RNG{R: rand.New(rand.NewSource(seed))})
+	})
 	a.AddStartupSystem(spawnSystem)
 	a.AddSystem(engine.StageUpdate, MovementSystem)
 	a.AddSystem(engine.StageUpdate, TimeoutSystem)
