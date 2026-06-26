@@ -1,21 +1,24 @@
-// Package agent provides a Go SDK client for the Multi-Agent Negotiation
-// Simulator. External agents can connect to the simulation engine via gRPC
-// and participate in negotiations.
+// Command agent_client is a Go SDK example for the Multi-Agent Negotiation
+// Simulator. It connects over gRPC, streams simulation frames, and participates
+// in negotiations as an external agent.
+//
+// Protocol: an external agent controls one body. Its first proposal claims a
+// body (the engine returns the assigned entity id); subsequent proposals are
+// decisions for that body when it is the agent's turn to respond. A decision is
+// expressed as the offer payload's "action" field — "accept", "reject", or
+// (default) a counter-offer.
 //
 // Usage:
 //
-//	go run agent_client.go [--server localhost:50051] [--agent-id go-agent-001]
+//	go run . [--server localhost:50051] [--agent-id go-coop-001]
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"log"
-	"math/rand"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -23,122 +26,101 @@ import (
 	pb "github.com/erancihan/negotiation-ecs/backend-go/gen/proto/negotiationpb"
 )
 
-// Agent defines the interface for a negotiation agent.
+// Agent is the interface an external agent implements.
 type Agent interface {
-	// OnFrame is called for each simulation frame received.
+	// OnFrame observes the world each tick.
 	OnFrame(frame *pb.SimFrame)
-
-	// Decide is called after each frame to determine if a proposal
-	// should be submitted. Returns nil if no action is needed.
+	// Decide returns a proposal to submit, or nil to do nothing this frame.
 	Decide(frame *pb.SimFrame) *pb.Proposal
+	// OnAck receives the result of a submitted proposal (carries the assigned
+	// body id on first contact).
+	OnAck(ack *pb.ProposalAck)
 }
 
-// RandomAgent is an example agent that makes random offers.
-type RandomAgent struct {
-	AgentID      string
-	rng          *rand.Rand
-	frameCount   int
-	offerEveryN  int
+// CooperativeTrader claims a body, then accepts whenever it is its turn to
+// respond. A complete, protocol-correct example.
+type CooperativeTrader struct {
+	AgentID  string
+	assigned uint64 // wire id of the body we control (0 until assigned)
+	claimed  bool
 }
 
-func NewRandomAgent(agentID string) *RandomAgent {
-	return &RandomAgent{
-		AgentID:     agentID,
-		rng:         rand.New(rand.NewSource(time.Now().UnixNano())),
-		offerEveryN: 50,
-	}
-}
-
-func (a *RandomAgent) OnFrame(frame *pb.SimFrame) {
-	a.frameCount++
+func (a *CooperativeTrader) OnFrame(frame *pb.SimFrame) {
 	if frame.GetTick()%100 == 0 {
-		log.Printf("[%s] Tick %d | Entities: %d | Events: %d",
-			a.AgentID, frame.GetTick(), len(frame.GetEntities()), len(frame.GetEvents()))
+		log.Printf("[%s] tick %d | body=%d | entities=%d",
+			a.AgentID, frame.GetTick(), a.assigned, len(frame.GetEntities()))
 	}
 }
 
-func (a *RandomAgent) Decide(frame *pb.SimFrame) *pb.Proposal {
-	if a.frameCount%a.offerEveryN != 0 {
-		return nil
+func (a *CooperativeTrader) Decide(frame *pb.SimFrame) *pb.Proposal {
+	// Claim a body on first contact.
+	if !a.claimed {
+		a.claimed = true
+		return a.proposal(map[string]any{"action": "counter", "hello": true})
 	}
-
-	entities := frame.GetEntities()
-	if len(entities) == 0 {
-		return nil
+	if a.assigned == 0 {
+		return nil // waiting for the assignment ack
 	}
-
-	target := entities[a.rng.Intn(len(entities))]
-	assets := []string{"gold", "silver", "oil"}
-
-	offer := map[string]interface{}{
-		"offer_cash":     a.rng.Intn(100) + 10,
-		"request_asset":  assets[a.rng.Intn(len(assets))],
-		"request_amount": a.rng.Intn(10) + 1,
+	// If our body is responding (COUNTERING), accept the standing offer.
+	for _, e := range frame.GetEntities() {
+		if e.GetEntityId() == a.assigned &&
+			e.GetNegotiationStatus() == pb.NegotiationStatus_NEGOTIATION_STATUS_COUNTERING {
+			return a.proposal(map[string]any{"action": "accept"})
+		}
 	}
+	return nil
+}
 
-	offerJSON, _ := json.Marshal(offer)
-	log.Printf("[%s] Submitting offer to entity %d: %s",
-		a.AgentID, target.GetEntityId(), string(offerJSON))
-
-	return &pb.Proposal{
-		AgentId:        a.AgentID,
-		TargetEntityId: target.GetEntityId(),
-		OfferJson:      string(offerJSON),
+func (a *CooperativeTrader) OnAck(ack *pb.ProposalAck) {
+	if a.assigned == 0 && ack.GetAccepted() {
+		a.assigned = ack.GetAssignedEntityId()
+		log.Printf("[%s] assigned body %d", a.AgentID, a.assigned)
 	}
+}
+
+func (a *CooperativeTrader) proposal(offer map[string]any) *pb.Proposal {
+	js, _ := json.Marshal(offer)
+	return &pb.Proposal{AgentId: a.AgentID, OfferJson: string(js)}
 }
 
 func main() {
 	serverAddr := flag.String("server", "localhost:50051", "gRPC server address")
-	agentID := flag.String("agent-id", "go-random-001", "Agent identifier")
+	agentID := flag.String("agent-id", "go-coop-001", "agent identifier")
 	flag.Parse()
 
-	// Connect to the simulation server
-	conn, err := grpc.NewClient(*serverAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	conn, err := grpc.NewClient(*serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		log.Fatalf("connect: %v", err)
 	}
 	defer conn.Close()
 
 	client := pb.NewSimulationServiceClient(conn)
-	log.Printf("[%s] Connected to %s", *agentID, *serverAddr)
+	agent := &CooperativeTrader{AgentID: *agentID}
+	log.Printf("[%s] connected to %s", *agentID, *serverAddr)
 
-	// Create agent
-	agent := NewRandomAgent(*agentID)
-
-	// Start streaming frames
-	ctx := context.Background()
-	stream, err := client.StreamSimulation(ctx, &pb.StreamRequest{MaxFps: 10})
+	stream, err := client.StreamSimulation(context.Background(), &pb.StreamRequest{MaxFps: 10})
 	if err != nil {
-		log.Fatalf("Failed to start stream: %v", err)
+		log.Fatalf("stream: %v", err)
 	}
-
-	log.Printf("[%s] Streaming frames...", *agentID)
 
 	for {
 		frame, err := stream.Recv()
 		if err == io.EOF {
-			log.Printf("[%s] Stream ended", *agentID)
-			break
+			log.Printf("[%s] stream ended", *agentID)
+			return
 		}
 		if err != nil {
-			log.Fatalf("[%s] Stream error: %v", *agentID, err)
+			log.Fatalf("[%s] stream error: %v", *agentID, err)
 		}
 
 		agent.OnFrame(frame)
-
 		if proposal := agent.Decide(frame); proposal != nil {
-			ack, err := client.SubmitProposal(ctx, proposal)
+			ack, err := client.SubmitProposal(context.Background(), proposal)
 			if err != nil {
-				log.Printf("[%s] Proposal error: %v", *agentID, err)
+				log.Printf("[%s] proposal error: %v", *agentID, err)
 				continue
 			}
-			status := "rejected"
-			if ack.GetAccepted() {
-				status = "accepted"
-			}
-			fmt.Printf("[%s] Proposal %s: %s\n", *agentID, status, ack.GetReason())
+			agent.OnAck(ack)
 		}
 	}
 }
