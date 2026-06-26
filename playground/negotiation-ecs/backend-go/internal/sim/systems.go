@@ -10,38 +10,6 @@ import (
 // tickOf reads the current tick from the engine clock.
 func tickOf(w *ecs.World) uint64 { return ecs.MustResource[engine.Time](w).Tick }
 
-// MovementSystem integrates velocity into position and bounces entities off the
-// world boundaries.
-func MovementSystem(w *ecs.World) {
-	dt := ecs.MustResource[engine.Time](w).Delta
-	cfg := config(w)
-
-	q := ecs.Query2[Position, Velocity](w)
-	for q.Next() {
-		pos, vel := q.Get()
-
-		pos.X += vel.DX * dt
-		pos.Y += vel.DY * dt
-
-		switch {
-		case pos.X < 0:
-			pos.X = -pos.X
-			vel.DX = -vel.DX
-		case pos.X > cfg.WorldWidth:
-			pos.X = 2*cfg.WorldWidth - pos.X
-			vel.DX = -vel.DX
-		}
-		switch {
-		case pos.Y < 0:
-			pos.Y = -pos.Y
-			vel.DY = -vel.DY
-		case pos.Y > cfg.WorldHeight:
-			pos.Y = 2*cfg.WorldHeight - pos.Y
-			vel.DY = -vel.DY
-		}
-	}
-}
-
 // TimeoutSystem expires negotiations that have run past their deadline.
 func TimeoutSystem(w *ecs.World) {
 	tick := tickOf(w)
