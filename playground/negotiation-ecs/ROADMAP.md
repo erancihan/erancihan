@@ -15,8 +15,9 @@ the first *application* built on top of it.
 - ✅ **Phase 1 — Hand-rolled sparse-set ECS** (done)
 - ✅ **Phase 2 — Engine services + port off Ark** (done)
 - ✅ **Phase 3 — Actor control plane + negotiation referee** (done)
-- ⏳ **Phase 4 — Economy plugin** (next)
-- ⬜ Phases 5–8 — pending
+- ✅ **Phase 4 — Economy plugin** (done)
+- ⏳ **Phase 5 — Movement: steering + optional override** (next)
+- ⬜ Phases 6–8 — pending
 
 ## Two layers
 
@@ -158,11 +159,17 @@ agent to a body, returns `assigned_entity_id`, and records a proposal the
 Acceptance emits a `Deal` (no cash moves yet — settlement is Phase 4). Covered by
 unit, integration, and gRPC round-trip (bufconn) tests, all green under `-race`.
 
-### Phase 4 — Economy plugin (world system + singleton resource)
-`Economy` / `Ledger` as a resource; a settlement system consumes `Deal`s,
-validates conservation (can't spend what you don't hold), transfers atomically,
-and appends to a transaction ledger. Fully engine-owned — agents only *agree* to
-deals via negotiation logic. Surface balances / ledger via stats or a read RPC.
+### Phase 4 — Economy plugin (world system + singleton resource) ✅ done
+The `internal/economy` package: an `Economy`/ledger resource and a
+`SettlementSystem` (StagePostUpdate) that consumes the `Deal` events the referee
+emits, applying each atomically (From pays cash, To hands over the asset),
+validating conservation and refusing overdrafts/insufficient assets. Offers now
+carry structured terms (`offer_cash` + `request_asset`/`amount`) that brains
+haggle over. The package depends on `sim` but `sim` does not depend on it — the
+App composes both plugins, so the decoupling is a real package boundary, no
+cycle. Tested for per-tick cash/asset conservation, valid swaps, and rejection
+of illegal deals. (Surfacing balances via a dedicated read RPC is deferred —
+balances already ride in entity inventories on every frame.)
 
 ### Phase 5 — Movement plugin: steering + optional override
 Enrich the ported movement plugin: split **steering** (default velocity) from
