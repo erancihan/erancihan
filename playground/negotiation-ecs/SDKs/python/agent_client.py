@@ -1,24 +1,26 @@
 """
 Multi-Agent Negotiation Simulator — Python Agent SDK
 
-Provides a base class for building external agents that connect to the
-simulation engine via gRPC and participate in negotiations.
+An external agent controls one body. Its first proposal claims a body (the engine
+returns the assigned entity id in the ack); subsequent proposals are decisions for
+that body when it is the agent's turn to respond. A decision is expressed by the
+offer payload's "action" field — "accept", "reject", or (default) a counter-offer.
+
+Setup (one-time): generate the gRPC stubs from the project root:
+    make sdk-python
+    # or: cd SDKs/python && python -m grpc_tools.protoc \
+    #       -I../../proto --python_out=. --grpc_python_out=. ../../proto/simulation.proto
 
 Usage:
-    python agent_client.py [--server localhost:50051] [--agent-id my-agent]
+    python agent_client.py [--server localhost:50051] [--agent-id py-coop-001]
 """
 
 import argparse
 import json
-import sys
-import time
-import threading
 from abc import ABC, abstractmethod
 
 import grpc
 
-# Import generated protobuf stubs
-# Run: python -m grpc_tools.protoc -I../../proto --python_out=. --grpc_python_out=. ../../proto/simulation.proto
 import simulation_pb2
 import simulation_pb2_grpc
 
@@ -26,164 +28,89 @@ import simulation_pb2_grpc
 class NegotiationAgent(ABC):
     """Base class for external negotiation agents.
 
-    Subclass this and implement `on_frame()` and `decide()` to create
-    a custom agent that participates in the simulation.
+    Subclass and implement ``on_frame`` and ``decide``. The agent loop streams
+    frames, submits the decisions ``decide`` returns, and routes acks back via
+    ``on_proposal_result`` (where the assigned body id arrives on first contact).
     """
 
     def __init__(self, agent_id: str, server_addr: str = "localhost:50051"):
         self.agent_id = agent_id
         self.server_addr = server_addr
-        self.channel = None
-        self.stub = None
-        self._running = False
-        self._frame_count = 0
-
-    def connect(self):
-        """Establish gRPC connection to the simulation server."""
-        self.channel = grpc.insecure_channel(self.server_addr)
-        self.stub = simulation_pb2_grpc.SimulationServiceStub(self.channel)
-        print(f"[{self.agent_id}] Connected to {self.server_addr}")
-
-    def disconnect(self):
-        """Close the gRPC connection."""
-        if self.channel:
-            self.channel.close()
-            print(f"[{self.agent_id}] Disconnected")
-
-    def submit_proposal(self, target_entity_id: int, offer: dict) -> simulation_pb2.ProposalAck:
-        """Submit a negotiation proposal to the simulation.
-
-        Args:
-            target_entity_id: Entity to negotiate with (0 = let engine assign).
-            offer: Dict with offer details (will be JSON-encoded).
-
-        Returns:
-            ProposalAck with acceptance status and reason.
-        """
-        proposal = simulation_pb2.Proposal(
-            agent_id=self.agent_id,
-            target_entity_id=target_entity_id,
-            offer_json=json.dumps(offer),
-        )
-        return self.stub.SubmitProposal(proposal)
-
-    def get_world_state(self) -> simulation_pb2.WorldState:
-        """Get a snapshot of the current simulation state."""
-        return self.stub.GetWorldState(simulation_pb2.WorldStateRequest())
+        self.assigned_entity_id = 0
+        self._channel = None
+        self._stub = None
 
     def run(self):
-        """Start the agent loop: stream frames and make decisions."""
-        self.connect()
-        self._running = True
-
+        self._channel = grpc.insecure_channel(self.server_addr)
+        self._stub = simulation_pb2_grpc.SimulationServiceStub(self._channel)
+        print(f"[{self.agent_id}] connected to {self.server_addr}")
         try:
-            print(f"[{self.agent_id}] Starting frame stream...")
-            request = simulation_pb2.StreamRequest(max_fps=10)
-            stream = self.stub.StreamSimulation(request)
-
+            stream = self._stub.StreamSimulation(simulation_pb2.StreamRequest(max_fps=10))
             for frame in stream:
-                if not self._running:
-                    break
-
-                self._frame_count += 1
                 self.on_frame(frame)
-
-                # Let the agent decide whether to submit proposals
-                decision = self.decide(frame)
-                if decision is not None:
-                    target_id, offer = decision
-                    try:
-                        ack = self.submit_proposal(target_id, offer)
-                        self.on_proposal_result(ack)
-                    except grpc.RpcError as e:
-                        print(f"[{self.agent_id}] Proposal error: {e}")
-
+                offer = self.decide(frame)
+                if offer is not None:
+                    ack = self._stub.SubmitProposal(simulation_pb2.Proposal(
+                        agent_id=self.agent_id,
+                        offer_json=json.dumps(offer),
+                    ))
+                    self.on_proposal_result(ack)
         except grpc.RpcError as e:
-            print(f"[{self.agent_id}] Stream error: {e}")
+            print(f"[{self.agent_id}] stream error: {e}")
         except KeyboardInterrupt:
-            print(f"\n[{self.agent_id}] Interrupted")
+            print(f"\n[{self.agent_id}] interrupted")
         finally:
-            self._running = False
-            self.disconnect()
+            if self._channel:
+                self._channel.close()
 
-    def stop(self):
-        """Signal the agent to stop."""
-        self._running = False
-
-    @abstractmethod
-    def on_frame(self, frame: simulation_pb2.SimFrame):
-        """Called for each simulation frame received.
-
-        Override this to process world state updates.
-        """
-        pass
+    def on_proposal_result(self, ack):
+        if self.assigned_entity_id == 0 and ack.accepted:
+            self.assigned_entity_id = ack.assigned_entity_id
+            print(f"[{self.agent_id}] assigned body {self.assigned_entity_id}")
 
     @abstractmethod
-    def decide(self, frame: simulation_pb2.SimFrame):
-        """Called after each frame to decide whether to submit a proposal.
+    def on_frame(self, frame):
+        """Observe the world each tick."""
 
-        Returns:
-            None if no action, or (target_entity_id, offer_dict) to submit.
-        """
-        pass
-
-    def on_proposal_result(self, ack: simulation_pb2.ProposalAck):
-        """Called when a proposal submission receives a response."""
-        status = "accepted" if ack.accepted else "rejected"
-        print(f"[{self.agent_id}] Proposal {status}: {ack.reason}")
+    @abstractmethod
+    def decide(self, frame):
+        """Return an offer dict to submit, or None to do nothing this frame."""
 
 
-# =============================================================================
-# Example Agent: RandomAgent
-# =============================================================================
-
-class RandomAgent(NegotiationAgent):
-    """Example agent that makes random offers every N frames."""
+class CooperativeTrader(NegotiationAgent):
+    """Claims a body, then accepts whenever it is its turn to respond."""
 
     def __init__(self, agent_id: str, server_addr: str = "localhost:50051"):
         super().__init__(agent_id, server_addr)
-        self.offer_interval = 50  # Make an offer every 50 frames
-        import random
-        self._rng = random
+        self._claimed = False
 
     def on_frame(self, frame):
         if frame.tick % 100 == 0:
-            print(
-                f"[{self.agent_id}] Tick {frame.tick} | "
-                f"Entities: {len(frame.entities)} | "
-                f"Events: {len(frame.events)}"
-            )
+            print(f"[{self.agent_id}] tick {frame.tick} | body={self.assigned_entity_id} "
+                  f"| entities={len(frame.entities)}")
 
     def decide(self, frame):
-        if self._frame_count % self.offer_interval != 0:
-            return None
+        # Claim a body on first contact.
+        if not self._claimed:
+            self._claimed = True
+            return {"action": "counter", "hello": True}
+        if self.assigned_entity_id == 0:
+            return None  # waiting for the assignment ack
+        # If our body is responding (COUNTERING), accept the standing offer.
+        for e in frame.entities:
+            if (e.entity_id == self.assigned_entity_id
+                    and e.negotiation_status == simulation_pb2.NEGOTIATION_STATUS_COUNTERING):
+                return {"action": "accept"}
+        return None
 
-        if not frame.entities:
-            return None
-
-        # Pick a random entity to negotiate with
-        target = self._rng.choice(frame.entities)
-        offer = {
-            "offer_cash": self._rng.randint(10, 100),
-            "request_asset": self._rng.choice(["gold", "silver", "oil"]),
-            "request_amount": self._rng.randint(1, 10),
-        }
-        print(f"[{self.agent_id}] Submitting offer to entity {target.entity_id}: {offer}")
-        return (target.entity_id, offer)
-
-
-# =============================================================================
-# CLI Entry Point
-# =============================================================================
 
 def main():
     parser = argparse.ArgumentParser(description="Negotiation Agent SDK - Python")
     parser.add_argument("--server", default="localhost:50051", help="gRPC server address")
-    parser.add_argument("--agent-id", default="python-random-001", help="Agent identifier")
+    parser.add_argument("--agent-id", default="py-coop-001", help="agent identifier")
     args = parser.parse_args()
 
-    agent = RandomAgent(agent_id=args.agent_id, server_addr=args.server)
-    agent.run()
+    CooperativeTrader(agent_id=args.agent_id, server_addr=args.server).run()
 
 
 if __name__ == "__main__":

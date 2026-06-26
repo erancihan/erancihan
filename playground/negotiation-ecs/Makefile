@@ -1,4 +1,4 @@
-.PHONY: proto backend visualizer run run-headless test clean sdk-python sdk-java help
+.PHONY: proto backend visualizer run run-headless test clean sdk-python sdk-java sdk-go help
 
 PROTO_DIR = proto
 GO_DIR = backend-go
@@ -74,15 +74,15 @@ sdk-python: ## Generate Python protobuf stubs
 		../../$(PROTO_DIR)/simulation.proto
 	@echo "==> Python stubs generated in SDKs/python/"
 
-sdk-java: ## Generate Java protobuf stubs (requires protoc-gen-grpc-java)
-	@echo "==> Generating Java protobuf stubs..."
-	mkdir -p SDKs/java/gen
-	protoc \
-		-I$(PROTO_DIR) \
-		--java_out=SDKs/java/gen \
-		--grpc-java_out=SDKs/java/gen \
-		$(PROTO_DIR)/simulation.proto
-	@echo "==> Java stubs generated in SDKs/java/gen/"
+sdk-java: ## Build the Java SDK (generates stubs via Maven)
+	@echo "==> Building Java SDK..."
+	cd SDKs/java && mvn -q compile
+	@echo "==> Java SDK compiled (stubs generated under target/generated-sources)"
+
+sdk-go: ## Build the Go SDK
+	@echo "==> Building Go SDK..."
+	cd SDKs/go && go build ./...
+	@echo "==> Go SDK built"
 
 # =============================================================================
 # Testing
