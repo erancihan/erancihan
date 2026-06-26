@@ -5,3 +5,9 @@ vendor
 
 # database files
 *.db
+
+# quarantined duplicates
+.imgdedupe-trash/
+
+# built binary
+/imgdedupe

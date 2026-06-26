@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>img-dedupe</title>
+    <!-- TailwindCSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+<div x-data="app()" x-init="loadFolders()" x-cloak class="max-w-6xl mx-auto p-6">
+
+    <header class="mb-6">
+        <h1 class="text-3xl font-bold tracking-tight">🖼️ img-dedupe</h1>
+        <p class="text-slate-500">Find and remove duplicate images.</p>
+    </header>
+
+    <!-- Toast / message -->
+    <template x-if="message">
+        <div class="mb-4 px-4 py-2 rounded-lg text-sm"
+             :class="messageOk ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+             x-text="message"></div>
+    </template>
+
+    <!-- Folders -->
+    <section class="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Folders</h2>
+
+        <form @submit.prevent="addFolder()" class="flex gap-2 mb-4">
+            <input x-model="newPath" type="text" placeholder="/absolute/path/to/photos"
+                   class="flex-1 border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <button type="submit"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg">
+                Add
+            </button>
+        </form>
+
+        <template x-if="folders.length === 0">
+            <p class="text-slate-400 text-sm">No folders registered yet.</p>
+        </template>
+
+        <ul class="divide-y divide-slate-100">
+            <template x-for="f in folders" :key="f.ID">
+                <li class="flex items-center justify-between py-2">
+                    <span class="font-mono text-sm" x-text="f.path"></span>
+                    <button @click="removeFolder(f)"
+                            class="text-slate-400 hover:text-red-600 text-sm">Remove</button>
+                </li>
+            </template>
+        </ul>
+
+        <div class="mt-4 flex items-center gap-3">
+            <button @click="scan()" :disabled="busy"
+                    class="bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg">
+                <span x-text="busy ? 'Scanning…' : 'Scan now'"></span>
+            </button>
+            <template x-if="scanResult">
+                <span class="text-sm text-slate-500">
+                    <span x-text="scanResult.folders_scanned"></span> folder(s),
+                    <span x-text="scanResult.images_found"></span> image(s):
+                    <span x-text="scanResult.images_added"></span> added,
+                    <span x-text="scanResult.images_updated"></span> updated.
+                </span>
+            </template>
+        </div>
+    </section>
+
+    <!-- Duplicates -->
+    <section class="bg-white rounded-xl shadow-sm p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h2 class="text-lg font-semibold">Duplicates</h2>
+            <div class="flex flex-wrap items-center gap-2">
+                <button @click="findDuplicates()" :disabled="busy"
+                        class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg">
+                    Find duplicates
+                </button>
+
+                <select x-model="policy" class="border border-slate-300 rounded-lg px-2 py-2 text-sm">
+                    <option value="newest">keep newest</option>
+                    <option value="oldest">keep oldest</option>
+                    <option value="largest">keep largest</option>
+                    <option value="first">keep first</option>
+                </select>
+
+                <label class="flex items-center gap-1 text-sm text-slate-600">
+                    <input type="checkbox" x-model="dryRun" class="rounded"> dry&nbsp;run
+                </label>
+
+                <button @click="autoResolve()" :disabled="busy || groups.length === 0"
+                        class="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-medium px-3 py-2 rounded-lg text-sm">
+                    Auto-resolve all
+                </button>
+            </div>
+        </div>
+
+        <template x-if="loaded && groups.length === 0">
+            <p class="text-slate-400 text-sm">No duplicate groups. Scan some folders, then search again.</p>
+        </template>
+
+        <!-- Sticky action bar when something is selected -->
+        <template x-if="selectedCount() > 0">
+            <div class="sticky top-2 z-10 flex items-center justify-between bg-red-50 border border-red-200 rounded-lg px-4 py-2 mb-4">
+                <span class="text-sm text-red-700">
+                    <span x-text="selectedCount()"></span> file(s) selected for removal
+                </span>
+                <div class="flex gap-2">
+                    <button @click="clearSelection()" class="text-sm text-slate-500 hover:text-slate-700">Clear</button>
+                    <button @click="deleteSelected()" :disabled="busy"
+                            class="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium px-3 py-1.5 rounded-lg">
+                        <span x-text="dryRun ? 'Preview removal' : 'Delete selected'"></span>
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <div class="space-y-6">
+            <template x-for="g in groups" :key="g.hash">
+                <div class="border border-slate-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="font-mono text-xs text-slate-400" x-text="g.hash.slice(0,16) + '…'"></span>
+                        <span class="text-xs text-slate-400" x-text="g.images.length + ' copies'"></span>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        <template x-for="img in g.images" :key="img.ID">
+                            <div class="border rounded-lg overflow-hidden"
+                                 :class="selected[img.ID] ? 'border-red-400 ring-2 ring-red-200' : 'border-slate-200'">
+                                <a :href="`/api/images/${img.ID}/raw`" target="_blank" rel="noopener">
+                                    <img :src="`/api/images/${img.ID}/thumb?size=240`" loading="lazy"
+                                         class="w-full h-32 object-cover bg-slate-100">
+                                </a>
+                                <div class="p-2 text-xs">
+                                    <p class="truncate font-mono" :title="img.path" x-text="img.path"></p>
+                                    <p class="text-slate-400">
+                                        <span x-text="formatBytes(img.size)"></span>
+                                        <template x-if="img.width">
+                                            <span> · <span x-text="img.width + '×' + img.height"></span></span>
+                                        </template>
+                                    </p>
+                                    <div class="flex items-center justify-between mt-1">
+                                        <label class="flex items-center gap-1 text-red-600">
+                                            <input type="checkbox" :checked="selected[img.ID]"
+                                                   @change="toggle(img.ID)" class="rounded"> delete
+                                        </label>
+                                        <button @click="keepOnly(g, img)"
+                                                class="text-blue-600 hover:underline">keep this</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </section>
+</div>
+
+<script>
+function app() {
+    return {
+        folders: [],
+        groups: [],
+        selected: {},
+        newPath: '',
+        policy: 'newest',
+        dryRun: true,
+        busy: false,
+        loaded: false,
+        scanResult: null,
+        message: '',
+        messageOk: true,
+
+        async api(method, url, body) {
+            const opts = { method, headers: {} };
+            if (body !== undefined) {
+                opts.headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify(body);
+            }
+            const res = await fetch(url, opts);
+            if (res.status === 204) return null;
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || res.statusText);
+            return data;
+        },
+
+        notify(msg, ok = true) {
+            this.message = msg;
+            this.messageOk = ok;
+            setTimeout(() => { this.message = ''; }, 5000);
+        },
+
+        async loadFolders() {
+            try { this.folders = await this.api('GET', '/api/folders') || []; }
+            catch (e) { this.notify(e.message, false); }
+        },
+
+        async addFolder() {
+            if (!this.newPath.trim()) return;
+            try {
+                await this.api('POST', '/api/folders', { path: this.newPath.trim() });
+                this.newPath = '';
+                await this.loadFolders();
+                this.notify('Folder registered.');
+            } catch (e) { this.notify(e.message, false); }
+        },
+
+        async removeFolder(f) {
+            if (!confirm(`Remove ${f.path} from the index? (files on disk are kept)`)) return;
+            try {
+                await this.api('DELETE', `/api/folders/${f.ID}`);
+                await this.loadFolders();
+            } catch (e) { this.notify(e.message, false); }
+        },
+
+        async scan() {
+            this.busy = true;
+            try {
+                this.scanResult = await this.api('POST', '/api/scan');
+                this.notify('Scan complete.');
+            } catch (e) { this.notify(e.message, false); }
+            finally { this.busy = false; }
+        },
+
+        async findDuplicates() {
+            this.busy = true;
+            try {
+                this.groups = await this.api('GET', '/api/duplicates') || [];
+                this.selected = {};
+                this.loaded = true;
+                this.notify(this.groups.length ? `${this.groups.length} duplicate group(s).` : 'No duplicates found.');
+            } catch (e) { this.notify(e.message, false); }
+            finally { this.busy = false; }
+        },
+
+        toggle(id) {
+            if (this.selected[id]) delete this.selected[id];
+            else this.selected[id] = true;
+            this.selected = { ...this.selected };
+        },
+
+        keepOnly(group, keeper) {
+            for (const img of group.images) {
+                if (img.ID === keeper.ID) delete this.selected[img.ID];
+                else this.selected[img.ID] = true;
+            }
+            this.selected = { ...this.selected };
+        },
+
+        selectedCount() { return Object.keys(this.selected).length; },
+        clearSelection() { this.selected = {}; },
+
+        async deleteSelected() {
+            const ids = Object.keys(this.selected).map(Number);
+            if (ids.length === 0) return;
+            if (!this.dryRun && !confirm(`Remove ${ids.length} file(s)?`)) return;
+            this.busy = true;
+            try {
+                const res = await this.api('POST', '/api/delete', { ids, dry_run: this.dryRun });
+                if (this.dryRun) {
+                    this.notify(`Dry run: ${res.planned.length} file(s) would be removed.`);
+                } else {
+                    this.notify(`Removed ${res.planned.length} file(s)` + (res.quarantine ? ` → ${res.quarantine}` : '') + '.');
+                    await this.findDuplicates();
+                }
+            } catch (e) { this.notify(e.message, false); }
+            finally { this.busy = false; }
+        },
+
+        async autoResolve() {
+            if (!this.dryRun && !confirm(`Auto-resolve all groups, keeping "${this.policy}"?`)) return;
+            this.busy = true;
+            try {
+                const res = await this.api('POST', '/api/resolve', { policy: this.policy, dry_run: this.dryRun });
+                if (this.dryRun) {
+                    this.notify(`Dry run: ${res.planned.length} file(s) would be removed (keep ${this.policy}).`);
+                } else {
+                    this.notify(`Removed ${res.planned.length} file(s)` + (res.quarantine ? ` → ${res.quarantine}` : '') + '.');
+                    await this.findDuplicates();
+                }
+            } catch (e) { this.notify(e.message, false); }
+            finally { this.busy = false; }
+        },
+
+        formatBytes(n) {
+            if (!n) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(n) / Math.log(1024));
+            return (n / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + units[i];
+        },
+    };
+}
+</script>
+</body>
+</html>
