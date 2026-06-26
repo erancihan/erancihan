@@ -48,7 +48,7 @@ trading-bot/
 │   ├── broker/               # Broker ABC, AlpacaBroker (lazy SDK), DryRunBroker
 │   ├── data/                 # synthetic, csv loader, ReplayData, AlpacaData, BarCache
 │   ├── engine.py             # live/paper/dry-run rebalance loop
-│   ├── storage.py            # SQLite: orders + equity snapshots (tradebot.db)
+│   ├── storage.py            # SQLite: orders + equity snapshots + bars (tradebot.db)
 │   ├── config.py             # Settings (YAML) + AlpacaCredentials (env) + live gate
 │   ├── cli.py                # `tradebot` entrypoint (argparse)
 │   ├── arena/                # competition system (see below)
@@ -183,7 +183,8 @@ Done: trading core · dry-run · arena (loading, both interfaces, Alpaca cache,
 persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits,
 **strict isolation modes** — process/thread/auto, no silent downgrade) ·
 dashboard (equity+orders+positions+leaderboards, order markers, browser-run
-backtests/dry-runs) · CI · arena **league** (`arena league` — standings evolve
+backtests/dry-runs, **candlestick price chart** w/ order markers) · CI · arena
+**league** (`arena league` — standings evolve
 over a replayed season) · durable **season** (`arena season` — resumable
 real-time league: SQLite-backed bars/standings that survive restarts; offline
 replay feed + thin lazy Alpaca live feed).
@@ -194,10 +195,9 @@ Next candidates (not started):
   standings. The durable `Season`/`SeasonStore` core + feed abstraction already
   exist in `season.py`; this is the operational layer on top (the live Alpaca
   feed there is thin and not covered by the test suite).
+- Live-account auto-refresh / websocket streaming.
 - Stronger sandboxing beyond `rlimit`s for truly hostile code (seccomp /
   containers / dropped filesystem+network) — builds on `SubprocessRunner`.
-- Candlestick price chart with order markers (needs storing bar data).
-- Live-account auto-refresh / websocket streaming.
 
 ## Definition of done (every change)
 

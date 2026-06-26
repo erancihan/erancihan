@@ -75,6 +75,9 @@ class Engine:
         bars = self.data.history(
             symbol, timeframe=self.settings.timeframe, lookback=self._lookback_days()
         )
+        if self.storage is not None:
+            # Persist the price history (idempotent) so the dashboard can chart it.
+            self.storage.record_bars(symbol, self.settings.timeframe, bars, self.mode)
         target = self.strategy.latest_target(bars)
         price = float(bars["close"].iloc[-1])
 

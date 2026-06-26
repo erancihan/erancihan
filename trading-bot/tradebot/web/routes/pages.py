@@ -30,6 +30,15 @@ def run_page(request: Request):
     return templates.TemplateResponse(request, "pages/run.html", {"active": "run"})
 
 
+@router.get("/chart", response_class=HTMLResponse)
+def chart_page(request: Request, repo: TradingRepository = Depends(get_trading_repo)):
+    symbols = repo.symbols()
+    return templates.TemplateResponse(
+        request, "pages/chart.html",
+        {"active": "chart", "symbols": symbols, "modes": repo.modes()},
+    )
+
+
 @router.get("/arena", response_class=HTMLResponse)
 def arena(request: Request, repo: ArenaRepository = Depends(get_arena_repo)):
     runs = repo.list_runs()

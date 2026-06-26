@@ -18,11 +18,14 @@ ALGOS = Path(__file__).resolve().parents[1] / "algos"
 
 
 def _seed_trading(path):
+    from tradebot.data.synthetic import synthetic_ohlcv
+
     st = Storage(str(path))
     st.record_equity(10_000, 5_000, "paper")
     st.record_equity(10_100, 4_900, "paper")
     st.record_equity(10_050, 4_950, "paper")
     st.record_order(Order(symbol="SPY", qty=10, side=Side.BUY), "ord-1", "paper")
+    st.record_bars("SPY", "1day", synthetic_ohlcv(periods=20, seed=1), "paper")
     st.close()
 
 
@@ -65,6 +68,20 @@ def test_equity_api_mode_filter(client):
 def test_orders_api(client):
     rows = client.get("/api/orders").json()
     assert any(r["symbol"] == "SPY" and r["side"] == "buy" for r in rows)
+
+
+def test_symbols_and_bars_api(client):
+    assert "SPY" in client.get("/api/symbols").json()
+    data = client.get("/api/bars?symbol=SPY").json()
+    assert data["symbol"] == "SPY"
+    assert len(data["candles"]) == 20
+    assert {"ts", "open", "high", "low", "close", "volume"} <= set(data["candles"][0])
+
+
+def test_chart_page_renders(client):
+    r = client.get("/chart")
+    assert r.status_code == 200
+    assert "Price chart" in r.text and "candleChart(" in r.text
 
 
 def test_partials_reuse_components(client):

@@ -2,6 +2,7 @@
 
 import type {
   ArenaRunDetail,
+  CandleSeries,
   EquitySeries,
   JobRequest,
   JobView,
@@ -36,6 +37,10 @@ export function getEquity(mode?: string): Promise<EquitySeries> {
 export function getOrders(mode?: string): Promise<OrderRow[]> {
   const params = mode ? `?mode=${encodeURIComponent(mode)}` : "";
   return getJson<OrderRow[]>(`/api/orders${params}`);
+}
+
+export function getBars(symbol: string): Promise<CandleSeries> {
+  return getJson<CandleSeries>(`/api/bars?symbol=${encodeURIComponent(symbol)}`);
 }
 
 export function getArenaRun(runId: number): Promise<ArenaRunDetail> {

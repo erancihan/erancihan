@@ -20,6 +20,20 @@ export interface OrderRow {
   mode: string;
 }
 
+export interface Candle {
+  ts: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface CandleSeries {
+  symbol: string;
+  candles: Candle[];
+}
+
 export interface ArenaCurve {
   name: string;
   index: string[];

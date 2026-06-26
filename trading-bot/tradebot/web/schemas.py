@@ -25,6 +25,20 @@ class OrderRow(BaseModel):
     mode: str
 
 
+class Candle(BaseModel):
+    ts: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+class CandleSeries(BaseModel):
+    symbol: str
+    candles: list[Candle]
+
+
 class LeaderboardEntry(BaseModel):
     rank: int | None
     name: str

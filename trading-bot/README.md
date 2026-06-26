@@ -267,7 +267,8 @@ account stats, recent orders and positions (from the SQLite log, with a live
 Alpaca overlay when credentials are present), plus the **arena leaderboards** with
 each contestant's equity curve. The **Run** page launches a backtest or dry-run
 forward-test from the browser (a background job → polled → summary + equity
-chart), all on synthetic data with no credentials.
+chart), all on synthetic data with no credentials. The **Chart** page shows a
+candlestick of the bars the bot acted on, with buy/sell order pins overlaid.
 
 ```bash
 make install-web      # python web extra + npm install

@@ -58,6 +58,22 @@ class TradingRepository:
         rows = _read(self.db_path, "SELECT DISTINCT mode FROM equity_snapshots ORDER BY mode")
         return [r["mode"] for r in rows]
 
+    def symbols(self) -> list[str]:
+        rows = _read(self.db_path, "SELECT DISTINCT symbol FROM bars ORDER BY symbol")
+        return [r["symbol"] for r in rows]
+
+    def bars(self, symbol: str, mode: str | None = None, limit: int = 500) -> list[dict]:
+        where = "WHERE symbol = ?" + (" AND mode = ?" if mode else "")
+        params = (symbol, mode, limit) if mode else (symbol, limit)
+        rows = _read(
+            self.db_path,
+            f"SELECT ts, open, high, low, close, volume FROM bars {where} "
+            "ORDER BY ts DESC LIMIT ?",
+            params,
+        )
+        rows.reverse()  # chronological for charting
+        return rows
+
     def latest_equity(self) -> dict | None:
         rows = _read(
             self.db_path,

@@ -12,6 +12,12 @@ from pathlib import Path
 
 from .models import Order, utcnow
 
+
+def _ts_iso(ts) -> str:
+    """Normalise a bar timestamp (pandas Timestamp / datetime / str) to ISO text."""
+    iso = getattr(ts, "isoformat", None)
+    return iso() if callable(iso) else str(ts)
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS orders (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,6 +35,14 @@ CREATE TABLE IF NOT EXISTS equity_snapshots (
     equity  REAL NOT NULL,
     cash    REAL NOT NULL,
     mode    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bars (
+    symbol     TEXT NOT NULL,
+    timeframe  TEXT NOT NULL,
+    ts         TEXT NOT NULL,
+    open REAL, high REAL, low REAL, close REAL, volume REAL,
+    mode       TEXT NOT NULL,
+    PRIMARY KEY (symbol, timeframe, ts, mode)
 );
 """
 
@@ -55,6 +69,23 @@ class Storage:
                 broker_order_id,
                 mode,
             ),
+        )
+        self._conn.commit()
+
+    def record_bars(self, symbol: str, timeframe: str, bars, mode: str) -> None:
+        """Persist OHLCV bars (idempotent — duplicate timestamps are ignored)."""
+        rows = [
+            (symbol, timeframe, _ts_iso(ts), float(r["open"]), float(r["high"]),
+             float(r["low"]), float(r["close"]), float(r["volume"]), mode)
+            for ts, r in bars.iterrows()
+        ]
+        if not rows:
+            return
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO bars"
+            " (symbol, timeframe, ts, open, high, low, close, volume, mode)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
         )
         self._conn.commit()
 

@@ -9,6 +9,8 @@ from ..repository import ArenaRepository, TradingRepository
 from ..schemas import (
     ArenaCurve,
     ArenaRunDetail,
+    Candle,
+    CandleSeries,
     EquityPoint,
     EquitySeries,
     JobRequest,
@@ -42,6 +44,22 @@ def orders(mode: str | None = None, limit: int = 100,
                  qty=float(r["qty"]), mode=r["mode"])
         for r in repo.recent_orders(limit=limit, mode=mode)
     ]
+
+
+@router.get("/symbols", response_model=list[str])
+def symbols(repo: TradingRepository = Depends(get_trading_repo)):
+    return repo.symbols()
+
+
+@router.get("/bars", response_model=CandleSeries)
+def bars(symbol: str, mode: str | None = None, limit: int = 500,
+         repo: TradingRepository = Depends(get_trading_repo)):
+    candles = [
+        Candle(ts=r["ts"], open=float(r["open"]), high=float(r["high"]),
+               low=float(r["low"]), close=float(r["close"]), volume=float(r["volume"]))
+        for r in repo.bars(symbol, mode=mode, limit=limit)
+    ]
+    return CandleSeries(symbol=symbol, candles=candles)
 
 
 @router.get("/arena/runs", response_model=list[RunSummary])
