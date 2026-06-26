@@ -6,8 +6,16 @@ from, and extracted. The long-term intent is that the **engine core is
 reusable** (a domain-agnostic foundation), and the negotiation simulator is just
 the first *application* built on top of it.
 
-> Note: the original scaffold leaned on the `mlange-42/ark` ECS library. That
-> dependency is being removed — building our own ECS is the point, not a detour.
+> Note: the original scaffold leaned on the `mlange-42/ark` ECS library. As of
+> Phase 2 that dependency is removed — building our own ECS is the point, not a
+> detour.
+
+## Status
+
+- ✅ **Phase 1 — Hand-rolled sparse-set ECS** (done)
+- ✅ **Phase 2 — Engine services + port off Ark** (done)
+- ⏳ **Phase 3 — Actor control plane + negotiation referee** (in progress)
+- ⬜ Phases 4–8 — pending
 
 ## Two layers
 
@@ -37,8 +45,11 @@ Knows nothing about cash, gold, or negotiation. It is the reusable skeleton:
 - **Time / loop** — fixed-timestep driver with accumulator, tick counter, and
   delta; real-time and unbounded (headless) modes. Generalizes today's
   hand-rolled loop in `main.go`.
-- **Events** — typed, double-buffered bus (write this tick, read next) so
-  systems communicate without direct coupling.
+- **Events** — typed per-tick bus so systems communicate without direct
+  coupling. (Implemented with same-tick semantics: events emitted in a tick are
+  readable by any later stage that tick and cleared at the next `StageFirst` —
+  chosen over write-this/read-next so the `StageLast` snapshot can broadcast
+  events the referee emits in `StageUpdate` of the same tick.)
 - **Commands / Intents** — the *only* channel by which outside input enters the
   world. Controllers submit typed commands; systems drain and apply them in a
   deterministic order. No actor ever mutates the world directly.
@@ -118,19 +129,21 @@ broadcasting — is engine/domain systems, never an agent concern.
 
 ## Phases
 
-### Phase 1 — Hand-rolled sparse-set ECS
-Build the foundation: `Entity{index, generation}` with a free-list allocator;
-generic sparse-set component stores (`Add[T]` / `Remove[T]` / `Get[T]` /
-`Has[T]`); multi-component queries via set intersection (`Query2`, `Query3`,
-…); and a typed resource registry. Unit-tested in isolation, with no engine or
-domain code on top yet. Remove the `mlange-42/ark` dependency from `go.mod`.
+### Phase 1 — Hand-rolled sparse-set ECS ✅ done
+Built the foundation in `engine/ecs`: `Entity{index, generation}` with a
+free-list allocator and exact liveness; generic sparse-set component stores
+(`Add[T]` / `Remove[T]` / `Get[T]` / `Has[T]`); multi-component queries via set
+intersection (`Query1`–`Query3`); a typed resource registry. Unit-tested in
+isolation. (`Query4/5` deferred until a consumer needs them.)
 
-### Phase 2 — Engine services, validated by porting known-good
-On top of the ECS: App builder, Schedule (stages), Event bus, Time/fixed-
-timestep loop, Plugin, Command buffer, Controller/Actor abstraction, Snapshot +
-Observer stage. Prove the abstractions by **re-homing the already working
-pieces** — the loop, movement, broadcast, and control RPC — onto the engine
-with unchanged behavior. Add the import-boundary architecture test.
+### Phase 2 — Engine services, validated by porting known-good ✅ done
+On top of the ECS: App builder, Schedule (stages), per-tick event bus,
+Time/fixed-timestep loop, Plugin, thread-safe command buffer, Controller/Actor
+abstraction with deadline dispatch, generic Broadcaster + Snapshot system, and
+pause/resume/step/reset control. Re-homed the loop, movement, timeout,
+negotiation, broadcast, and control onto the engine as the `internal/sim` plugin
+and `internal/transport` gRPC adapter; deleted the Ark-based packages and dropped
+`mlange-42/ark` from `go.mod`. Added the import-boundary architecture test.
 
 ### Phase 3 — Actor control plane + negotiation referee
 Implement the actor model end to end: Observations out, Commands in, deadline
