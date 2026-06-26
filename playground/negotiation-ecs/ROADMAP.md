@@ -18,8 +18,8 @@ the first *application* built on top of it.
 - ✅ **Phase 4 — Economy plugin** (done)
 - ✅ **Phase 5 — Movement: steering + optional override** (done)
 - ✅ **Phase 6 — Tests & determinism** (done)
-- ⏳ **Phase 7 — Visualizer interactivity & polish** (next; Rust)
-- ⬜ **Phase 8 — SDK completeness + extraction validation** (pending)
+- ⬜ **Phase 7 — Visualizer interactivity & polish** (Rust; not started)
+- 🟡 **Phase 8 — Extraction validation done; SDK completeness pending**
 
 ## Two layers
 
@@ -197,8 +197,13 @@ final value distribution) and whole-system per-tick conservation. 73 tests acros
 Control buttons wired to `ControlSimulation` (pause / step / reset). Honor
 `max_fps` (per-subscriber rate limiting). Entity inspector and ledger view.
 
-### Phase 8 — SDK completeness + extraction validation (future / stretch)
-Java build file and richer example brains per language. Then prove the core is
-truly extractable: split `engine/` into its own Go module and stand up a tiny
-second demo domain (e.g. boids/flocking or predator-prey) that reuses the engine
-with zero negotiation code — the real test of the reusable design.
+### Phase 8 — SDK completeness + extraction validation 🟡 partly done
+**Extraction validation ✅** — `examples/boids` is a full Reynolds flocking sim
+on the same engine, importing only `engine` + `engine/ecs` (an import-boundary
+test enforces it). A coherent flock emerges (alignment order parameter ~0.26 →
+>0.95) from the same App/Schedule/ECS that runs the negotiation server, proving
+the core is domain-agnostic. `cmd/boids` runs it headlessly. Splitting `engine/`
+into its own module is now just a `git mv` + new `go.mod` and remains optional.
+
+**SDK completeness ⬜** — still pending: a Java build file and richer example
+brains per language SDK.
