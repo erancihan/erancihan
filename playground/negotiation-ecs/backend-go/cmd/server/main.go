@@ -31,6 +31,7 @@ import (
 	"github.com/erancihan/negotiation-ecs/backend-go/engine"
 	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
 	pb "github.com/erancihan/negotiation-ecs/backend-go/gen/proto/negotiationpb"
+	"github.com/erancihan/negotiation-ecs/backend-go/internal/economy"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/sim"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/transport"
 )
@@ -59,7 +60,8 @@ func main() {
 	app := engine.New().
 		WithTickRate(*tickRate).
 		WithMaxTicks(*maxTicks).
-		AddPlugin(sim.NewPlugin(cfg))
+		AddPlugin(sim.NewPlugin(cfg)).
+		AddPlugin(economy.NewPlugin())
 
 	// Initialize the world (spawn agents, install resources) before serving, so
 	// read RPCs never race ahead of world setup.

@@ -2,7 +2,6 @@ package sim
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 
 	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
@@ -40,12 +39,8 @@ func makeBrain(strategy string, seed int64) Brain {
 	}
 }
 
-// counterOffer is a small helper producing a counter-offer payload for a round.
-func counterOffer(round int) string {
-	return fmt.Sprintf(`{"type":"counter_offer","round":%d}`, round)
-}
-
-// randomBrain accepts, rejects, or counters probabilistically.
+// randomBrain accepts, rejects, or counters probabilistically. A counter
+// re-prices the standing offer by a random factor.
 type randomBrain struct{ r *rand.Rand }
 
 func (b *randomBrain) Decide(_ context.Context, v NegotiationView) []Decision {
@@ -55,27 +50,32 @@ func (b *randomBrain) Decide(_ context.Context, v NegotiationView) []Decision {
 	case roll < 0.45:
 		return []Decision{{Self: v.Self, Kind: DecideReject}}
 	default:
-		return []Decision{{Self: v.Self, Kind: DecideCounter, OfferJSON: counterOffer(v.Round + 1)}}
+		o := ParseOffer(v.CurrentOfferJSON)
+		o.OfferCash *= 0.8 + 0.4*b.r.Float64() // re-price ±20%
+		return []Decision{{Self: v.Self, Kind: DecideCounter, OfferJSON: o.JSON()}}
 	}
 }
 
-// cooperativeBrain settles quickly: it counters once, then accepts.
+// cooperativeBrain settles quickly: it counters once (accepting the standing
+// terms as-is), then accepts.
 type cooperativeBrain struct{}
 
 func (cooperativeBrain) Decide(_ context.Context, v NegotiationView) []Decision {
 	if v.Round >= 1 {
 		return []Decision{{Self: v.Self, Kind: DecideAccept}}
 	}
-	return []Decision{{Self: v.Self, Kind: DecideCounter, OfferJSON: counterOffer(v.Round + 1)}}
+	return []Decision{{Self: v.Self, Kind: DecideCounter, OfferJSON: v.CurrentOfferJSON}}
 }
 
-// greedyBrain holds out: it counters many rounds and only accepts late, which
-// often runs the clock down to a timeout.
+// greedyBrain holds out: it counters many rounds, each time lowballing the cash
+// it would pay, and only accepts late (often running down to a timeout).
 type greedyBrain struct{}
 
 func (greedyBrain) Decide(_ context.Context, v NegotiationView) []Decision {
 	if v.Round >= 5 {
 		return []Decision{{Self: v.Self, Kind: DecideAccept}}
 	}
-	return []Decision{{Self: v.Self, Kind: DecideCounter, OfferJSON: counterOffer(v.Round + 1)}}
+	o := ParseOffer(v.CurrentOfferJSON)
+	o.OfferCash *= 0.85 // lowball
+	return []Decision{{Self: v.Self, Kind: DecideCounter, OfferJSON: o.JSON()}}
 }

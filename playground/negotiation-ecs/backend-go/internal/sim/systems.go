@@ -155,10 +155,12 @@ func pairIdleAgents(w *ecs.World, tick uint64) {
 }
 
 // startNegotiation puts an initiator into OFFERING and a responder into
-// COUNTERING, and announces the new negotiation.
+// COUNTERING with a concrete opening offer, and announces the negotiation. Both
+// sides record the standing offer so whichever accepts settles real terms.
 func startNegotiation(w *ecs.World, tick uint64, initiator, responder ecs.Entity) {
 	cfg := config(w)
 	deadline := tick + cfg.NegotiationTimeoutTicks
+	offerJSON := randomOffer(rng(w), assetNames(cfg)).JSON()
 
 	if ini, ok := ecs.Get[NegotiationState](w, initiator); ok {
 		ini.Status = StatusOffering
@@ -166,7 +168,7 @@ func startNegotiation(w *ecs.World, tick uint64, initiator, responder ecs.Entity
 		ini.TickStarted = tick
 		ini.TickTimeout = deadline
 		ini.RoundsCompleted = 0
-		ini.ProposalJSON = `{"type":"initial_offer"}`
+		ini.ProposalJSON = offerJSON
 	}
 	if res, ok := ecs.Get[NegotiationState](w, responder); ok {
 		res.Status = StatusCountering
@@ -174,6 +176,7 @@ func startNegotiation(w *ecs.World, tick uint64, initiator, responder ecs.Entity
 		res.TickStarted = tick
 		res.TickTimeout = deadline
 		res.RoundsCompleted = 0
+		res.ProposalJSON = offerJSON
 	}
 
 	engine.Emit(w, NegotiationEvent{
@@ -182,7 +185,7 @@ func startNegotiation(w *ecs.World, tick uint64, initiator, responder ecs.Entity
 		Responder:    responder,
 		Action:       ActionOfferMade,
 		Summary:      "New negotiation started",
-		ProposalJSON: `{"type":"initial_offer"}`,
+		ProposalJSON: offerJSON,
 	})
 }
 
