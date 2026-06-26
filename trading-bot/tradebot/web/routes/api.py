@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..dependencies import get_arena_repo, get_trading_repo
 from ..repository import ArenaRepository, TradingRepository
 from ..schemas import (
+    AccountView,
     ArenaCurve,
     ArenaRunDetail,
     Candle,
@@ -17,8 +18,10 @@ from ..schemas import (
     JobView,
     LeaderboardEntry,
     OrderRow,
+    PositionView,
     RunSummary,
 )
+from ..services import account_service
 from ..services.jobs_service import VALID_KINDS
 
 router = APIRouter(prefix="/api")
@@ -44,6 +47,16 @@ def orders(mode: str | None = None, limit: int = 100,
                  qty=float(r["qty"]), mode=r["mode"])
         for r in repo.recent_orders(limit=limit, mode=mode)
     ]
+
+
+@router.get("/account", response_model=AccountView)
+def account(repo: TradingRepository = Depends(get_trading_repo)):
+    snap = account_service.snapshot(repo)
+    return AccountView(
+        source=snap["source"], equity=snap.get("equity"), cash=snap.get("cash"),
+        buying_power=snap.get("buying_power"), market_open=snap.get("market_open"),
+        positions=[PositionView(**p) for p in snap.get("positions", [])],
+    )
 
 
 @router.get("/symbols", response_model=list[str])

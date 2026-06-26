@@ -3,6 +3,8 @@
 
 import Alpine from "alpinejs";
 
+import { makeLiveStore } from "./alpine";
+import { accountHeader } from "./components/accountHeader";
 import { arenaChart } from "./components/arena";
 import { candleChart } from "./components/candleChart";
 import { equityChart } from "./components/dashboard";
@@ -15,6 +17,9 @@ declare global {
   }
 }
 
+Alpine.store("live", makeLiveStore());
+
+Alpine.data("accountHeader", accountHeader);
 Alpine.data("equityChart", equityChart);
 Alpine.data("arenaChart", arenaChart);
 Alpine.data("candleChart", candleChart);

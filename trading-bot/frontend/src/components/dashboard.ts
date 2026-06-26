@@ -3,7 +3,7 @@
 import * as echarts from "echarts";
 
 import { getEquity, getOrders } from "../api/client";
-import { refs } from "../alpine";
+import { live, refs } from "../alpine";
 import { equityOption } from "../charts/equityChart";
 
 type Chart = ReturnType<typeof echarts.init>;
@@ -16,6 +16,12 @@ export function equityChart() {
       this.chart = echarts.init(refs(this).chart);
       await this.load();
       window.addEventListener("resize", () => this.chart?.resize());
+      // Auto-refresh the curve so a running session updates live.
+      setInterval(() => {
+        if (live(this).enabled) {
+          void this.load();
+        }
+      }, live(this).intervalMs);
     },
     async setMode(mode: string) {
       this.mode = mode;

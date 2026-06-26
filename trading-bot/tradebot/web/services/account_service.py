@@ -47,6 +47,7 @@ def _try_live() -> dict | None:
             "equity": acct.equity,
             "cash": acct.cash,
             "buying_power": acct.buying_power,
+            "market_open": broker.is_market_open(),
             "positions": positions,
         }
     except Exception:  # noqa: BLE001 - never break the page on a broker hiccup

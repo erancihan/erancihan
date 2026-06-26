@@ -1,6 +1,7 @@
 // Typed wrappers around the JSON endpoints. The only place that knows URLs.
 
 import type {
+  AccountView,
   ArenaRunDetail,
   CandleSeries,
   EquitySeries,
@@ -41,6 +42,10 @@ export function getOrders(mode?: string): Promise<OrderRow[]> {
 
 export function getBars(symbol: string): Promise<CandleSeries> {
   return getJson<CandleSeries>(`/api/bars?symbol=${encodeURIComponent(symbol)}`);
+}
+
+export function getAccount(): Promise<AccountView> {
+  return getJson<AccountView>("/api/account");
 }
 
 export function getArenaRun(runId: number): Promise<ArenaRunDetail> {

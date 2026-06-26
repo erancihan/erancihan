@@ -2,7 +2,7 @@
 // Keeps the server-rendered markup until the first fetch resolves (no flash).
 
 import { getPartial } from "../api/client";
-import { el } from "../alpine";
+import { el, live } from "../alpine";
 
 export function partialLoader(url: string, intervalMs = 0) {
   return {
@@ -10,15 +10,17 @@ export function partialLoader(url: string, intervalMs = 0) {
     async init() {
       this.html = el(this).innerHTML;
       await this.refresh();
-      if (intervalMs > 0) {
-        setInterval(() => {
+      const period = intervalMs || live(this).intervalMs;
+      setInterval(() => {
+        if (live(this).enabled) {
           void this.refresh();
-        }, intervalMs);
-      }
+        }
+      }, period);
     },
     async refresh() {
       try {
         this.html = await getPartial(url);
+        live(this).stamp();
       } catch (error) {
         console.error(error);
       }

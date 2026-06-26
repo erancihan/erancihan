@@ -39,6 +39,21 @@ class CandleSeries(BaseModel):
     candles: list[Candle]
 
 
+class PositionView(BaseModel):
+    symbol: str
+    qty: float
+    avg_price: float
+
+
+class AccountView(BaseModel):
+    source: str                       # alpaca | local | none
+    equity: float | None = None
+    cash: float | None = None
+    buying_power: float | None = None
+    market_open: bool | None = None
+    positions: list[PositionView] = []
+
+
 class LeaderboardEntry(BaseModel):
     rank: int | None
     name: str

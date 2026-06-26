@@ -2,7 +2,47 @@
 {% block title %}Dashboard · tradebot{% endblock %}
 {% block content %}
 <section class="space-y-6">
-  <h1 class="text-lg font-semibold text-slate-100">Dashboard</h1>
+  <div class="flex items-center justify-between">
+    <h1 class="text-lg font-semibold text-slate-100">Dashboard</h1>
+    <div class="flex items-center gap-3 text-xs">
+      <span class="text-slate-500"
+            x-text="$store.live.lastUpdated ? ('updated ' + $store.live.lastUpdated) : ''"></span>
+      <button @click="$store.live.toggle()"
+              class="rounded border border-slate-700 px-2 py-1 hover:border-slate-500">
+        <span x-show="$store.live.enabled" class="text-emerald-400">● Live</span>
+        <span x-show="!$store.live.enabled" class="text-slate-400" x-cloak>❚❚ Paused</span>
+      </button>
+    </div>
+  </div>
+
+  <div x-data="accountHeader()"
+       class="grid grid-cols-2 gap-3 rounded-lg border border-slate-800 bg-slate-900/40 p-4 sm:grid-cols-5">
+    <div>
+      <div class="text-xs uppercase tracking-wide text-slate-500">Equity</div>
+      <div class="text-lg font-semibold text-slate-100"
+           x-text="account && account.equity != null ? '$' + account.equity.toLocaleString() : '—'"></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-wide text-slate-500">Cash</div>
+      <div class="text-lg font-semibold text-slate-100"
+           x-text="account && account.cash != null ? '$' + account.cash.toLocaleString() : '—'"></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-wide text-slate-500">Buying power</div>
+      <div class="text-lg font-semibold text-slate-100"
+           x-text="account && account.buying_power != null ? '$' + account.buying_power.toLocaleString() : '—'"></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-wide text-slate-500">Market</div>
+      <div class="text-lg font-semibold"
+           :class="account && account.market_open ? 'text-emerald-400' : 'text-slate-400'"
+           x-text="account && account.market_open != null ? (account.market_open ? 'open' : 'closed') : '—'"></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-wide text-slate-500">Source</div>
+      <div class="text-lg font-semibold text-slate-300" x-text="account ? account.source : '—'"></div>
+    </div>
+  </div>
 
   <div x-data="partialLoader('/partials/stats', 20000)" x-html="html">
     {% include "components/stats.html" %}

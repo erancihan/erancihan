@@ -34,6 +34,21 @@ export interface CandleSeries {
   candles: Candle[];
 }
 
+export interface PositionView {
+  symbol: string;
+  qty: number;
+  avg_price: number;
+}
+
+export interface AccountView {
+  source: string;
+  equity: number | null;
+  cash: number | null;
+  buying_power: number | null;
+  market_open: boolean | null;
+  positions: PositionView[];
+}
+
 export interface ArenaCurve {
   name: string;
   index: string[];

@@ -70,6 +70,14 @@ def test_orders_api(client):
     assert any(r["symbol"] == "SPY" and r["side"] == "buy" for r in rows)
 
 
+def test_account_api(client):
+    a = client.get("/api/account").json()
+    # No creds in tests -> falls back to the local snapshot from the SQLite log.
+    assert a["source"] == "local"
+    assert a["equity"] == 10_050.0
+    assert "positions" in a
+
+
 def test_symbols_and_bars_api(client):
     assert "SPY" in client.get("/api/symbols").json()
     data = client.get("/api/bars?symbol=SPY").json()
