@@ -14,8 +14,9 @@ the first *application* built on top of it.
 
 - ✅ **Phase 1 — Hand-rolled sparse-set ECS** (done)
 - ✅ **Phase 2 — Engine services + port off Ark** (done)
-- ⏳ **Phase 3 — Actor control plane + negotiation referee** (in progress)
-- ⬜ Phases 4–8 — pending
+- ✅ **Phase 3 — Actor control plane + negotiation referee** (done)
+- ⏳ **Phase 4 — Economy plugin** (next)
+- ⬜ Phases 5–8 — pending
 
 ## Two layers
 
@@ -145,13 +146,17 @@ negotiation, broadcast, and control onto the engine as the `internal/sim` plugin
 and `internal/transport` gRPC adapter; deleted the Ark-based packages and dropped
 `mlange-42/ark` from `go.mod`. Added the import-boundary architecture test.
 
-### Phase 3 — Actor control plane + negotiation referee
-Implement the actor model end to end: Observations out, Commands in, deadline
-enforced; internal in-process and external gRPC controllers behind one
-interface. Turn the negotiation system into a **referee** that consults brains
-and applies protocol rules — remove the hardcoded random rolls. Finally drain
-the proposal queue. Accepted negotiations emit a `Deal` (recorded as an event;
-settlement comes next).
+### Phase 3 — Actor control plane + negotiation referee ✅ done
+The actor model end to end. The negotiation system is now a **referee** that
+collects the deciding agents, asks their brains via `DispatchActors` (concurrent,
+deadline-bounded), and applies accept/reject/counter — the hardcoded random rolls
+are gone. Internal strategies (random/greedy/cooperative) and external agents are
+both `Brain`s in one registry behind the referee (location transparency).
+External agents are remote brains for assigned bodies: `SubmitProposal` binds an
+agent to a body, returns `assigned_entity_id`, and records a proposal the
+`externalBrain` delivers as its decision (or holds if none arrived in time).
+Acceptance emits a `Deal` (no cash moves yet — settlement is Phase 4). Covered by
+unit, integration, and gRPC round-trip (bufconn) tests, all green under `-race`.
 
 ### Phase 4 — Economy plugin (world system + singleton resource)
 `Economy` / `Ledger` as a resource; a settlement system consumes `Deal`s,
