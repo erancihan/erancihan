@@ -65,7 +65,8 @@ trading-bot/
 `interfaces.py` (Algo/Action/Context), `adapters.py` (Policy), `simulation.py`
 (stepped core), `scenario.py`, `runner.py`, `scoring.py`, `result.py`,
 `tournament.py`, `league.py` (standings over a season), `season.py` (durable,
-resumable real-time league + feeds), `store.py`.
+resumable real-time league + feeds + daemon), `market.py` (US market-hours +
+partial-bar helpers), `store.py`.
 
 `tradebot/web/`: `app.py` (factory), `repository.py` (read-only SQLite),
 `services/` (metrics, account, jobs), `routes/` (pages, partials, api),
@@ -187,15 +188,12 @@ backtests/dry-runs, **candlestick price chart** w/ order markers, **live account
 header + dashboard auto-refresh** w/ pause + last-updated, `/api/account`) · CI ·
 arena **league** (`arena league` — standings evolve
 over a replayed season) · durable **season** (`arena season` — resumable
-real-time league: SQLite-backed bars/standings that survive restarts; offline
-replay feed + thin lazy Alpaca live feed).
+real-time league: SQLite bars/standings that survive restarts; replay feed +
+thin live Alpaca feed) · **season daemon** (`market.py` market-hours gating +
+next_open + partial-bar drop, supervised loop, `/seasons` dashboard standings
+view; live daemon loop itself is thin & untested).
 
 Next candidates (not started):
-- **Production season daemon:** market-hours/holiday scheduling, a supervised
-  long-running loop, partial-bar handling, and a dashboard view of live
-  standings. The durable `Season`/`SeasonStore` core + feed abstraction already
-  exist in `season.py`; this is the operational layer on top (the live Alpaca
-  feed there is thin and not covered by the test suite).
 - Stronger sandboxing beyond `rlimit`s for truly hostile code (seccomp /
   containers / dropped filesystem+network) — builds on `SubprocessRunner`.
 

@@ -5,8 +5,9 @@ import type {
   EquityCurve,
   EquitySeries,
   OrderRow,
+  SeasonCurve,
 } from "../types";
-import { baseLineOption, LINE_COLORS } from "./theme";
+import { baseLineOption, LINE_COLORS, TEXT_COLOR } from "./theme";
 
 function shortTs(ts: string): string {
   return ts.slice(0, 19).replace("T", " ");
@@ -82,6 +83,32 @@ export function equityOption(series: EquitySeries, orders: OrderRow[] = []): ECh
       markPoint: orderMarkPoints(series, orders),
     },
   ];
+  return option;
+}
+
+/** ECharts option for contestants' total-return over a live season's steps. */
+export function seasonOption(curves: SeasonCurve[]): EChartsOption {
+  const option = baseLineOption();
+  const steps = curves.reduce<number[]>(
+    (acc, c) => (c.steps.length > acc.length ? c.steps : acc),
+    [],
+  );
+  option.xAxis = { ...option.xAxis, data: steps.map((s) => `#${s}`) };
+  option.yAxis = {
+    ...option.yAxis,
+    axisLabel: { color: TEXT_COLOR, formatter: (v: number) => `${(v * 100).toFixed(0)}%` },
+  };
+  option.legend = { textStyle: { color: "#cbd5e1" }, top: 0 };
+  option.grid = { ...option.grid, top: 36 };
+  option.series = curves.map((curve, i) => ({
+    name: curve.name,
+    type: "line",
+    smooth: true,
+    showSymbol: false,
+    lineStyle: { color: LINE_COLORS[i % LINE_COLORS.length], width: 2 },
+    itemStyle: { color: LINE_COLORS[i % LINE_COLORS.length] },
+    data: curve.total_return,
+  }));
   return option;
 }
 

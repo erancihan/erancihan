@@ -49,6 +49,28 @@ export interface AccountView {
   positions: PositionView[];
 }
 
+export interface SeasonCurve {
+  name: string;
+  steps: number[];
+  total_return: number[];
+}
+
+export interface SeasonStanding {
+  rank: number;
+  name: string;
+  total_return: number;
+  score: number | null;
+  equity: number;
+}
+
+export interface SeasonDetail {
+  id: number;
+  name: string;
+  metric: string;
+  latest: SeasonStanding[];
+  curves: SeasonCurve[];
+}
+
 export interface ArenaCurve {
   name: string;
   index: string[];

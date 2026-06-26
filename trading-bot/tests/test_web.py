@@ -36,12 +36,31 @@ def _seed_arena(path):
         store.record_run(scenario, "total_return", outcome)
 
 
+def _seed_season(path):
+    from tradebot.arena.season import (
+        ReplaySeasonFeed,
+        Season,
+        SeasonConfig,
+        SeasonStore,
+        run_season,
+    )
+    from tradebot.data.synthetic import synthetic_ohlcv
+
+    with SeasonStore(str(path)) as store:
+        season = Season.create(store, SeasonConfig(
+            name="wk", symbols=["DEMO"], metric="total_return", algo_paths=[str(ALGOS)]))
+        run_season(season, ReplaySeasonFeed({"DEMO": synthetic_ohlcv(periods=20, seed=1)}),
+                   max_ticks=10)
+
+
 @pytest.fixture
 def client(tmp_path):
     _seed_trading(tmp_path / "tradebot.db")
     _seed_arena(tmp_path / "arena.db")
+    _seed_season(tmp_path / "season.db")
     app = create_app(trading_db=str(tmp_path / "tradebot.db"),
-                     arena_db=str(tmp_path / "arena.db"))
+                     arena_db=str(tmp_path / "arena.db"),
+                     season_db=str(tmp_path / "season.db"))
     return TestClient(app)
 
 
@@ -108,6 +127,20 @@ def test_arena_page_and_api(client):
     detail = client.get(f"/api/arena/runs/{runs[0]['id']}").json()
     assert len(detail["entries"]) == 3
     assert detail["curves"] and detail["curves"][0]["equity"]
+
+
+def test_seasons_api(client):
+    seasons = client.get("/api/seasons").json()
+    assert len(seasons) >= 1
+    detail = client.get(f"/api/seasons/{seasons[0]['id']}").json()
+    assert len(detail["latest"]) == 3
+    assert detail["curves"] and len(detail["curves"][0]["total_return"]) >= 1
+
+
+def test_seasons_page_renders(client):
+    r = client.get("/seasons")
+    assert r.status_code == 200
+    assert "Seasons" in r.text and "seasonChart(" in r.text
 
 
 def test_empty_databases_render_gracefully(tmp_path):

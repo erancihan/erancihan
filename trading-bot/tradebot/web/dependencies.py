@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
-from .repository import ArenaRepository, TradingRepository
+from .repository import ArenaRepository, SeasonRepository, TradingRepository
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -34,3 +34,7 @@ def get_trading_repo(request: Request) -> TradingRepository:
 
 def get_arena_repo(request: Request) -> ArenaRepository:
     return ArenaRepository(request.app.state.arena_db)
+
+
+def get_season_repo(request: Request) -> SeasonRepository:
+    return SeasonRepository(request.app.state.season_db)

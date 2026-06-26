@@ -8,6 +8,7 @@ import type {
   JobRequest,
   JobView,
   OrderRow,
+  SeasonDetail,
 } from "../types";
 
 async function getJson<T>(url: string): Promise<T> {
@@ -50,6 +51,10 @@ export function getAccount(): Promise<AccountView> {
 
 export function getArenaRun(runId: number): Promise<ArenaRunDetail> {
   return getJson<ArenaRunDetail>(`/api/arena/runs/${runId}`);
+}
+
+export function getSeasonDetail(seasonId: number): Promise<SeasonDetail> {
+  return getJson<SeasonDetail>(`/api/seasons/${seasonId}`);
 }
 
 export async function getPartial(url: string): Promise<string> {

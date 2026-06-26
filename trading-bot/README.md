@@ -271,6 +271,8 @@ chart), all on synthetic data with no credentials. The **Chart** page shows a
 candlestick of the bars the bot acted on, with buy/sell order pins overlaid. A
 live account header (equity/cash/buying-power/market status from `/api/account`)
 and the equity curve auto-refresh while a session runs, with a one-click pause.
+The **Seasons** page shows each live-league season's standings and a
+return-over-the-season chart.
 
 ```bash
 make install-web      # python web extra + npm install

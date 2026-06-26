@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ..dependencies import get_arena_repo, get_trading_repo
-from ..repository import ArenaRepository, TradingRepository
+from ..dependencies import get_arena_repo, get_season_repo, get_trading_repo
+from ..repository import ArenaRepository, SeasonRepository, TradingRepository
 from ..schemas import (
     AccountView,
     ArenaCurve,
@@ -20,6 +20,10 @@ from ..schemas import (
     OrderRow,
     PositionView,
     RunSummary,
+    SeasonCurve,
+    SeasonDetail,
+    SeasonStanding,
+    SeasonSummary,
 )
 from ..services import account_service
 from ..services.jobs_service import VALID_KINDS
@@ -104,6 +108,32 @@ def arena_run(run_id: int, repo: ArenaRepository = Depends(get_arena_repo)):
     run = detail["run"]
     return ArenaRunDetail(id=run["id"], scenario=run["scenario"], metric=run["metric"],
                           entries=entries, curves=curves)
+
+
+@router.get("/seasons", response_model=list[SeasonSummary])
+def seasons(repo: SeasonRepository = Depends(get_season_repo)):
+    return [SeasonSummary(**s) for s in repo.list_seasons()]
+
+
+@router.get("/seasons/{season_id}", response_model=SeasonDetail)
+def season_detail(season_id: int, repo: SeasonRepository = Depends(get_season_repo)):
+    info = repo.get_season(season_id)
+    history = repo.standings_history(season_id)
+    latest = [SeasonStanding(**s) for s in repo.latest_standings(season_id)]
+
+    # total_return per contestant over the steps of the season, for charting.
+    series: dict[str, dict[int, float]] = {}
+    for snap in history:
+        for s in snap["standings"]:
+            series.setdefault(s["name"], {})[snap["step"]] = s["total_return"]
+    curves = [
+        SeasonCurve(name=name, steps=sorted(points), total_return=[points[s] for s in sorted(points)])
+        for name, points in series.items()
+    ]
+    return SeasonDetail(
+        id=season_id, name=info["name"] if info else "", metric=info["metric"] if info else "",
+        latest=latest, curves=curves,
+    )
 
 
 @router.post("/jobs")

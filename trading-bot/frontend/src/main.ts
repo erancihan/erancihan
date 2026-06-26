@@ -10,6 +10,7 @@ import { candleChart } from "./components/candleChart";
 import { equityChart } from "./components/dashboard";
 import { jobRunner } from "./components/jobRunner";
 import { partialLoader } from "./components/partialLoader";
+import { seasonChart } from "./components/seasonChart";
 
 declare global {
   interface Window {
@@ -23,6 +24,7 @@ Alpine.data("accountHeader", accountHeader);
 Alpine.data("equityChart", equityChart);
 Alpine.data("arenaChart", arenaChart);
 Alpine.data("candleChart", candleChart);
+Alpine.data("seasonChart", seasonChart);
 Alpine.data("jobRunner", jobRunner);
 Alpine.data("partialLoader", partialLoader);
 
