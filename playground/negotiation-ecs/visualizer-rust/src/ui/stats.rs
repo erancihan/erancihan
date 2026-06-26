@@ -28,6 +28,10 @@ pub fn draw_stats(ui: &mut egui::Ui, state: &SimState) {
         stat_badge(ui, "Timed Out", &format!("{}", state.stats.timed_out_negotiations), Color32::from_rgb(200, 50, 50));
         stat_badge(ui, "Stream FPS", &format!("{:.0}", state.stream_fps), Color32::from_rgb(160, 140, 220));
         stat_badge(ui, "Events", &format!("{}", state.events.len()), Color32::from_rgb(170, 130, 220));
+
+        // Economy: total cash across all agents (a conserved quantity).
+        let total_cash: f64 = state.entities.iter().map(|e| e.cash).sum();
+        stat_badge(ui, "Total Cash", &format!("{total_cash:.0}"), Color32::from_rgb(120, 200, 120));
     });
 
     // Connection error
