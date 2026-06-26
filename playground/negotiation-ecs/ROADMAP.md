@@ -19,7 +19,9 @@ the first *application* built on top of it.
 - ✅ **Phase 5 — Movement: steering + optional override** (done)
 - ✅ **Phase 6 — Tests & determinism** (done)
 - ✅ **Phase 7 — Visualizer interactivity & polish** (done; GUI compile/link-verified)
-- 🟡 **Phase 8 — Extraction validation done; SDK completeness pending**
+- ✅ **Phase 8 — SDK completeness + extraction validation** (done)
+
+All phases complete.
 
 ## Two layers
 
@@ -202,13 +204,18 @@ economy total). The GUI is compile- and link-verified (`cargo build`); it was no
 run here as the environment has no display, but the control path's backend side
 is covered by the transport tests.
 
-### Phase 8 — SDK completeness + extraction validation 🟡 partly done
-**Extraction validation ✅** — `examples/boids` is a full Reynolds flocking sim
-on the same engine, importing only `engine` + `engine/ecs` (an import-boundary
-test enforces it). A coherent flock emerges (alignment order parameter ~0.26 →
->0.95) from the same App/Schedule/ECS that runs the negotiation server, proving
-the core is domain-agnostic. `cmd/boids` runs it headlessly. Splitting `engine/`
-into its own module is now just a `git mv` + new `go.mod` and remains optional.
+### Phase 8 — SDK completeness + extraction validation ✅ done
+**Extraction validation** — `examples/boids` is a full Reynolds flocking sim on
+the same engine, importing only `engine` + `engine/ecs` (an import-boundary test
+enforces it). A coherent flock emerges (alignment order parameter ~0.26 → >0.95)
+from the same App/Schedule/ECS that runs the negotiation server, proving the core
+is domain-agnostic. `cmd/boids` runs it headlessly. Splitting `engine/` into its
+own module is now just a `git mv` + new `go.mod`.
 
-**SDK completeness ⬜** — still pending: a Java build file and richer example
-brains per language SDK.
+**SDK completeness** — all three SDKs are buildable and protocol-correct. Go has
+a `go.mod` (replace → backend) and an `sdk-go` make target; Java has a Maven
+`pom.xml` (stubs generated via `protobuf-maven-plugin`) in the standard layout;
+Python generates stubs via `make sdk-python`. Each ships a body-aware
+`CooperativeTrader` example that claims a body and accepts when it is its turn.
+Verified end to end against a live server — Go, Python, and Java agents each
+connect, get assigned a body, and submit decisions.
