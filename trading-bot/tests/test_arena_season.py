@@ -83,6 +83,47 @@ def test_season_standings_are_deterministic(tmp_path):
            [(s.name, round(s.total_return, 8)) for s in b.standings]
 
 
+class _FlakySeason:
+    """A fake season whose 2nd tick raises, to exercise supervision."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def step(self, bar):
+        self.calls += 1
+        if self.calls == 2:
+            raise RuntimeError("boom")
+        return None
+
+
+class _CountFeed:
+    def __init__(self, n):
+        self.n, self.i = n, 0
+
+    def next(self):
+        if self.i >= self.n:
+            return None
+        self.i += 1
+        return {"X": None}
+
+
+def test_run_season_supervises_tick_errors():
+    from tradebot.arena.season import run_season
+
+    errors = []
+    ticks = run_season(_FlakySeason(), _CountFeed(4),
+                       supervise=True, on_error=errors.append)
+    assert ticks == 4 and len(errors) == 1   # one tick failed, loop carried on
+
+
+def test_run_season_without_supervise_propagates():
+    import pytest as _pytest
+
+    from tradebot.arena.season import run_season
+    with _pytest.raises(RuntimeError):
+        run_season(_FlakySeason(), _CountFeed(4))
+
+
 def test_cli_season_create_run_standings(tmp_path, capsys):
     db = str(tmp_path / "season.db")
     assert main(["arena", "season", "create", "--name", "wk", "--symbols", "DEMO",

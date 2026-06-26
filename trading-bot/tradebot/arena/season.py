@@ -318,11 +318,14 @@ class AlpacaSeasonFeed:
 
 def run_season(season: Season, feed, max_ticks: int | None = None,
                poll_seconds: float = 0.0, pace_s: float = 0.0,
-               stop_on_empty: bool = True, on_step=None) -> int:
+               stop_on_empty: bool = True, on_step=None,
+               supervise: bool = False, on_error=None) -> int:
     """Drive a season from a feed. Returns the number of ticks applied.
 
     ``stop_on_empty=True`` (replay) stops when the feed is exhausted;
     ``stop_on_empty=False`` (live) waits ``poll_seconds`` for the next bar.
+    With ``supervise=True`` a failing tick is caught (``on_error(exc)``) and the
+    loop continues instead of crashing the run.
     """
     ticks = 0
     while max_ticks is None or ticks < max_ticks:
@@ -334,10 +337,59 @@ def run_season(season: Season, feed, max_ticks: int | None = None,
                 time.sleep(poll_seconds)
                 continue
             break
-        snapshot = season.step(bar)
+        try:
+            snapshot = season.step(bar)
+        except Exception as exc:  # noqa: BLE001 - daemon survives a bad tick
+            if not supervise:
+                raise
+            if on_error is not None:
+                on_error(exc)
+            snapshot = None
         ticks += 1
         if snapshot is not None and on_step is not None:
             on_step(snapshot)
         if pace_s:
             time.sleep(pace_s)
+    return ticks
+
+
+def run_season_daemon(season: Season, feed, poll_seconds: float = 60.0,
+                      ignore_market_hours: bool = False, max_ticks: int | None = None,
+                      on_step=None, on_error=None) -> int:
+    """Live daemon loop: gate on US market hours, drop still-forming bars, and
+    step under supervision.
+
+    Not exercised by the test suite — it needs a live feed and real wall-clock
+    time. Its building blocks (market clock, partial-bar drop, supervised step)
+    are tested individually.
+    """
+    from datetime import datetime, timezone
+
+    from .market import drop_incomplete_bars, is_market_open
+
+    ticks = 0
+    while max_ticks is None or ticks < max_ticks:
+        now = datetime.now(timezone.utc)
+        if not ignore_market_hours and not is_market_open(now):
+            time.sleep(poll_seconds)
+            continue
+        bar = feed.next()
+        if bar is None:
+            time.sleep(poll_seconds)
+            continue
+        bar = {s: drop_incomplete_bars(df, season.config.timeframe, now)
+               for s, df in bar.items()}
+        bar = {s: df for s, df in bar.items() if df is not None and len(df) > 0}
+        if not bar:
+            time.sleep(poll_seconds)
+            continue
+        try:
+            snapshot = season.step(bar)
+            if snapshot is not None and on_step is not None:
+                on_step(snapshot)
+        except Exception as exc:  # noqa: BLE001
+            if on_error is not None:
+                on_error(exc)
+        ticks += 1
+        time.sleep(poll_seconds)
     return ticks

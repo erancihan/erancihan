@@ -417,8 +417,17 @@ def cmd_season_standings(args: argparse.Namespace) -> int:
 
 
 def cmd_season_run(args: argparse.Namespace) -> int:
-    from .arena.season import ReplaySeasonFeed, Season, SeasonStore, run_season
+    from .arena.season import (
+        ReplaySeasonFeed,
+        Season,
+        SeasonStore,
+        run_season,
+        run_season_daemon,
+    )
     from .data.synthetic import synthetic_ohlcv
+
+    printer = lambda snap: print(_format_standings(snap))  # noqa: E731
+    on_error = lambda exc: print(f"  ! tick error: {exc}", file=sys.stderr)  # noqa: E731
 
     with SeasonStore(args.db) as store:
         season = Season.load(store, args.season_id)
@@ -427,8 +436,10 @@ def cmd_season_run(args: argparse.Namespace) -> int:
                 sym: synthetic_ohlcv(periods=args.replay_periods, seed=42 + i)
                 for i, sym in enumerate(season.config.symbols)
             }
-            feed = ReplaySeasonFeed(frames)
-            stop_on_empty = True
+            print(f"Running season #{season.id} '{season.config.name}' (replay):")
+            run_season(season, ReplaySeasonFeed(frames), max_ticks=args.max_ticks,
+                       pace_s=args.pace, stop_on_empty=True, on_step=printer,
+                       supervise=True, on_error=on_error)
         else:
             from .config import AlpacaCredentials
             from .arena.season import AlpacaSeasonFeed
@@ -440,14 +451,11 @@ def cmd_season_run(args: argparse.Namespace) -> int:
                 return 2
             feed = AlpacaSeasonFeed(season.config.symbols, season.config.timeframe,
                                     creds.api_key, creds.api_secret, feed=creds.feed)
-            stop_on_empty = False
-
-        print(f"Running season #{season.id} '{season.config.name}'"
-              f"{' (replay)' if args.replay else ' (live)'}:")
-        run_season(season, feed, max_ticks=args.max_ticks,
-                   poll_seconds=args.poll_seconds, pace_s=args.pace,
-                   stop_on_empty=stop_on_empty,
-                   on_step=lambda snap: print(_format_standings(snap)))
+            gate = "ignoring market hours" if args.ignore_market_hours else "market-hours gated"
+            print(f"Running season #{season.id} '{season.config.name}' (live daemon, {gate}):")
+            run_season_daemon(season, feed, poll_seconds=args.poll_seconds,
+                              ignore_market_hours=args.ignore_market_hours,
+                              max_ticks=args.max_ticks, on_step=printer, on_error=on_error)
     return 0
 
 
@@ -630,6 +638,8 @@ def build_parser() -> argparse.ArgumentParser:
     sr.add_argument("--max-ticks", dest="max_ticks", type=int, default=None)
     sr.add_argument("--poll-seconds", dest="poll_seconds", type=float, default=60.0)
     sr.add_argument("--pace", type=float, default=0.0)
+    sr.add_argument("--ignore-market-hours", dest="ignore_market_hours",
+                    action="store_true", help="(live) step even when the market is closed")
     sr.set_defaults(func=cmd_season_run)
 
     ah = asub.add_parser("history", help="list past saved tournaments")
