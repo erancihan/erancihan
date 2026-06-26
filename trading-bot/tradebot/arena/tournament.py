@@ -28,6 +28,7 @@ def run_tournament(
     isolation: str = "process",
     cpu_seconds: int | None = None,
     memory_mb: int | None = None,
+    frames=None,
 ) -> TournamentOutcome:
     """Load contestants from ``paths`` and rank them over ``scenario``.
 
@@ -36,13 +37,18 @@ def run_tournament(
     is unavailable rather than silently weakening isolation. Pass
     ``isolation='thread'`` for the lightweight (soft) in-process runner, or
     ``isolation='auto'`` to fall back to it automatically when fork is missing.
+
+    ``frames`` (a ``{symbol: DataFrame}`` dict) overrides ``scenario.build_frames()``
+    — used by the live season to rank over its accumulated bars. The scenario
+    still supplies the shared capital / cost / risk model.
     """
     scenario = scenario or Scenario.default()
     scorer = get_scorer(metric)  # validate metric early (raises on typo)
     runner = runner or default_runner(time_budget_s, isolation, cpu_seconds, memory_mb)
 
     contestants, load_errors = discover(paths)
-    frames = scenario.build_frames()
+    if frames is None:
+        frames = scenario.build_frames()
     risk = RiskManager(scenario.risk)
     config = SimConfig(
         initial_cash=scenario.initial_cash,

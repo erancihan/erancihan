@@ -200,6 +200,8 @@ tradebot arena list  --algos ./algos                       # discover contestant
 tradebot arena run   --algos ./algos --score sharpe        # rank them
 tradebot arena run   --algos ./algos --save                # ...and persist the run
 tradebot arena league --algos ./algos --snapshots 10       # standings evolve over a season
+tradebot arena season create --name s1 --symbols SPY --algos ./algos  # durable, resumable real-time league
+tradebot arena season run 1 --replay                       # advance it offline (or live with Alpaca creds)
 tradebot arena history                                     # list past tournaments
 tradebot arena show  [run_id]                              # reprint a saved leaderboard
 tradebot arena validate algos/my_algo.py                   # smoke-test one file

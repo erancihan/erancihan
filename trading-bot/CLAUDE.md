@@ -64,7 +64,8 @@ trading-bot/
 `tradebot/arena/`: `api.py` (@register), `loader.py` (importlib discovery),
 `interfaces.py` (Algo/Action/Context), `adapters.py` (Policy), `simulation.py`
 (stepped core), `scenario.py`, `runner.py`, `scoring.py`, `result.py`,
-`tournament.py`, `league.py` (standings over a season), `store.py`.
+`tournament.py`, `league.py` (standings over a season), `season.py` (durable,
+resumable real-time league + feeds), `store.py`.
 
 `tradebot/web/`: `app.py` (factory), `repository.py` (read-only SQLite),
 `services/` (metrics, account, jobs), `routes/` (pages, partials, api),
@@ -167,6 +168,14 @@ build) on changes under `trading-bot/**`.
 - **Equity-curve charts:** the arena/job equity is serialised as
   `{index: [...], equity: [...]}` JSON; persisted in arena_results, returned by
   job/arena APIs.
+- **Season = bars are source of truth.** A live `Season` (`season.py`) persists
+  only the accumulated bars (+ a standings snapshot per tick) to SQLite; each
+  tick re-ranks the field with `run_tournament(..., frames=accumulated)`. No
+  per-contestant state is stored, so resume = reload bars and keep stepping;
+  duplicate bars are idempotent (PK `(season_id, symbol, ts)`), so re-feeding old
+  bars from a live feed is harmless. Recompute is O(history)/tick — fine for
+  daily cadence; the default isolation is `thread` (light, re-evaluates data the
+  contestants already survived).
 
 ## Roadmap
 
@@ -175,13 +184,16 @@ persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits,
 **strict isolation modes** — process/thread/auto, no silent downgrade) ·
 dashboard (equity+orders+positions+leaderboards, order markers, browser-run
 backtests/dry-runs) · CI · arena **league** (`arena league` — standings evolve
-over a replayed season; `league.py` reuses the tournament + scoring/result layer).
+over a replayed season) · durable **season** (`arena season` — resumable
+real-time league: SQLite-backed bars/standings that survive restarts; offline
+replay feed + thin lazy Alpaca live feed).
 
 Next candidates (not started):
-- **True real-time** league over live Alpaca data + multi-day persistence. The
-  league *mechanics* (evolving standings, final ranking) already exist in
-  `league.py` and would be reused unchanged; this adds a streaming feed +
-  durable season state (survive restarts).
+- **Production season daemon:** market-hours/holiday scheduling, a supervised
+  long-running loop, partial-bar handling, and a dashboard view of live
+  standings. The durable `Season`/`SeasonStore` core + feed abstraction already
+  exist in `season.py`; this is the operational layer on top (the live Alpaca
+  feed there is thin and not covered by the test suite).
 - Stronger sandboxing beyond `rlimit`s for truly hostile code (seccomp /
   containers / dropped filesystem+network) — builds on `SubprocessRunner`.
 - Candlestick price chart with order markers (needs storing bar data).

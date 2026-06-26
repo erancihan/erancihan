@@ -1,0 +1,100 @@
+from pathlib import Path
+
+from tradebot.arena.season import (
+    ReplaySeasonFeed,
+    Season,
+    SeasonConfig,
+    SeasonStore,
+    run_season,
+)
+from tradebot.cli import main
+from tradebot.data.synthetic import synthetic_ohlcv
+
+ALGOS = Path(__file__).resolve().parents[1] / "algos"
+
+
+def _config(**kw):
+    kw.setdefault("name", "t")
+    kw.setdefault("symbols", ["DEMO"])
+    kw.setdefault("metric", "total_return")
+    kw.setdefault("algo_paths", [str(ALGOS)])
+    return SeasonConfig(**kw)
+
+
+def test_store_roundtrips_bars_and_config(tmp_path):
+    with SeasonStore(tmp_path / "s.db") as store:
+        sid = store.create_season(_config(symbols=["A", "B"], algo_paths=["x"]))
+        df = synthetic_ohlcv(periods=5, seed=1)
+        store.append_bars(sid, {"A": df.iloc[[0]], "B": df.iloc[[0]]})
+        store.append_bars(sid, {"A": df.iloc[[1]], "B": df.iloc[[1]]})
+        store.append_bars(sid, {"A": df.iloc[[1]], "B": df.iloc[[1]]})  # duplicate
+
+        frames = store.load_frames(sid)
+        assert set(frames) == {"A", "B"}
+        assert len(frames["A"]) == 2          # duplicate ignored (idempotent)
+        cfg = store.get_config(sid)
+        assert cfg.symbols == ["A", "B"] and cfg.algo_paths == ["x"]
+
+
+def test_step_accumulates_then_ranks(tmp_path):
+    with SeasonStore(tmp_path / "s.db") as store:
+        season = Season.create(store, _config())
+        df = synthetic_ohlcv(periods=10, seed=1)
+        assert season.step({"DEMO": df.iloc[[0]]}) is None     # one bar: too few
+        snap = season.step({"DEMO": df.iloc[[1]]})
+        assert snap is not None and snap.step == 2
+        assert [s.rank for s in snap.standings] == list(range(1, len(snap.standings) + 1))
+        assert {s.name for s in snap.standings} <= {"sma_trend", "rsi_dip", "buy_and_hold"}
+
+
+def test_season_survives_restart_and_resumes(tmp_path):
+    db = tmp_path / "s.db"
+    bars = synthetic_ohlcv(periods=20, seed=1)
+
+    # Run the first 5 ticks, then drop everything (simulate a crash/restart).
+    with SeasonStore(db) as store:
+        season = Season.create(store, _config())
+        sid = season.id
+        run_season(season, ReplaySeasonFeed({"DEMO": bars.iloc[:5]}), max_ticks=5)
+        assert season.step_index == 5
+
+    # Re-open the DB and load the season — state must be exactly where we left it.
+    with SeasonStore(db) as store2:
+        resumed = Season.load(store2, sid)
+        assert resumed.step_index == 5
+        assert resumed.config.metric == "total_return"
+        # Continue with the next bars; the season keeps growing from disk state.
+        run_season(resumed, ReplaySeasonFeed({"DEMO": bars.iloc[5:10]}), max_ticks=5)
+        assert resumed.step_index == 10
+        assert len(store2.load_frames(sid)["DEMO"]) == 10
+        assert store2.latest_standings(sid).step == 10
+
+
+def test_season_standings_are_deterministic(tmp_path):
+    def run(db):
+        with SeasonStore(db) as store:
+            season = Season.create(store, _config(metric="sharpe"))
+            run_season(season, ReplaySeasonFeed({"DEMO": synthetic_ohlcv(periods=30, seed=2)}),
+                       max_ticks=30)
+            return store.latest_standings(season.id)
+    a = run(tmp_path / "a.db")
+    b = run(tmp_path / "b.db")
+    assert [(s.name, round(s.total_return, 8)) for s in a.standings] == \
+           [(s.name, round(s.total_return, 8)) for s in b.standings]
+
+
+def test_cli_season_create_run_standings(tmp_path, capsys):
+    db = str(tmp_path / "season.db")
+    assert main(["arena", "season", "create", "--name", "wk", "--symbols", "DEMO",
+                 "--algos", str(ALGOS), "--score", "total_return", "--db", db]) == 0
+    assert "Created season #1" in capsys.readouterr().out
+
+    assert main(["arena", "season", "run", "1", "--replay", "--replay-periods", "30",
+                 "--db", db]) == 0
+    assert "[" in capsys.readouterr().out          # standings lines streamed
+
+    assert main(["arena", "season", "standings", "1", "--db", db]) == 0
+    assert "standings" in capsys.readouterr().out.lower()
+
+    assert main(["arena", "season", "list", "--db", db]) == 0
+    assert "wk" in capsys.readouterr().out
