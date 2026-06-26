@@ -51,21 +51,35 @@ func (s *Server) StreamSimulation(
 	}
 }
 
-// SubmitProposal enqueues an external agent's proposal as a command for the loop
-// to drain. (Phase 2 only accepts and queues it; the Phase 3 referee acts on it.)
+// SubmitProposal binds the agent to a body (assigning one on first contact) and
+// records the proposal as that body's pending decision for the loop to apply.
 func (s *Server) SubmitProposal(_ context.Context, req *pb.Proposal) (*pb.ProposalAck, error) {
 	if req.GetAgentId() == "" {
 		return &pb.ProposalAck{Accepted: false, Reason: "agent_id is required"}, nil
 	}
 
-	engine.SubmitCommand(s.app.World, sim.ProposalCommand{
+	reg, ok := ecs.GetResource[sim.ExternalAgents](s.app.World)
+	if !ok {
+		return &pb.ProposalAck{Accepted: false, Reason: "external agents not available"}, nil
+	}
+
+	body, ok := reg.Bind(req.GetAgentId())
+	if !ok {
+		return &pb.ProposalAck{Accepted: false, Reason: "no available agent slot"}, nil
+	}
+
+	reg.SubmitPending(body, sim.ProposalCommand{
 		AgentID:   req.GetAgentId(),
 		TargetID:  req.GetTargetEntityId(),
 		OfferJSON: req.GetOfferJson(),
 	})
-	log.Printf("[grpc] proposal from %q targeting entity %d", req.GetAgentId(), req.GetTargetEntityId())
+	log.Printf("[grpc] proposal from %q -> body %d", req.GetAgentId(), entityID(body))
 
-	return &pb.ProposalAck{Accepted: true, Reason: "proposal enqueued for next tick"}, nil
+	return &pb.ProposalAck{
+		Accepted:         true,
+		Reason:           "proposal enqueued for next tick",
+		AssignedEntityId: entityID(body),
+	}, nil
 }
 
 // GetWorldState returns a snapshot of the current simulation state.
