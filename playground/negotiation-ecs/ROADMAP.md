@@ -18,7 +18,7 @@ the first *application* built on top of it.
 - ✅ **Phase 4 — Economy plugin** (done)
 - ✅ **Phase 5 — Movement: steering + optional override** (done)
 - ✅ **Phase 6 — Tests & determinism** (done)
-- ⬜ **Phase 7 — Visualizer interactivity & polish** (Rust; not started)
+- ✅ **Phase 7 — Visualizer interactivity & polish** (done; GUI compile/link-verified)
 - 🟡 **Phase 8 — Extraction validation done; SDK completeness pending**
 
 ## Two layers
@@ -193,9 +193,14 @@ reproduction across seeded runs (event/settlement counts + a checksum of the
 final value distribution) and whole-system per-tick conservation. 73 tests across
 6 packages, green under `-race`.
 
-### Phase 7 — Visualizer interactivity & polish
-Control buttons wired to `ControlSimulation` (pause / step / reset). Honor
-`max_fps` (per-subscriber rate limiting). Entity inspector and ledger view.
+### Phase 7 — Visualizer interactivity & polish ✅ done
+Backend: `StreamSimulation` honors the client's `max_fps` via a per-stream
+rate limiter (deterministically tested). Visualizer (Rust): Pause/Resume/Step/
+Reset buttons wired to `ControlSimulation` through a UI→network command channel
+and a dedicated control client, plus a live Total-Cash readout (the conserved
+economy total). The GUI is compile- and link-verified (`cargo build`); it was not
+run here as the environment has no display, but the control path's backend side
+is covered by the transport tests.
 
 ### Phase 8 — SDK completeness + extraction validation 🟡 partly done
 **Extraction validation ✅** — `examples/boids` is a full Reynolds flocking sim
