@@ -29,6 +29,7 @@ def run_tournament(
     cpu_seconds: int | None = None,
     memory_mb: int | None = None,
     frames=None,
+    harden: bool = False,
 ) -> TournamentOutcome:
     """Load contestants from ``paths`` and rank them over ``scenario``.
 
@@ -44,7 +45,7 @@ def run_tournament(
     """
     scenario = scenario or Scenario.default()
     scorer = get_scorer(metric)  # validate metric early (raises on typo)
-    runner = runner or default_runner(time_budget_s, isolation, cpu_seconds, memory_mb)
+    runner = runner or default_runner(time_budget_s, isolation, cpu_seconds, memory_mb, harden)
 
     contestants, load_errors = discover(paths)
     if frames is None:

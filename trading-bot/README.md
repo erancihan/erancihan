@@ -256,9 +256,10 @@ The `BarCache` (`tradebot/data/cache.py`) downloads any missing range, merges it
 into the on-disk cache, and serves everything else from disk — so a given
 (symbol, timeframe, range) is fetched at most once.
 
-> ⚠️ The default runner executes algorithms **in-process** — only run code you
-> trust. The runner is abstracted so a sandboxed subprocess backend can drop in
-> for untrusted submissions.
+> Contestants run in isolated subprocesses by default (hard timeout + CPU/memory
+> limits). Add `--harden` to additionally sandbox each one — **no disk writes,
+> no network** — for less-trusted submissions. (Fully adversarial code still
+> wants seccomp/containers; see `CLAUDE.md`.)
 
 ## Dashboard (web UI)
 

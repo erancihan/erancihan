@@ -287,6 +287,7 @@ def cmd_arena_run(args: argparse.Namespace) -> int:
     outcome = run_tournament(
         args.algos, scenario, metric=args.score, time_budget_s=args.time_budget,
         isolation=args.isolation, cpu_seconds=args.cpu_seconds, memory_mb=args.memory_mb,
+        harden=args.harden,
     )
     print(outcome.leaderboard.table())
     for e in outcome.load_errors:
@@ -362,7 +363,7 @@ def cmd_arena_league(args: argparse.Namespace) -> int:
     result = run_league(
         args.algos, scenario, metric=args.score, snapshots=args.snapshots,
         time_budget_s=args.time_budget, isolation=args.isolation,
-        cpu_seconds=args.cpu_seconds, memory_mb=args.memory_mb,
+        cpu_seconds=args.cpu_seconds, memory_mb=args.memory_mb, harden=args.harden,
         pace_s=args.pace, on_snapshot=lambda snap: print(_format_standings(snap)),
     )
     print(result.final.table())
@@ -586,6 +587,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="hard CPU-time limit per contestant (process isolation)")
     ar.add_argument("--memory-mb", dest="memory_mb", type=int, default=None,
                     help="hard memory limit in MB per contestant (process isolation)")
+    ar.add_argument("--harden", action="store_true",
+                    help="sandbox each contestant: no disk writes, no network "
+                         "(process isolation only)")
     ar.add_argument("--out", help="write the leaderboard to this JSON file")
     ar.add_argument("--save", action="store_true", help="persist this run to the arena DB")
     ar.add_argument("--db", default="arena.db", help="arena results DB (default arena.db)")
@@ -604,6 +608,8 @@ def build_parser() -> argparse.ArgumentParser:
     aL.add_argument("--isolation", choices=["process", "thread", "auto"], default="process")
     aL.add_argument("--cpu-seconds", dest="cpu_seconds", type=int, default=None)
     aL.add_argument("--memory-mb", dest="memory_mb", type=int, default=None)
+    aL.add_argument("--harden", action="store_true",
+                    help="sandbox each contestant: no disk writes, no network")
     aL.set_defaults(func=cmd_arena_league)
 
     aS = asub.add_parser("season", help="durable, resumable real-time league season")

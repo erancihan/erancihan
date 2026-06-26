@@ -66,7 +66,8 @@ trading-bot/
 (stepped core), `scenario.py`, `runner.py`, `scoring.py`, `result.py`,
 `tournament.py`, `league.py` (standings over a season), `season.py` (durable,
 resumable real-time league + feeds + daemon), `market.py` (US market-hours +
-partial-bar helpers), `store.py`.
+partial-bar helpers), `sandbox.py` (`--harden`: no-write + net isolation),
+`store.py`.
 
 `tradebot/web/`: `app.py` (factory), `repository.py` (read-only SQLite),
 `services/` (metrics, account, jobs), `routes/` (pages, partials, api),
@@ -182,7 +183,8 @@ build) on changes under `trading-bot/**`.
 
 Done: trading core · dry-run · arena (loading, both interfaces, Alpaca cache,
 persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits,
-**strict isolation modes** — process/thread/auto, no silent downgrade) ·
+**strict isolation modes** — process/thread/auto, no silent downgrade,
+`--harden` **sandbox**: no disk writes + network-namespace isolation) ·
 dashboard (equity+orders+positions+leaderboards, order markers, browser-run
 backtests/dry-runs, **candlestick price chart** w/ order markers, **live account
 header + dashboard auto-refresh** w/ pause + last-updated, `/api/account`) · CI ·
@@ -194,8 +196,11 @@ next_open + partial-bar drop, supervised loop, `/seasons` dashboard standings
 view; live daemon loop itself is thin & untested).
 
 Next candidates (not started):
-- Stronger sandboxing beyond `rlimit`s for truly hostile code (seccomp /
-  containers / dropped filesystem+network) — builds on `SubprocessRunner`.
+- Deeper sandboxing for fully adversarial code: **seccomp** syscall filtering
+  (block `execve` etc; `libseccomp.so.2` is present — wire via pyseccomp or a
+  ctypes BPF) and **container/gVisor** containment. The `--harden` layer
+  (no disk writes + network isolation) is the first tier; `sandbox.py` returns a
+  capability report and degrades gracefully where a mechanism is unavailable.
 
 (Dashboard auto-refresh is polling-based via a shared `live` Alpine store; true
 websocket *push* was deemed unnecessary for a local dashboard — revisit only if
