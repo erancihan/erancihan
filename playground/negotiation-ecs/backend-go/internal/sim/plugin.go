@@ -35,8 +35,12 @@ func (p Plugin) Build(a *engine.App) {
 		ecs.SetResource(w, cfg)
 		ecs.SetResource(w, RNG{R: rand.New(rand.NewSource(seed))})
 		ecs.SetResource(w, newBrains())
+		ecs.SetResource(w, newExternalAgents())
 	})
 	a.AddStartupSystem(spawnSystem)
+	a.AddStartupSystem(seedExternalPool)
+
+	a.AddSystem(engine.StagePreUpdate, externalBindingSystem)
 	a.AddSystem(engine.StageUpdate, MovementSystem)
 	a.AddSystem(engine.StageUpdate, TimeoutSystem)
 	a.AddSystem(engine.StageUpdate, NegotiationSystem)
