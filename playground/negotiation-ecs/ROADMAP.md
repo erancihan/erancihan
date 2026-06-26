@@ -16,8 +16,10 @@ the first *application* built on top of it.
 - ✅ **Phase 2 — Engine services + port off Ark** (done)
 - ✅ **Phase 3 — Actor control plane + negotiation referee** (done)
 - ✅ **Phase 4 — Economy plugin** (done)
-- ⏳ **Phase 5 — Movement: steering + optional override** (next)
-- ⬜ Phases 6–8 — pending
+- ✅ **Phase 5 — Movement: steering + optional override** (done)
+- ✅ **Phase 6 — Tests & determinism** (done)
+- ⏳ **Phase 7 — Visualizer interactivity & polish** (next; Rust)
+- ⬜ **Phase 8 — SDK completeness + extraction validation** (pending)
 
 ## Two layers
 
@@ -171,18 +173,25 @@ cycle. Tested for per-tick cash/asset conservation, valid swaps, and rejection
 of illegal deals. (Surfacing balances via a dedicated read RPC is deferred —
 balances already ride in entity inventories on every frame.)
 
-### Phase 5 — Movement plugin: steering + optional override
-Enrich the ported movement plugin: split **steering** (default velocity) from
-**physics integration** (always runs). A marker component lets steering skip
-entities whose agent supplies a `Move` hook; those take velocity from their
-brain. Integration stays uniform.
+### Phase 5 — Movement plugin: steering + optional override ✅ done
+Movement split into three ordered systems: **SteeringSystem** (default wander,
+skips entities marked `SelfPropelled`), **MoveSystem** (asks a `MoveBrain` via the
+same `DispatchActors` machinery as negotiation and applies the velocity, clamped
+to max speed), and **IntegrationSystem** (velocity → position + bounce for every
+entity, always runs). This adds the actor model's optional `Move` hook —
+`MoveBrain`/`MoveView`/`MoveCommand`, a `MoveBrains` registry, `SetMoveBrain`, and
+an example `SeekBrain`. Default behaviour is unchanged (all agents wander; the
+override is opt-in). Tested under `-race`.
 
-### Phase 6 — Tests & determinism
-ECS-core tests (entity recycling/generations, store correctness, query
-intersection) and engine tests (schedule order, fixed timestep, command buffer,
-deadline handling), separate from domain tests. Domain **conservation
-invariant** (total cash/assets constant unless explicitly minted/burned). Seeded
-integration run asserting on outputs.
+### Phase 6 — Tests & determinism ✅ done
+Largely satisfied by testing each phase as it landed: ECS-core (recycling,
+generations, store, query intersection), engine (schedule order, fixed timestep,
+command buffer, deadline), messaging/actor/observer, domain conservation, gRPC
+round-trip (bufconn), and the import-boundary guard. Closed with an
+`internal/integration` full-stack suite (engine + sim + economy): deterministic
+reproduction across seeded runs (event/settlement counts + a checksum of the
+final value distribution) and whole-system per-tick conservation. 73 tests across
+6 packages, green under `-race`.
 
 ### Phase 7 — Visualizer interactivity & polish
 Control buttons wired to `ControlSimulation` (pause / step / reset). Honor
