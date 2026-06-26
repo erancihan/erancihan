@@ -1,31 +1,29 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 )
 
-func RegisterFolders(ctx context.Context) *cobra.Command {
-
-	cmd := &cobra.Command{
-		Use:   "register-folders",
-		Short: "Register a new folder",
+func registerFoldersCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "register-folders <path>...",
+		Short: "Register one or more folders to scan for images",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctxVal := cmd.Context().Value(APP_CONTEXT_KEY)
-			if ctxVal == nil {
-				return fmt.Errorf("appContext is not available in context")
+			svc, err := serviceFrom(cmd.Context())
+			if err != nil {
+				return err
 			}
-			appContext, ok := ctxVal.(*AppContext)
-			if !ok || appContext.DB == nil {
-				return fmt.Errorf("appContext is not properly initialized")
+			for _, path := range args {
+				folder, err := svc.RegisterFolder(path)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Registered [%d] %s\n", folder.ID, folder.Path)
 			}
-
-			// Implementation for registering a folder goes here
 			return nil
 		},
 	}
-
-	return cmd
 }

@@ -4,12 +4,9 @@ import (
 	"gorm.io/gorm"
 )
 
-/**
-This is the model for folders where the application will search for images.
-*/
-
+// Folder is a directory that the application scans for images.
 type Folder struct {
 	gorm.Model
 
-	Path string `json:"path"`
+	Path string `json:"path" gorm:"uniqueIndex"`
 }
