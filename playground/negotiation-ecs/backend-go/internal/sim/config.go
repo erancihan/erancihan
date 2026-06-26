@@ -2,6 +2,7 @@ package sim
 
 import (
 	"math/rand"
+	"time"
 
 	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
 )
@@ -17,6 +18,11 @@ type Config struct {
 	StartingAssets          map[string]float64
 	NegotiationTimeoutTicks uint64
 	Seed                    int64 // 0 = time-independent default seed
+
+	// DecisionTimeout bounds how long the referee waits for brains each tick.
+	// Internal brains return instantly; this is the frame budget for slower
+	// (e.g. networked) ones.
+	DecisionTimeout time.Duration
 }
 
 // DefaultConfig returns a sensible default configuration.
@@ -34,6 +40,7 @@ func DefaultConfig() Config {
 		},
 		NegotiationTimeoutTicks: 100,
 		Seed:                    0,
+		DecisionTimeout:         50 * time.Millisecond,
 	}
 }
 

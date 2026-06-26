@@ -34,6 +34,7 @@ func (p Plugin) Build(a *engine.App) {
 	a.AddStartupSystem(func(w *ecs.World) {
 		ecs.SetResource(w, cfg)
 		ecs.SetResource(w, RNG{R: rand.New(rand.NewSource(seed))})
+		ecs.SetResource(w, newBrains())
 	})
 	a.AddStartupSystem(spawnSystem)
 	a.AddSystem(engine.StageUpdate, MovementSystem)
@@ -45,6 +46,7 @@ func (p Plugin) Build(a *engine.App) {
 func spawnSystem(w *ecs.World) {
 	cfg := config(w)
 	r := rng(w)
+	brains := ecs.MustResource[Brains](w)
 	strategies := []string{StrategyRandom, StrategyGreedy, StrategyCooperative}
 
 	for i := 0; i < cfg.NumAgents; i++ {
@@ -58,6 +60,8 @@ func spawnSystem(w *ecs.World) {
 			assets[k] = v
 		}
 
+		strategy := strategies[r.Intn(len(strategies))]
+
 		ecs.Add(w, e, Position{X: r.Float64() * cfg.WorldWidth, Y: r.Float64() * cfg.WorldHeight})
 		ecs.Add(w, e, Velocity{DX: math.Cos(angle) * speed, DY: math.Sin(angle) * speed})
 		ecs.Add(w, e, Inventory{Cash: cfg.StartingCash, Assets: assets})
@@ -65,7 +69,11 @@ func spawnSystem(w *ecs.World) {
 		ecs.Add(w, e, AgentRole{
 			Name:     fmt.Sprintf("Agent-%03d", i),
 			Type:     AgentTypeInternal,
-			Strategy: strategies[r.Intn(len(strategies))],
+			Strategy: strategy,
 		})
+
+		// Each brain gets its own deterministic seed drawn from the shared RNG,
+		// so brains stay independent (concurrency-safe) and reproducible.
+		brains.Set(e, makeBrain(strategy, r.Int63()))
 	}
 }
