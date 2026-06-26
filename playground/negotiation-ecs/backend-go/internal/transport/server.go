@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/erancihan/negotiation-ecs/backend-go/engine"
 	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
@@ -34,11 +35,18 @@ func (s *Server) StreamSimulation(
 
 	log.Printf("[grpc] stream subscriber %d connected (max_fps=%d)", id, req.GetMaxFps())
 
+	limiter := newRateLimiter(req.GetMaxFps())
+
 	for {
 		select {
 		case frame, ok := <-ch:
 			if !ok {
 				return nil
+			}
+			// Respect the client's requested frame rate by dropping frames that
+			// arrive too soon.
+			if !limiter.allow(time.Now()) {
+				continue
 			}
 			if err := stream.Send(frame); err != nil {
 				log.Printf("[grpc] stream %d send error: %v", id, err)
