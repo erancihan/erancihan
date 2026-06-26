@@ -35,6 +35,12 @@ struct NegotiationApp {
     /// Shared simulation state (written by network thread, read by UI).
     sim_state: Arc<Mutex<SimState>>,
 
+    /// Sends control commands to the network thread.
+    control_tx: tokio::sync::mpsc::UnboundedSender<network::ControlCmd>,
+
+    /// UI-side view of whether the simulation is paused.
+    paused: bool,
+
     /// Canvas rendering configuration.
     canvas_config: CanvasConfig,
 
@@ -52,14 +58,45 @@ impl NegotiationApp {
 
         let sim_state = Arc::new(Mutex::new(SimState::new()));
 
+        // Channel for UI -> network control commands.
+        let (control_tx, control_rx) = tokio::sync::mpsc::unbounded_channel();
+
         // Spawn the background gRPC receiver thread
-        network::spawn_network_thread(Arc::clone(&sim_state), server_addr);
+        network::spawn_network_thread(Arc::clone(&sim_state), server_addr, control_rx);
 
         Self {
             sim_state,
+            control_tx,
+            paused: false,
             canvas_config: CanvasConfig::default(),
             log_filter: LogFilter::default(),
         }
+    }
+
+    /// Render pause/resume/step/reset controls and dispatch their commands.
+    fn draw_controls(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let label = if self.paused { "▶ Resume" } else { "⏸ Pause" };
+            if ui.button(label).clicked() {
+                self.paused = !self.paused;
+                let cmd = if self.paused {
+                    network::ControlCmd::Pause
+                } else {
+                    network::ControlCmd::Resume
+                };
+                let _ = self.control_tx.send(cmd);
+            }
+            if ui
+                .add_enabled(self.paused, egui::Button::new("⏭ Step"))
+                .clicked()
+            {
+                let _ = self.control_tx.send(network::ControlCmd::Step);
+            }
+            if ui.button("⟲ Reset").clicked() {
+                self.paused = false;
+                let _ = self.control_tx.send(network::ControlCmd::Reset);
+            }
+        });
     }
 }
 
@@ -80,6 +117,8 @@ impl eframe::App for NegotiationApp {
             .show(ctx, |ui| {
                 ui.add_space(4.0);
                 stats::draw_stats(ui, &state);
+                ui.separator();
+                self.draw_controls(ui);
                 ui.add_space(4.0);
             });
 

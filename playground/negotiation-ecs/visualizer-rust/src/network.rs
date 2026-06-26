@@ -8,6 +8,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use tokio::sync::mpsc::UnboundedReceiver;
+
 use crate::state::{EntityView, NegotiationEventView, SimState, TickStatsView};
 
 /// Generated protobuf module.
@@ -16,11 +18,36 @@ pub mod proto {
 }
 
 use proto::simulation_service_client::SimulationServiceClient;
-use proto::StreamRequest;
+use proto::{SimCommand, SimControlRequest, StreamRequest};
 
-/// Spawn the background network receiver on a new OS thread with its own
-/// tokio runtime. This ensures the egui render loop is never blocked.
-pub fn spawn_network_thread(state: Arc<Mutex<SimState>>, server_addr: String) {
+/// Control commands the UI can send to the running simulation.
+#[derive(Clone, Copy, Debug)]
+pub enum ControlCmd {
+    Pause,
+    Resume,
+    Step,
+    Reset,
+}
+
+impl ControlCmd {
+    fn proto(self) -> SimCommand {
+        match self {
+            ControlCmd::Pause => SimCommand::Pause,
+            ControlCmd::Resume => SimCommand::Resume,
+            ControlCmd::Step => SimCommand::Step,
+            ControlCmd::Reset => SimCommand::Reset,
+        }
+    }
+}
+
+/// Spawn the background network thread with its own tokio runtime. It runs two
+/// concurrent loops: one streaming frames into shared state, one issuing control
+/// commands received from the UI. Neither blocks the egui render loop.
+pub fn spawn_network_thread(
+    state: Arc<Mutex<SimState>>,
+    server_addr: String,
+    control_rx: UnboundedReceiver<ControlCmd>,
+) {
     std::thread::Builder::new()
         .name("grpc-receiver".to_string())
         .spawn(move || {
@@ -30,28 +57,58 @@ pub fn spawn_network_thread(state: Arc<Mutex<SimState>>, server_addr: String) {
                 .expect("Failed to create tokio runtime");
 
             rt.block_on(async move {
-                loop {
-                    match connect_and_stream(&state, &server_addr).await {
-                        Ok(_) => {
-                            eprintln!("[network] Stream ended normally, reconnecting...");
-                        }
-                        Err(e) => {
-                            eprintln!("[network] Connection error: {e}");
-                            {
-                                let mut s = state.lock().unwrap();
-                                s.connected = false;
-                                s.connection_error = Some(format!("{e}"));
-                            }
-                        }
-                    }
-
-                    // Exponential backoff with cap
-                    eprintln!("[network] Reconnecting in 2 seconds...");
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                }
+                tokio::join!(
+                    stream_forever(state, server_addr.clone()),
+                    control_forever(control_rx, server_addr),
+                );
             });
         })
         .expect("Failed to spawn network thread");
+}
+
+/// Reconnecting loop that streams frames into shared state.
+async fn stream_forever(state: Arc<Mutex<SimState>>, server_addr: String) {
+    loop {
+        match connect_and_stream(&state, &server_addr).await {
+            Ok(_) => eprintln!("[network] Stream ended normally, reconnecting..."),
+            Err(e) => {
+                eprintln!("[network] Connection error: {e}");
+                let mut s = state.lock().unwrap();
+                s.connected = false;
+                s.connection_error = Some(format!("{e}"));
+            }
+        }
+        eprintln!("[network] Reconnecting in 2 seconds...");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// Loop that issues control commands from the UI over a dedicated client,
+/// (re)connecting lazily as commands arrive.
+async fn control_forever(mut rx: UnboundedReceiver<ControlCmd>, server_addr: String) {
+    let url = format!("http://{server_addr}");
+    let mut client: Option<SimulationServiceClient<tonic::transport::Channel>> = None;
+
+    while let Some(cmd) = rx.recv().await {
+        if client.is_none() {
+            match SimulationServiceClient::connect(url.clone()).await {
+                Ok(c) => client = Some(c),
+                Err(e) => {
+                    eprintln!("[control] connect error: {e}");
+                    continue;
+                }
+            }
+        }
+        if let Some(c) = client.as_mut() {
+            let req = tonic::Request::new(SimControlRequest {
+                command: cmd.proto() as i32,
+            });
+            if let Err(e) = c.control_simulation(req).await {
+                eprintln!("[control] {cmd:?} error: {e}");
+                client = None; // force reconnect next time
+            }
+        }
+    }
 }
 
 /// Connect to the gRPC server and stream frames until disconnection.
