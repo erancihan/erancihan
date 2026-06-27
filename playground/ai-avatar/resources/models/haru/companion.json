@@ -1,0 +1,22 @@
+{
+  "name": "Haru (greeter)",
+  "license": "Live2D Free Material License — sample model, verify terms before distribution",
+  "author": "Live2D Inc.",
+  "expressionMap": {
+    "neutral": "f00",
+    "happy": "f01",
+    "sad": "f02",
+    "surprised": "f03",
+    "angry": "f04",
+    "excited": "f05",
+    "thinking": "f06"
+  },
+  "motionMap": {
+    "idle": "Idle",
+    "listening": "Idle",
+    "thinking": "Idle",
+    "working": "Tap",
+    "speaking": "Idle",
+    "alert": "Tap"
+  }
+}
