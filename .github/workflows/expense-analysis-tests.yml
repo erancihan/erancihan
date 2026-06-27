@@ -1,0 +1,41 @@
+name: expense-analysis tests
+
+# Runs the expense-analysis test suite on changes to that project.
+on:
+  push:
+    paths:
+      - 'playground/python/expense-analysis/**'
+      - '.github/workflows/expense-analysis-tests.yml'
+  pull_request:
+    paths:
+      - 'playground/python/expense-analysis/**'
+      - '.github/workflows/expense-analysis-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: playground/python/expense-analysis
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: playground/python/expense-analysis/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check migrations apply on a fresh database
+        env:
+          DATABASE_URL: sqlite:///ci_check.db
+          SECRET_KEY: ci-secret
+        run: alembic upgrade head
