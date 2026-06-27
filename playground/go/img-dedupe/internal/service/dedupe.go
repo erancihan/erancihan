@@ -79,11 +79,20 @@ func (s *Service) ResolveDuplicates(policy KeepPolicy, dryRun bool) (*DeleteResu
 	if err != nil {
 		return nil, err
 	}
+	imageGroups := make([][]models.Image, len(groups))
+	for i, g := range groups {
+		imageGroups[i] = g.Images
+	}
+	return s.resolveGroups(imageGroups, policy, dryRun)
+}
 
+// resolveGroups keeps one image per group (chosen by policy) and removes the
+// rest, honouring dryRun. Shared by exact and near-duplicate resolution.
+func (s *Service) resolveGroups(groups [][]models.Image, policy KeepPolicy, dryRun bool) (*DeleteResult, error) {
 	var toDelete []uint
-	for _, g := range groups {
-		keeper := pickKeeper(g.Images, policy)
-		for _, img := range g.Images {
+	for _, imgs := range groups {
+		keeper := pickKeeper(imgs, policy)
+		for _, img := range imgs {
 			if img.ID != keeper.ID {
 				toDelete = append(toDelete, img.ID)
 			}

@@ -75,9 +75,20 @@
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h2 class="text-lg font-semibold">Duplicates</h2>
             <div class="flex flex-wrap items-center gap-2">
+                <select x-model="mode" class="border border-slate-300 rounded-lg px-2 py-2 text-sm">
+                    <option value="exact">exact</option>
+                    <option value="similar">similar</option>
+                </select>
+
+                <label class="flex items-center gap-1 text-sm text-slate-600" x-show="mode === 'similar'">
+                    distance
+                    <input type="number" min="0" max="64" x-model.number="threshold"
+                           class="w-16 border border-slate-300 rounded-lg px-2 py-1">
+                </label>
+
                 <button @click="findDuplicates()" :disabled="busy"
-                        class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg">
-                    Find duplicates
+                        class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg"
+                        x-text="mode === 'similar' ? 'Find similar' : 'Find duplicates'">
                 </button>
 
                 <select x-model="policy" class="border border-slate-300 rounded-lg px-2 py-2 text-sm">
@@ -99,7 +110,7 @@
         </div>
 
         <template x-if="loaded && groups.length === 0">
-            <p class="text-slate-400 text-sm">No duplicate groups. Scan some folders, then search again.</p>
+            <p class="text-slate-400 text-sm">No matching groups. Scan some folders, then search again.</p>
         </template>
 
         <!-- Sticky action bar when something is selected -->
@@ -119,10 +130,10 @@
         </template>
 
         <div class="space-y-6">
-            <template x-for="g in groups" :key="g.hash">
+            <template x-for="g in groups" :key="g.key">
                 <div class="border border-slate-200 rounded-lg p-4">
                     <div class="flex items-center justify-between mb-3">
-                        <span class="font-mono text-xs text-slate-400" x-text="g.hash.slice(0,16) + '…'"></span>
+                        <span class="font-mono text-xs text-slate-400" x-text="g.key.slice(0,16) + '…'"></span>
                         <span class="text-xs text-slate-400" x-text="g.images.length + ' copies'"></span>
                     </div>
 
@@ -168,6 +179,8 @@ function app() {
         selected: {},
         newPath: '',
         policy: 'newest',
+        mode: 'exact',
+        threshold: 10,
         dryRun: true,
         busy: false,
         loaded: false,
@@ -229,10 +242,12 @@ function app() {
         async findDuplicates() {
             this.busy = true;
             try {
-                this.groups = await this.api('GET', '/api/duplicates') || [];
+                const url = `/api/duplicates?mode=${this.mode}&threshold=${this.threshold}`;
+                this.groups = await this.api('GET', url) || [];
                 this.selected = {};
                 this.loaded = true;
-                this.notify(this.groups.length ? `${this.groups.length} duplicate group(s).` : 'No duplicates found.');
+                const noun = this.mode === 'similar' ? 'similar' : 'duplicate';
+                this.notify(this.groups.length ? `${this.groups.length} ${noun} group(s).` : `No ${noun} groups found.`);
             } catch (e) { this.notify(e.message, false); }
             finally { this.busy = false; }
         },
@@ -275,7 +290,10 @@ function app() {
             if (!this.dryRun && !confirm(`Auto-resolve all groups, keeping "${this.policy}"?`)) return;
             this.busy = true;
             try {
-                const res = await this.api('POST', '/api/resolve', { policy: this.policy, dry_run: this.dryRun });
+                const res = await this.api('POST', '/api/resolve', {
+                    policy: this.policy, dry_run: this.dryRun,
+                    mode: this.mode, threshold: this.threshold,
+                });
                 if (this.dryRun) {
                     this.notify(`Dry run: ${res.planned.length} file(s) would be removed (keep ${this.policy}).`);
                 } else {

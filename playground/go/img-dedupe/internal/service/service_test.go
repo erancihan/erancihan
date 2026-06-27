@@ -227,3 +227,68 @@ func TestPickKeeper(t *testing.T) {
 		}
 	}
 }
+
+// writeGradientPNG writes a 64x64 horizontal greyscale gradient. The same shape
+// with a different brightness base produces an identical difference-hash but
+// different bytes — i.e. a near-duplicate that is not a byte-identical one.
+func writeGradientPNG(t *testing.T, path string, base int) {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for x := 0; x < 64; x++ {
+		v := uint8(base + x*3) // monotonic in x; base in [10,40] never clamps
+		for y := 0; y < 64; y++ {
+			img.Set(x, y, color.RGBA{v, v, v, 255})
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFindSimilar(t *testing.T) {
+	svc := newTestService(t)
+	dir := t.TempDir()
+
+	// a and a2 are the same gradient at different brightness: identical
+	// perceptual hash, different bytes. b is a flat colour: clearly different.
+	writeGradientPNG(t, filepath.Join(dir, "a.png"), 30)
+	writeGradientPNG(t, filepath.Join(dir, "a2.png"), 10)
+	writePNG(t, filepath.Join(dir, "b.png"), color.RGBA{128, 128, 128, 255})
+
+	if _, err := svc.RegisterFolder(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ScanFolders(0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exact detection finds nothing — all three files differ byte-for-byte.
+	dups, err := svc.FindDuplicates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dups) != 0 {
+		t.Fatalf("FindDuplicates got %d groups, want 0 (no byte-identical files)", len(dups))
+	}
+
+	// Perceptual detection clusters a.png with a2.png, but not b.png.
+	sims, err := svc.FindSimilar(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sims) != 1 {
+		t.Fatalf("FindSimilar got %d groups, want 1", len(sims))
+	}
+	names := map[string]bool{}
+	for _, img := range sims[0].Images {
+		names[filepath.Base(img.Path)] = true
+	}
+	if len(sims[0].Images) != 2 || !names["a.png"] || !names["a2.png"] {
+		t.Fatalf("similar group = %v, want {a.png, a2.png}", names)
+	}
+}

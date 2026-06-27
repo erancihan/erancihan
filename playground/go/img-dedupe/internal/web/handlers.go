@@ -6,9 +6,28 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/erancihan/img-dedupe/internal/models"
 	"github.com/erancihan/img-dedupe/internal/service"
 	"gorm.io/gorm"
 )
+
+// groupResponse is the uniform shape returned for both exact and similar groups,
+// so the frontend can render them identically.
+type groupResponse struct {
+	Key    string         `json:"key"`
+	Images []models.Image `json:"images"`
+}
+
+// thresholdFrom reads the perceptual-hash threshold from the query string,
+// falling back to the default when absent.
+func thresholdFrom(r *http.Request) int {
+	if q := r.URL.Query().Get("threshold"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return service.DefaultSimilarityThreshold
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -88,27 +107,52 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDuplicates(w http.ResponseWriter, r *http.Request) {
-	groups, err := s.svc.FindDuplicates()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	out := []groupResponse{}
+
+	if r.URL.Query().Get("mode") == "similar" {
+		groups, err := s.svc.FindSimilar(thresholdFrom(r))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		for _, g := range groups {
+			out = append(out, groupResponse{Key: g.Key, Images: g.Images})
+		}
+	} else {
+		groups, err := s.svc.FindDuplicates()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		for _, g := range groups {
+			out = append(out, groupResponse{Key: g.Hash, Images: g.Images})
+		}
 	}
-	if groups == nil {
-		groups = []service.DuplicateGroup{}
-	}
-	writeJSON(w, http.StatusOK, groups)
+
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Policy string `json:"policy"`
-		DryRun bool   `json:"dry_run"`
+		Policy    string `json:"policy"`
+		DryRun    bool   `json:"dry_run"`
+		Mode      string `json:"mode"`
+		Threshold int    `json:"threshold"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	if body.Policy == "" {
 		body.Policy = string(service.KeepNewest)
 	}
-	result, err := s.svc.ResolveDuplicates(service.KeepPolicy(body.Policy), body.DryRun)
+
+	var (
+		result *service.DeleteResult
+		err    error
+	)
+	if body.Mode == "similar" {
+		result, err = s.svc.ResolveSimilar(body.Threshold, service.KeepPolicy(body.Policy), body.DryRun)
+	} else {
+		result, err = s.svc.ResolveDuplicates(service.KeepPolicy(body.Policy), body.DryRun)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return

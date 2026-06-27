@@ -13,8 +13,11 @@ import (
 type Image struct {
 	gorm.Model
 
-	Path    string    `json:"path" gorm:"uniqueIndex"`
-	Hash    string    `json:"hash" gorm:"index"`
+	Path string `json:"path" gorm:"uniqueIndex"`
+	Hash string `json:"hash" gorm:"index"`
+	// PHash is the hex-encoded perceptual (difference) hash used for
+	// near-duplicate detection. Empty when the image could not be decoded.
+	PHash   string    `json:"phash" gorm:"column:phash;index"`
 	Size    int64     `json:"size"`
 	Width   int       `json:"width"`
 	Height  int       `json:"height"`

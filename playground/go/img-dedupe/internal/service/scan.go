@@ -5,14 +5,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"image"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
-	// Register decoders so image.DecodeConfig can read common formats.
+	// Register decoders so image.Decode can read common formats.
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -21,6 +20,8 @@ import (
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 
+	"github.com/corona10/goimagehash"
+	"github.com/disintegration/imaging"
 	"github.com/erancihan/img-dedupe/internal/models"
 	"gorm.io/gorm"
 )
@@ -104,13 +105,14 @@ func (s *Service) indexImage(folderID uint, path string) (added bool, err error)
 	if err != nil {
 		return false, err
 	}
-	width, height := imageDimensions(path)
+	phash, width, height := perceptualHashAndDims(path)
 
 	var existing models.Image
 	err = s.DB.Where("path = ?", path).First(&existing).Error
 	switch {
 	case err == nil:
 		existing.Hash = hash
+		existing.PHash = phash
 		existing.Size = info.Size()
 		existing.Width = width
 		existing.Height = height
@@ -124,6 +126,7 @@ func (s *Service) indexImage(folderID uint, path string) (added bool, err error)
 		img := models.Image{
 			Path:     path,
 			Hash:     hash,
+			PHash:    phash,
 			Size:     info.Size(),
 			Width:    width,
 			Height:   height,
@@ -155,18 +158,21 @@ func hashFile(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// imageDimensions reads just the image header to get its dimensions. It is
-// best-effort: unreadable or unsupported formats return (0, 0).
-func imageDimensions(path string) (width, height int) {
-	f, err := os.Open(path)
+// perceptualHashAndDims fully decodes the image to compute its difference hash
+// (for near-duplicate detection) and read its dimensions, in a single decode.
+// Best-effort: unreadable or unsupported formats yield ("", 0, 0) so the file is
+// still recorded and matched by its exact (SHA-256) hash.
+func perceptualHashAndDims(path string) (phash string, width, height int) {
+	img, err := imaging.Open(path, imaging.AutoOrientation(true))
 	if err != nil {
-		return 0, 0
+		return "", 0, 0
 	}
-	defer f.Close()
+	b := img.Bounds()
+	width, height = b.Dx(), b.Dy()
 
-	cfg, _, err := image.DecodeConfig(f)
+	h, err := goimagehash.DifferenceHash(img)
 	if err != nil {
-		return 0, 0
+		return "", width, height
 	}
-	return cfg.Width, cfg.Height
+	return fmt.Sprintf("%016x", h.GetHash()), width, height
 }
