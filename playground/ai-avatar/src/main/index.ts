@@ -210,7 +210,9 @@ function createWindow(): void {
         else void emotion.classify(text)
         sendToRenderer(Channels.AvatarSpeak, text)
       })
-    }
+    },
+    // MCP `say` tool → speak text through the avatar's TTS.
+    (text: string) => sendToRenderer(Channels.AvatarSpeak, text)
   )
   bridge.start().catch((err) => console.error('[bridge] failed to start:', err))
 

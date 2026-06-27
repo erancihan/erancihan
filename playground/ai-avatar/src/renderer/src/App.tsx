@@ -332,6 +332,7 @@ export function App(): JSX.Element {
             voiceEnabled={voiceEnabled}
             expressionMap={activeModel?.expressionMap}
             motionMap={activeModel?.motionMap}
+            transform={activeModel?.transform}
             onCaption={setCaption}
           />
           {caption && <div className="caption">{caption}</div>}

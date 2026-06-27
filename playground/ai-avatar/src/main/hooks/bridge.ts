@@ -23,7 +23,9 @@ export class HookBridge {
     /** Called with a mapped cue for each valid incoming hook signal. */
     private readonly onCue: (cue: AvatarCue) => void,
     /** Called with the raw signal too (e.g. to trigger emotion on Stop). Optional. */
-    private readonly onSignal?: (signal: HookSignal) => void
+    private readonly onSignal?: (signal: HookSignal) => void,
+    /** Called when an MCP client asks the avatar to speak text. Optional. */
+    private readonly onSpeak?: (text: string) => void
   ) {}
 
   async start(): Promise<void> {
@@ -31,7 +33,8 @@ export class HookBridge {
     this.token = randomBytes(24).toString('hex')
 
     const server = createServer((req, res) => {
-      if (req.method !== 'POST' || req.url !== '/cue') {
+      // Two POST routes: /cue (Claude Code hooks) and /avatar (MCP avatar bridge).
+      if (req.method !== 'POST' || (req.url !== '/cue' && req.url !== '/avatar')) {
         res.writeHead(404).end()
         return
       }
@@ -39,6 +42,7 @@ export class HookBridge {
         res.writeHead(403).end()
         return
       }
+      const route = req.url
       let body = ''
       let tooBig = false
       req.on('data', (chunk: Buffer) => {
@@ -52,12 +56,24 @@ export class HookBridge {
       req.on('end', () => {
         if (tooBig) return
         try {
-          const signal = JSON.parse(body) as HookSignal
-          const cue = mapEventToCue(signal)
-          if (cue) this.onCue(cue)
-          this.onSignal?.(signal)
+          if (route === '/cue') {
+            const signal = JSON.parse(body) as HookSignal
+            const cue = mapEventToCue(signal)
+            if (cue) this.onCue(cue)
+            this.onSignal?.(signal)
+          } else {
+            // Direct avatar control from an MCP client: { pose?, expression?, message?, speak? }.
+            const cmd = JSON.parse(body) as AvatarCue & { speak?: string }
+            const cue: AvatarCue = {}
+            if (cmd.pose) cue.pose = cmd.pose
+            if (cmd.expression) cue.expression = cmd.expression
+            if (cmd.message) cue.message = cmd.message
+            cue.source = 'mcp'
+            if (cue.pose || cue.expression || cue.message) this.onCue(cue)
+            if (typeof cmd.speak === 'string' && cmd.speak) this.onSpeak?.(cmd.speak)
+          }
         } catch {
-          // Malformed payload — ignore; never let a hook break the app.
+          // Malformed payload — ignore; never let a client break the app.
         }
         res.writeHead(204).end()
       })

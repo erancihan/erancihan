@@ -1,5 +1,5 @@
 import type { AvatarPose } from '../../../shared/ipc.js'
-import type { AvatarMap } from '../../../shared/models.js'
+import type { AvatarMap, ModelTransform } from '../../../shared/models.js'
 import type { AvatarController } from './AvatarController.js'
 
 // Served by the main process from resources/runtime via the companion-model protocol.
@@ -27,6 +27,8 @@ export interface Live2DMaps {
   expressionMap?: AvatarMap
   /** Pose label → this model's motion group. */
   motionMap?: AvatarMap
+  /** Render scale/offset tuning. */
+  transform?: ModelTransform
 }
 
 // Cubism Core is a global injected by resources/runtime/live2dcubismcore.min.js.
@@ -117,11 +119,13 @@ export class Live2DController implements AvatarController {
     this.model.scale.set(1)
     const natW = this.model.width || 1
     const natH = this.model.height || 1
-    const scale = Math.min(w / natW, h / natH) * 0.9
+    const t = this.maps.transform ?? {}
+    const scale = Math.min(w / natW, h / natH) * 0.9 * (t.scale ?? 1)
     this.model.anchor?.set?.(0.5, 0.5)
     this.model.scale.set(scale)
-    this.model.x = w / 2
-    this.model.y = h / 2
+    // Offsets are fractions of the host box, so they're resolution-independent.
+    this.model.x = w / 2 + (t.x ?? 0) * w
+    this.model.y = h / 2 + (t.y ?? 0) * h
   }
 
   setPose(pose: AvatarPose): void {

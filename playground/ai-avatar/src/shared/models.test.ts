@@ -45,6 +45,18 @@ describe('normalizeMeta', () => {
     expect(normalizeMeta('x', undefined).expressionMap).toBeUndefined()
     expect(normalizeMeta('x', { expressionMap: {} }).expressionMap).toBeUndefined()
   })
+
+  it('keeps a finite numeric transform and drops junk', () => {
+    expect(normalizeMeta('x', { transform: { scale: 1.2, x: -0.1, y: 0 } }).transform).toEqual({
+      scale: 1.2,
+      x: -0.1,
+      y: 0
+    })
+    expect(
+      normalizeMeta('x', { transform: { scale: 'big', z: 5 } } as never).transform
+    ).toBeUndefined()
+    expect(normalizeMeta('x', undefined).transform).toBeUndefined()
+  })
 })
 
 describe('buildPersonalityArgs', () => {

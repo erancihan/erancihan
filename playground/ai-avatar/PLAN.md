@@ -170,8 +170,10 @@ Status as of 2026-06-15 — Phases 1–5 shipped and committed; both adopted fol
      synthesizes the reply; the renderer plays it through Web Audio and drives
      `setMouthOpen` from real signal amplitude (AnalyserNode). Web Speech API stays as the
      no-model fallback. No API key, fully offline.
-7. **(Optional, later) MCP avatar bridge:** ship an MCP server (`set_avatar_state` /
-   `say`) so the official Claude Desktop can also animate the companion window.
+7. ✅ **MCP avatar bridge:** `resources/mcp/avatar-mcp.mjs` — a stdio MCP server exposing
+   `set_avatar_pose` / `set_avatar_expression` / `say` / `avatar_notify`, forwarding to the
+   app's `/avatar` bridge route, so Claude Desktop (or any MCP client) can animate the
+   window. See [`resources/mcp/README.md`](./resources/mcp/README.md).
 
 ## Adopted enhancements (from Open-LLM-VTuber)
 
@@ -201,12 +203,12 @@ fallback.
   (Region-select capture would be a later refinement.)
 
 ### TODO / backlog
-- **Per-model transform config** — add optional `scale` and `x`/`y` offset (and maybe
-  anchor) to `companion.json` so each model's size + on-screen position can be tuned;
-  `Live2DController.fit()` would apply them. (Haru renders at an OK default size now; this
-  is for fine-tuning per model.)
-- **xterm `dimensions` TypeError** — harmless uncaught error from the terminal fitting
-  before its container has size (`@xterm/xterm`); guard the initial `fit()`.
+- ✅ **Per-model transform config** — `companion.json` `transform: { scale, x, y }` applied
+  in `Live2DController.fit()` (offsets are fractions of the avatar box).
+- ✅ **xterm `dimensions` TypeError** — guarded; the terminal only fits when its container
+  has a non-zero size.
+- **Region-select screenshot** — visual perception captures the whole primary display;
+  a drag-to-select region would be a refinement.
 
 ## Verification
 

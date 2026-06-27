@@ -16,9 +16,13 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test": "vitest run",
-    "rebuild": "electron-rebuild -f -w node-pty"
+    "rebuild": "electron-rebuild -f -w node-pty",
+    "fetch-avatar": "node scripts/fetch-sample-avatar.mjs",
+    "fetch-avatar:force": "node scripts/fetch-sample-avatar.mjs --force",
+    "postinstall": "node scripts/fetch-sample-avatar.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "node-pty": "^1.0.0",
     "sherpa-onnx-node": "^1.13.2"
   },

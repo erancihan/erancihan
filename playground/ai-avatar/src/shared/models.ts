@@ -4,6 +4,13 @@
 /** Maps our emotion/pose labels to a model's own .exp3 / motion-group names or indices. */
 export type AvatarMap = Record<string, string | number>
 
+/** Per-model render tuning: multiplier on the auto-fit scale + offset (fraction of host). */
+export interface ModelTransform {
+  scale?: number
+  x?: number
+  y?: number
+}
+
 /** A discovered avatar model, surfaced to the Settings UI. */
 export interface ModelInfo {
   /** Folder name under resources/models. */
@@ -19,6 +26,8 @@ export interface ModelInfo {
   expressionMap?: AvatarMap
   /** Our pose labels → this model's motion groups (optional). */
   motionMap?: AvatarMap
+  /** Render scale/offset tuning (optional). */
+  transform?: ModelTransform
 }
 
 /** Optional metadata file shape: resources/models/<id>/companion.json */
@@ -28,6 +37,18 @@ export interface ModelMeta {
   author?: string
   expressionMap?: AvatarMap
   motionMap?: AvatarMap
+  transform?: ModelTransform
+}
+
+/** Keep only finite numeric scale/x/y. Pure. */
+function sanitizeTransform(t: unknown): ModelTransform | undefined {
+  if (!t || typeof t !== 'object') return undefined
+  const o = t as Record<string, unknown>
+  const out: ModelTransform = {}
+  for (const k of ['scale', 'x', 'y'] as const) {
+    if (typeof o[k] === 'number' && Number.isFinite(o[k])) out[k] = o[k] as number
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 /** Keep only string→(string|number) entries — defends against malformed companion.json. */
@@ -44,13 +65,21 @@ function sanitizeMap(map: unknown): AvatarMap | undefined {
 export function normalizeMeta(
   id: string,
   meta: ModelMeta | undefined
-): { name: string; license?: string; author?: string; expressionMap?: AvatarMap; motionMap?: AvatarMap } {
+): {
+  name: string
+  license?: string
+  author?: string
+  expressionMap?: AvatarMap
+  motionMap?: AvatarMap
+  transform?: ModelTransform
+} {
   return {
     name: meta?.name?.trim() || id,
     license: meta?.license?.trim() || undefined,
     author: meta?.author?.trim() || undefined,
     expressionMap: sanitizeMap(meta?.expressionMap),
-    motionMap: sanitizeMap(meta?.motionMap)
+    motionMap: sanitizeMap(meta?.motionMap),
+    transform: sanitizeTransform(meta?.transform)
   }
 }
 

@@ -48,43 +48,65 @@ export function TerminalView({ onStatus, onOutput, onEmotion }: TerminalViewProp
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
-    term.open(container)
-    fit.fit()
 
-    // Renderer -> PTY stdin.
-    const inputSub = term.onData((data) => window.companion.sendInput(data))
+    let inputSub: { dispose(): void } | undefined
+    let offData: (() => void) | undefined
+    let offExit: (() => void) | undefined
+    let booted = false
 
-    // PTY stdout -> renderer. Strip inline [emotion] tags from the visible stream and
-    // drive the avatar expression live; ANSI escapes pass through untouched.
-    const offData = window.companion.onTerminalData((data) => {
-      const { text, emotions, carry } = splitForTagStream(tagCarry, data)
-      tagCarry = carry
-      term.write(text)
-      emotions.forEach(onEmotion)
-      onOutput()
-    })
-    const offExit = window.companion.onTerminalExit((code) => {
-      term.write(`\r\n\x1b[2m[claude session exited (${code})]\x1b[0m\r\n`)
-    })
+    // Open + wire IO + start the session only once the container has a real size. Opening
+    // xterm at 0×0 (before layout) renders against undefined dimensions and throws — so we
+    // defer until a non-zero ResizeObserver measurement (or immediately if already sized).
+    const boot = (): void => {
+      if (booted || !container.clientWidth || !container.clientHeight) return
+      booted = true
+      term.open(container)
+      // Defer the first fit a frame: right after open() xterm's renderer isn't attached
+      // yet, and FitAddon → RenderService.dimensions would read it as undefined and throw.
+      requestAnimationFrame(safeFit)
 
-    // Start the session sized to the current viewport.
-    window.companion
-      .startTerminal({ cols: term.cols, rows: term.rows })
-      .then((res) => onStatus(res.status, res.ok))
+      inputSub = term.onData((data) => window.companion.sendInput(data))
 
-    // Keep PTY + xterm dimensions in sync.
-    const resize = (): void => {
-      fit.fit()
+      // PTY stdout → renderer. Strip inline [emotion] tags from the visible stream and
+      // drive the avatar expression live; ANSI escapes pass through untouched.
+      offData = window.companion.onTerminalData((data) => {
+        const { text, emotions, carry } = splitForTagStream(tagCarry, data)
+        tagCarry = carry
+        term.write(text)
+        emotions.forEach(onEmotion)
+        onOutput()
+      })
+      offExit = window.companion.onTerminalExit((code) => {
+        term.write(`\r\n\x1b[2m[claude session exited (${code})]\x1b[0m\r\n`)
+      })
+
+      window.companion
+        .startTerminal({ cols: term.cols, rows: term.rows })
+        .then((res) => onStatus(res.status, res.ok))
+    }
+
+    const safeFit = (): void => {
+      if (!booted || !container.clientWidth || !container.clientHeight) return
+      try {
+        fit.fit()
+      } catch {
+        return
+      }
       window.companion.resizeTerminal({ cols: term.cols, rows: term.rows })
     }
-    const ro = new ResizeObserver(resize)
+
+    const ro = new ResizeObserver(() => {
+      boot()
+      safeFit()
+    })
     ro.observe(container)
+    boot() // in case the container is already laid out
 
     return () => {
       ro.disconnect()
-      inputSub.dispose()
-      offData()
-      offExit()
+      inputSub?.dispose()
+      offData?.()
+      offExit?.()
       term.dispose()
     }
     // Mount once; callbacks are stable refs from App.

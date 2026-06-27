@@ -13,6 +13,10 @@ resources/models/<model-id>/
   companion.json     # optional: { "name", "license", "author" } (shown in Settings)
 ```
 
+A free sample avatar (**Haru**) is fetched here automatically by `npm install`
+(`postinstall`) when missing — or run `npm run fetch-avatar`. It's gitignored (size +
+Live2D license).
+
 The app **auto-discovers** any folder here that contains a `*.model3.json`. Open ⚙
 Settings → Avatar model to select it; its files are served to the renderer over the
 `companion-model://` protocol. When a model loads, the app uses the Live2D backend;
@@ -38,6 +42,15 @@ emotions/poses to this model's own expressions and motion groups:
 excited, thinking`); values are the model's `.exp3` names or indices. `motionMap` keys are
 poses (`idle, listening, thinking, working, speaking, alert`). Both are optional — when a
 key is absent the app falls back to best-effort name guessing.
+
+To tune size/position per model, add an optional `transform`:
+
+```json
+{ "transform": { "scale": 1.15, "x": 0, "y": 0.08 } }
+```
+
+`scale` multiplies the auto-fit scale; `x`/`y` shift the model by a fraction of the avatar
+box (`+x` right, `+y` down). All default to no change.
 
 ## Licensing
 

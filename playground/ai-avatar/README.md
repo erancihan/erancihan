@@ -31,7 +31,12 @@ This implements **Phases 1–6** from [`PLAN.md`](./PLAN.md).
 
 Real **Live2D models** load too: drop a model under `resources/models/<id>/` plus the
 Cubism Core in `resources/runtime/`, then pick it in ⚙ Settings (uses `@pixi/unsafe-eval`
-for CSP-safe rendering; emotion/pose mapping via `companion.json`).
+for CSP-safe rendering; emotion/pose/size mapping via `companion.json`).
+
+**MCP avatar bridge** — `resources/mcp/avatar-mcp.mjs` is a stdio MCP server that lets the
+official Claude Desktop (or any MCP client) drive the window: `set_avatar_pose`,
+`set_avatar_expression`, `say`, `avatar_notify`. See
+[`resources/mcp/README.md`](./resources/mcp/README.md).
 
 ## What works (Phase 5)
 
@@ -123,10 +128,17 @@ window too) — see [`PLAN.md`](./PLAN.md).
 
 ```bash
 cd playground/ai-avatar
-npm install
-npm run rebuild   # rebuild node-pty against Electron's ABI
-npm run dev       # launches the companion window
+make install      # npm deps (+ fetches sample avatar & Cubism Core) + node-pty rebuild
+make dev          # launches the companion window
 ```
+
+`make install` runs `npm install` then `npm run rebuild`. The `npm install` step's
+`postinstall` downloads a free sample avatar (Haru) and the Live2D Cubism Core into
+`resources/` **only if missing** (they're gitignored — size + Live2D license). To (re)fetch
+manually: `make fetch-avatar` (or `make fetch-avatar-force`). Pick the avatar in ⚙ Settings
+→ Avatar model.
+
+No `make`? The equivalents are `npm install` then `npm run rebuild`, then `npm run dev`.
 
 If `npm run dev` shows the install/login guidance, your `claude` CLI wasn't found — fix
 that first (`claude --version` should print a version), then relaunch.
@@ -198,6 +210,7 @@ src/
   shared/asr.ts          ASR config path resolution (pure)
 resources/
   hooks/cue.mjs          installed hook forwarder → posts cues to the bridge
+  mcp/avatar-mcp.mjs     MCP server: Claude Desktop drives the avatar via /avatar
   models/                drop Live2D models here (not committed; see README)
   runtime/               drop live2dcubismcore.min.js here (not committed; see README)
 ```

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AvatarPose } from '../../../shared/ipc.js'
-import type { AvatarMap } from '../../../shared/models.js'
+import type { AvatarMap, ModelTransform } from '../../../shared/models.js'
 import { cleanForSpeech } from '../../../shared/voice.js'
 import type { AvatarController } from './AvatarController.js'
 import { createAvatarController } from './createAvatarController.js'
@@ -18,6 +18,8 @@ interface AvatarStageProps {
   /** Selected model's emotion→.exp3 and pose→motion maps (Phase 5 / adopted). */
   expressionMap?: AvatarMap
   motionMap?: AvatarMap
+  /** Selected model's render scale/offset tuning. */
+  transform?: ModelTransform
   /** Spoken-reply caption text while TTS plays, or null when it ends (subtitles). */
   onCaption?: (text: string | null) => void
 }
@@ -35,6 +37,7 @@ export function AvatarStage({
   voiceEnabled,
   expressionMap,
   motionMap,
+  transform,
   onCaption
 }: AvatarStageProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -42,7 +45,11 @@ export function AvatarStage({
   const voiceRef = useRef<VoiceController | null>(null)
   const poseRef = useRef<AvatarPose>(pose)
   const captionRef = useRef<typeof onCaption>(onCaption)
-  const mapsRef = useRef<{ expressionMap?: AvatarMap; motionMap?: AvatarMap }>({})
+  const mapsRef = useRef<{
+    expressionMap?: AvatarMap
+    motionMap?: AvatarMap
+    transform?: ModelTransform
+  }>({})
   const [backend, setBackend] = useState<'live2d' | 'placeholder' | 'loading'>('loading')
 
   // Keep a live ref to the current pose so speech can restore it when it ends.
@@ -50,7 +57,7 @@ export function AvatarStage({
   captionRef.current = onCaption
   // Maps come with the model (modelUrl changes when they do); a ref keeps them fresh at
   // mount without making them effect deps (they're new objects each render).
-  mapsRef.current = { expressionMap, motionMap }
+  mapsRef.current = { expressionMap, motionMap, transform }
 
   // Mount once; rebuild only when the model source changes.
   useEffect(() => {

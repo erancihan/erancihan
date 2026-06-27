@@ -4,7 +4,8 @@ The Live2D Cubism **Core** (`live2dcubismcore.min.js`) is required to render rea
 models. It is proprietary and **not redistributed in this repo**, so it is not committed
 here.
 
-To enable the Live2D backend:
+`npm install` (postinstall) fetches the Cubism Core here automatically when missing — or
+run `npm run fetch-avatar`. To do it manually instead:
 
 1. Download the Cubism SDK for Web from Live2D
    (https://www.live2d.com/en/sdk/download/web/) and accept its license.
