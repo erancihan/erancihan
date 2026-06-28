@@ -155,7 +155,7 @@ separate **history** (branch). Nothing shared, nothing to collide.
 | **0** | Scaffold + plan | repo builds, types compile (✅) |
 | **1** | Isolation core | `WorktreeProvider` + `SandboxProvider` create/tear down a real isolated lane (✅ — `GitWorktreeProvider`, nsjail/AppContainer/no-op `SandboxProvider`, `IsolationProvider` composer, 6 passing tests) |
 | **2** | Lane runner | `CliLaneRunner` runs one agent to completion inside a lane; streamed updates _(blocked on confirming the Antigravity CLI headless invocation; interface + fake runner done)_ |
-| **3** | Parallel orchestrator | 🟢 engine done — N lanes, concurrency cap, lane state machine, typed event stream, per-lane failure isolation, cost budget, merge-back branch retention (3 passing tests). Pending: crash journal/resume |
+| **3** | Parallel orchestrator | ✅ N lanes, concurrency cap, lane state machine, typed event stream, per-lane failure isolation, cost budget, merge-back branch retention, **crash journal + resume** (`FileJournalStore`/`MemoryJournalStore`, stale-worktree recovery). 12 passing tests total |
 | **4** | Lanes panel | webview shows live lanes, per-lane output; start a run from the IDE |
 | **5** | Merge-back | per-lane diff + merge/rebase/discard from the panel |
 | **6** | Chat participant | `@swarm` + `/fork` `/run` `/lanes` from native chat |

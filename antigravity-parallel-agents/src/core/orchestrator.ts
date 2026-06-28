@@ -14,6 +14,7 @@ import { Emitter } from './emitter.js';
 import { mapPool } from './pool.js';
 import { IsolationProvider } from './isolation.js';
 import type { LaneRunner } from './runner.js';
+import type { JournalStore, JournalState } from './journal.js';
 import type { Lane, Task, RunOptions, SwarmEvent, LaneStatus } from './types.js';
 
 export interface RunSummary {
@@ -27,9 +28,14 @@ export interface OrchestratorDeps {
   runner: LaneRunner;
   /** Repo the lanes branch from. */
   repoRoot: string;
+  /** Optional persistence so a crashed run can resume(). */
+  journal?: JournalStore;
   /** Override id generation (tests inject deterministic ids). */
   laneId?: (task: Task, index: number) => string;
 }
+
+/** Lane statuses that are terminal-success and should NOT be re-run on resume. */
+const isComplete = (s: LaneStatus): boolean => s === 'done';
 
 export class Orchestrator {
   private readonly events = new Emitter<SwarmEvent>();
@@ -42,39 +48,68 @@ export class Orchestrator {
   }
 
   async run(tasks: Task[], options: RunOptions): Promise<RunSummary> {
-    const runId = `run-${tasks.length}`;
+    const runId = options.runId ?? `run-${Date.now()}-${tasks.length}`;
     const lanes: Lane[] = tasks.map((task, i) => ({
       id: this.deps.laneId?.(task, i) ?? task.id,
       task,
       status: 'queued',
     }));
-    this.events.emit({ type: 'run:start', runId, lanes: lanes.length });
-
-    const budget = new BudgetGuard(options.budgetUsd);
-    const ac = new AbortController();
-
-    await mapPool(lanes, options.concurrency, async (lane) => {
-      if (ac.signal.aborted) {
-        this.transition(lane, 'cancelled');
-        return;
-      }
-      await this.runLane(lane, options, budget, ac);
-    });
-
-    const totalCostUsd = budget.spent;
-    this.events.emit({ type: 'run:done', runId, lanes });
-    return { runId, lanes, totalCostUsd };
+    const state: JournalState = { runId, repoRoot: this.deps.repoRoot, options, lanes, updatedAt: Date.now() };
+    return this.execute(state);
   }
 
-  private async runLane(lane: Lane, options: RunOptions, budget: BudgetGuard, ac: AbortController) {
-    this.transition(lane, 'starting');
+  /**
+   * Resume a previously-journaled run: completed lanes are kept, everything else is
+   * reset to `queued` and re-run (a re-run lane discards any partial worktree/branch).
+   */
+  async resume(runId: string): Promise<RunSummary> {
+    if (!this.deps.journal) throw new Error('resume() requires a journal store in deps');
+    const state = await this.deps.journal.load(runId);
+    if (!state) throw new Error(`No journal found for run ${runId}`);
+    for (const lane of state.lanes) {
+      if (!isComplete(lane.status)) {
+        lane.status = 'queued';
+        lane.error = undefined;
+        lane.isolation = undefined;
+      }
+    }
+    return this.execute(state);
+  }
+
+  private async execute(state: JournalState): Promise<RunSummary> {
+    const { runId, lanes, options } = state;
+    const pending = lanes.filter((l) => !isComplete(l.status));
+    this.events.emit({ type: 'run:start', runId, lanes: lanes.length });
+    await this.persist(state);
+
+    // Seed the budget with cost already spent by previously-completed lanes.
+    const budget = new BudgetGuard(options.budgetUsd);
+    for (const l of lanes) if (isComplete(l.status)) budget.add(l.result?.usage?.costUsd ?? 0);
+    const ac = new AbortController();
+
+    await mapPool(pending, options.concurrency, async (lane) => {
+      if (ac.signal.aborted) {
+        await this.transition(state, lane, 'cancelled');
+        return;
+      }
+      await this.runLane(state, lane, options, budget, ac);
+    });
+
+    this.events.emit({ type: 'run:done', runId, lanes });
+    state.updatedAt = Date.now();
+    await this.persist(state);
+    return { runId, lanes, totalCostUsd: budget.spent };
+  }
+
+  private async runLane(state: JournalState, lane: Lane, options: RunOptions, budget: BudgetGuard, ac: AbortController) {
+    await this.transition(state, lane, 'starting');
     lane.startedAt = Date.now();
     try {
       lane.isolation = await this.deps.isolation.acquire({
         laneId: lane.id,
         repoRoot: this.deps.repoRoot,
       });
-      this.transition(lane, 'running');
+      await this.transition(state, lane, 'running');
 
       const stream = this.deps.runner.run({
         prompt: lane.task.prompt,
@@ -98,7 +133,7 @@ export class Orchestrator {
       }
 
       lane.endedAt = Date.now();
-      this.transition(lane, lane.status === 'cancelled' ? 'cancelled' : 'done');
+      await this.transition(state, lane, ac.signal.aborted ? 'cancelled' : 'done');
 
       // Preserve the branch for merge-back only if the lane produced work.
       const producedWork = Boolean(lane.result?.patch || lane.result?.text);
@@ -107,22 +142,28 @@ export class Orchestrator {
       // Budget accounting — stop scheduling further lanes if we've blown the ceiling.
       const cost = lane.result?.usage?.costUsd ?? 0;
       if (budget.add(cost) && !ac.signal.aborted) {
-        this.events.emit({ type: 'lane:update', lane });
         ac.abort();
       }
     } catch (error) {
       lane.endedAt = Date.now();
       lane.error = error instanceof Error ? error.message : String(error);
-      this.transition(lane, ac.signal.aborted ? 'cancelled' : 'failed');
+      await this.transition(state, lane, ac.signal.aborted ? 'cancelled' : 'failed');
       if (lane.isolation) {
         await this.deps.isolation.release(lane.isolation, { keepBranch: false }).catch(() => undefined);
       }
     }
   }
 
-  private transition(lane: Lane, status: LaneStatus): void {
+  private async transition(state: JournalState, lane: Lane, status: LaneStatus): Promise<void> {
     lane.status = status;
     this.events.emit({ type: 'lane:update', lane });
+    await this.persist(state);
+  }
+
+  private async persist(state: JournalState): Promise<void> {
+    if (!this.deps.journal) return;
+    state.updatedAt = Date.now();
+    await this.deps.journal.save(state).catch(() => undefined);
   }
 }
 

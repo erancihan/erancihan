@@ -41,6 +41,10 @@ export class GitWorktreeProvider implements WorktreeProvider {
 
     const baseRef = req.baseRef ?? (await output('git', ['rev-parse', 'HEAD'], { cwd: repoRoot }));
 
+    // A crashed run can leave a stale worktree/branch for this laneId. Clear it so resume
+    // can re-acquire the lane from a clean base (partial work is intentionally discarded).
+    await this.clearStale(repoRoot, worktree, branch);
+
     // `git worktree add -b <branch> <path> <baseRef>` creates the branch + checkout.
     const r = await run(
       'git',
@@ -51,6 +55,17 @@ export class GitWorktreeProvider implements WorktreeProvider {
       throw new Error(`git worktree add failed for lane ${req.laneId}: ${r.stderr.trim()}`);
     }
     return { worktree, branch };
+  }
+
+  /** Best-effort removal of a pre-existing worktree + branch for a lane (resume safety). */
+  private async clearStale(repoRoot: string, worktree: string, branch: string): Promise<void> {
+    await run('git', ['worktree', 'remove', '--force', worktree], { cwd: repoRoot }).catch(() => undefined);
+    await rm(worktree, { recursive: true, force: true }).catch(() => undefined);
+    await run('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
+    const hasBranch = await run('git', ['rev-parse', '--verify', '--quiet', branch], { cwd: repoRoot });
+    if (hasBranch.code === 0) {
+      await run('git', ['branch', '-D', branch], { cwd: repoRoot }).catch(() => undefined);
+    }
   }
 
   async remove(worktree: string, opts: { keepBranch?: boolean } = {}): Promise<void> {

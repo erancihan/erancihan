@@ -74,6 +74,8 @@ export interface LaneResult {
 
 /** Options for a whole fan-out run. */
 export interface RunOptions {
+  /** Stable id for this run (for journaling/resume); generated if omitted. */
+  runId?: string;
   /** Max lanes running at once. */
   concurrency: number;
   /** Shared playbook applied to every lane unless the task overrides it. */
