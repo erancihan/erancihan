@@ -152,8 +152,8 @@ separate **history** (branch). Nothing shared, nothing to collide.
 
 | Phase | Goal | Exit criteria |
 |------:|------|---------------|
-| **0** | Scaffold + plan | repo builds, types compile (✅ this commit) |
-| **1** | Isolation core | `WorktreeProvider` + `SandboxProvider` create/tear down a real isolated lane; verified on Linux (nsjail) |
+| **0** | Scaffold + plan | repo builds, types compile (✅) |
+| **1** | Isolation core | `WorktreeProvider` + `SandboxProvider` create/tear down a real isolated lane (✅ — `GitWorktreeProvider`, nsjail/AppContainer/no-op `SandboxProvider`, `IsolationProvider` composer, 6 passing tests) |
 | **2** | Lane runner | `CliLaneRunner` runs one agent to completion inside a lane; streamed updates |
 | **3** | Parallel orchestrator | N lanes with concurrency cap, state machine, event stream, journal/resume |
 | **4** | Lanes panel | webview shows live lanes, per-lane output; start a run from the IDE |
