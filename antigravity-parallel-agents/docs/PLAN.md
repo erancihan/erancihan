@@ -156,9 +156,9 @@ separate **history** (branch). Nothing shared, nothing to collide.
 | **1** | Isolation core | `WorktreeProvider` + `SandboxProvider` create/tear down a real isolated lane (✅ — `GitWorktreeProvider`, nsjail/AppContainer/no-op `SandboxProvider`, `IsolationProvider` composer, 6 passing tests) |
 | **2** | Lane runner | `CliLaneRunner` runs one agent to completion inside a lane; streamed updates _(blocked on confirming the Antigravity CLI headless invocation; interface + fake runner done)_ |
 | **3** | Parallel orchestrator | ✅ N lanes, concurrency cap, lane state machine, typed event stream, per-lane failure isolation, cost budget, merge-back branch retention, **crash journal + resume** (`FileJournalStore`/`MemoryJournalStore`, stale-worktree recovery). 12 passing tests total |
-| **4** | Lanes panel | webview shows live lanes, per-lane output; start a run from the IDE |
-| **5** | Merge-back | per-lane diff + merge/rebase/discard from the panel |
-| **6** | Chat participant | `@swarm` + `/fork` `/run` `/lanes` from native chat |
+| **4** | Lanes panel | 🟢 webview `LanesViewProvider` renders live lanes + per-lane output, subscribes to the event stream, starts a run from the IDE. Extension typechecks + bundles (esbuild → CJS). Pending: run inside Antigravity |
+| **5** | Merge-back | per-lane diff + merge/rebase/discard from the panel _(UI hooks stubbed in `lanesPanel.ts`)_ |
+| **6** | Chat participant | 🟢 `@swarm` participant + `/lanes`, launches lanes from native chat (`extension.ts`). Pending: `/fork` of the current chat |
 | **7** | Cloud runner + polish | `ManagedAgentsLaneRunner`, cost/budget UI, OpenVSX publish, release |
 
 Each phase is shippable; Phases 1–3 deliver the engine, 4–6 make it native, 7 scales it.

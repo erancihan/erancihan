@@ -1,5 +1,7 @@
 node_modules/
 dist/
+dist-ext/
+*.vsix
 *.log
 .env
 .env.local

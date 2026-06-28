@@ -12,18 +12,22 @@
   "categories": ["AI", "Chat", "Other"],
   "keywords": ["antigravity", "gemini", "agents", "parallel", "sandbox", "worktree", "isolation"],
   "license": "MIT",
+  "main": "./dist-ext/extension.cjs",
+  "activationEvents": ["onChatParticipant:swarm.lanes", "onView:swarm.lanesPanel"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:ext": "tsc -p extension/tsconfig.json",
+    "bundle:ext": "esbuild extension/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist-ext/extension.cjs",
     "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
   },
-  "//contributes": "Phase 4-6 — wired up when the extension entrypoint lands; shape sketched here.",
   "contributes": {
     "chatParticipants": [
       {
