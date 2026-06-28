@@ -1,9 +1,12 @@
 /**
  * Abstraction over the Antigravity Agent API (Gemini Managed Agents).
  *
- * The orchestrator depends ONLY on this interface, which lets us:
- *   - develop/test the parallel engine offline with a fake client, and
- *   - swap in the real HTTP client once the wire schema is locked (docs/PLAN.md §6).
+ * This backs the CLOUD lane runner (`ManagedAgentsLaneRunner`): each lane becomes a
+ * remote Google-hosted sandbox — an alternative isolation backend to the local
+ * worktree+nsjail path. The local CLI runner is the default (docs/PLAN.md §1.4).
+ *
+ * Behind this interface so we can develop/test offline with a fake and swap in the real
+ * HTTP client once the wire schema is locked (docs/PLAN.md §6 Q6).
  *
  * Real endpoint (to implement in `HttpAgentClient`):
  *   POST https://generativelanguage.googleapis.com/v1beta/interactions
@@ -55,7 +58,8 @@ export interface AgentClient {
  */
 export class HttpAgentClient implements AgentClient {
   constructor(
-    private readonly apiKey: string = process.env.GEMINI_API_KEY ?? '',
+    // Reads GEMINI_API_KEY when run under Node; cast avoids needing @types/node here.
+    private readonly apiKey: string = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.GEMINI_API_KEY ?? '',
     private readonly agent: string = 'antigravity-preview-05-2026',
     private readonly baseUrl: string = 'https://generativelanguage.googleapis.com/v1beta',
   ) {}

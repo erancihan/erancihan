@@ -33,12 +33,14 @@ export interface Task {
   skills?: Skill[];
 }
 
-/** A running (or finished) agent conversation. */
+/** A running (or finished) agent conversation, bound to its own sandbox. */
 export interface Lane {
   id: string;
   task: Task;
   status: LaneStatus;
-  /** Opaque environment/session handle returned by the API; used to resume. */
+  /** Isolation context for this lane (worktree + sandbox). */
+  isolation?: LaneIsolation;
+  /** Opaque environment/session handle (cloud runner); used to resume. */
   environment?: string;
   startedAt?: number;
   endedAt?: number;
@@ -47,6 +49,16 @@ export interface Lane {
   /** Final aggregated output once status is `done`. */
   result?: LaneResult;
   error?: string;
+}
+
+/** Where a lane's isolated work lives. */
+export interface LaneIsolation {
+  /** Absolute path to the lane's git worktree. */
+  worktree: string;
+  /** Branch created for this lane (e.g. `swarm/lane-3`). */
+  branch: string;
+  /** Sandbox backend actually applied to this lane's processes. */
+  sandbox: 'nsjail' | 'appcontainer' | 'none';
 }
 
 /** What a finished lane produced. Shape will firm up once we confirm how the */

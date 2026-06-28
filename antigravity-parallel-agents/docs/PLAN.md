@@ -2,226 +2,212 @@
 
 _Last updated: 2026-06-28_
 
-This document captures (1) what we learned about Google Antigravity and its plugin/API
-surfaces, (2) the precise intent behind "a plugin to run multiple agent chats in
-parallel," and (3) a phased plan to build it.
+**Goal:** bake **parallel, fully-isolated chats into the Antigravity IDE**. The native
+chat is serial; Swarm turns each chat into a **lane** running in its own **sandbox**
+(git worktree + OS sandbox) so many agents work at once without colliding.
 
 ---
 
 ## 1. Investigation
 
-### 1.1 What Google Antigravity actually is
+### 1.1 Antigravity already ships the isolation primitives
 
-- An **agent-first development platform**. As of the 2.0 launch it's an ecosystem, not
-  just one app:
-  - **Antigravity IDE** — a **fork of open-source VS Code** whose UX is reorganized
-    around managing agents rather than editing text. Ships with the **Agent Manager**,
-    **Artifacts**, and codebase understanding.
-  - **Antigravity (standalone app)** — macOS/Linux/Windows "command center" to manage
-    multiple **local** agents in parallel and run scheduled tasks.
-- **Agent Manager** is the higher-level view: multiple **workspaces**, multiple agents
-  running **asynchronously/in parallel**, ideally **one agent per workspace** to avoid
-  conflicts (multiple agents per workspace is possible but conflict-prone).
-- **Artifacts** are tangible deliverables agents produce (task lists, plans, screenshots,
-  browser recordings) that you can comment on inline; the agent incorporates feedback
-  without stopping.
+This reframes the project: we **compose** native building blocks rather than invent them.
 
-**Takeaway:** parallel agents already exist natively. Our value is *orchestration &
-batch management on top*, not re-implementing the runtime.
+- **Worktree Mode.** Antigravity can create a **new git worktree per conversation**
+  ("best for complex tasks, keeps your active working folder untouched"). The 2.0 desktop
+  app ships **auto-provisioned git worktrees for subagents**, so parallel agents become
+  "a graph of independent file states that merge cleanly at the end."
+- **OS sandbox layer.** The Antigravity **CLI** has a native OS sandbox: **nsjail**
+  namespace isolation on Linux, **AppContainer** on Windows (see `docs/sandbox-mode`).
+- **Manager View.** Dispatches **up to ~5 parallel agents** across workspaces — GUI-driven.
+- **Built-in chat.** A chat sidebar (Gemini 3.1 default; Claude/GPT alternatives).
+- **Plugins** install **skills**; the IDE is a VS Code fork, so most VS Code extensions
+  work (those conflicting with the agent layer are disabled/warned).
 
-### 1.2 The two programmable surfaces
+### 1.2 The actual gap
 
-There are two distinct ways a "plugin" could plug in. We evaluated both.
+The pieces exist but aren't wired into the *everyday chat* experience:
 
-#### A. The Antigravity Agent API (Gemini **Managed Agents**) — _our foundation_
+- The **built-in chat is serial** — one active conversation; you can't fan a backlog into
+  many concurrent isolated chats.
+- Parallelism lives in the Manager View (capped, GUI-only), **not** in chat.
+- Worktree/sandbox are **opt-in modes**, not "every chat, always isolated, by default."
 
-- The Antigravity agent is exposed as a **general-purpose managed agent on the Gemini
-  API**. One API call returns an agent that reasons, executes code, manages files, and
-  browses the web inside **its own secure Linux sandbox hosted by Google**.
-- **Endpoint:** `POST https://generativelanguage.googleapis.com/v1beta/interactions`
-  - Headers: `Content-Type: application/json`, `x-goog-api-key: <API_KEY>`
-  - Body (minimal):
-    ```json
-    {
-      "agent": "antigravity-preview-05-2026",
-      "input": [{ "type": "text", "text": "Your task here" }],
-      "environment": "remote"
-    }
-    ```
-- **Sessions are resumable.** Each interaction creates/receives an **environment**;
-  pass that environment handle back on follow-up calls to resume with files + state
-  intact. Files persist across interactions in the sandbox.
-- **Customization is filesystem-native:** mount `AGENTS.md` (instructions) and skills
-  under `.agents/skills/`, or pass them **inline** at interaction time via the
-  `environment` parameter (inline sources). You can iterate inline, then "save as" a
-  managed agent.
+> **Swarm = parallel chat lanes, each isolated by default, baked into the IDE.**
 
-  > ⚠️ Exact field names/shapes (input parts, environment inline-source schema,
-  > streaming vs. polling, how a result/diff/artifact is returned) must be confirmed
-  > against the live docs at build time — see Open Questions. Treat the snippet above as
-  > directionally correct, not final.
+### 1.3 The extension surface (how we bake it in)
 
-- **Why this is the right substrate:** it is headless, scriptable, gives true sandbox
-  isolation per agent (one sandbox per task = the "one agent per workspace" guidance,
-  enforced), and is testable without the GUI.
+Antigravity is a VS Code fork, so we use the standard, documented hooks:
 
-#### B. The Antigravity IDE extension surface (VS Code fork)
+- **Chat Participant API** (`vscode.chat.createChatParticipant`): register `@swarm` with
+  slash commands (`/fork`, `/run`, `/lanes`). Lets a user spin a sandboxed lane from the
+  native chat. _Caveat:_ a participant handler is request/response within the native chat
+  view — good for entry points, **not** for showing N live lanes at once.
+- **Custom webview sidebar** (`viewsContainers` + `registerWebviewViewProvider`): the
+  **Lanes panel** — full control to render many concurrent lanes, stream each, show
+  per-lane diffs, and offer merge/discard. **This is the primary parallel UI.**
+- Distribution: `.vsix` → **OpenVSX** → install via the Antigravity CLI
+  (`<antigravity-cli> --install-extension`). Prior art (the "Antigravity Automation"
+  OpenVSX extension with REST/WS control) shows externally driving chats is accepted.
 
-- Antigravity is a VS Code fork, so **most VS Code extensions work out of the box**;
-  exceptions are extensions that conflict with the agent layer (disabled/warned).
-- Extension distribution uses the **OpenVSX** registry by default (not the MS
-  Marketplace). You can install via Antigravity's bundled CLI
-  (`<antigravity-cli> --install-extension <id|path.vsix>`), or repoint Settings →
-  Antigravity Settings → Editor at the VS Code Marketplace, or sideload `.vsix`.
-- Prior art exists: the **"Antigravity Automation"** extension on OpenVSX exposes a
-  **REST API + WebSocket** to start chats and pull data, plus a webview UI — proof that
-  externally orchestrating Antigravity chats is a viable, accepted pattern.
-- **Limitation:** the standard VS Code extension API does **not** give us a documented
-  hook into the native Agent Manager's agent runtime. So an extension can provide UI and
-  can drive agents — but the *engine* underneath should be the Agent API (A), not a
-  reverse-engineered private API.
+### 1.4 The per-lane execution engine
 
-### 1.3 The confirmed user need
+Each lane needs an agent doing the work inside its isolation context. Two backends, behind
+one interface (`LaneRunner`):
 
-Community feature request: **"Conversation Management & Multi-Agent Workspace Lanes."**
-Users want better management of many simultaneous agent conversations — lanes, batch
-control, overview — which the native single-conversation flow doesn't provide well.
-This is precisely what Swarm targets.
+1. **Local — Antigravity CLI agent (default).** Spawn a headless agent in the lane's
+   **worktree**, wrapped in the CLI's **nsjail/AppContainer sandbox**. Matches "baked into
+   the IDE," uses the IDE's own models/credentials, keeps everything local.
+2. **Cloud — Gemini Managed Agents API** (`POST /v1beta/interactions`, agent
+   `antigravity-preview-05-2026`, `environment: remote`). Each lane gets a Google-hosted
+   sandbox; strongest isolation, no local resource pressure, but remote (needs git
+   source/sink to touch your repo).
+
+Default to local; offer cloud as an isolation/scale option.
 
 ---
 
 ## 2. Intent (problem statement)
 
-> As a developer using Antigravity, I have a backlog of independent tasks. I want to
-> launch them all as parallel agents from one place, control how many run at once, give
-> them a shared playbook (`AGENTS.md` + skills), watch their progress in a single view,
-> and collect their deliverables when done — without babysitting each chat in the GUI.
+> As an Antigravity user I want my chats to run in parallel, each in its own sandbox, so I
+> can hand several independent tasks to several agents at once, watch them all from inside
+> the IDE, and merge each one's work back cleanly — with zero risk of agents clobbering my
+> working tree or each other.
 
 Non-goals (v1):
-- Re-implementing Antigravity's agent runtime or sandbox.
-- Cross-agent coordination / dependency graphs (agents are independent in v1).
-- Merging/conflict-resolution of overlapping edits (we enforce isolation instead).
+- Re-implementing the agent runtime, sandbox, or worktree mechanics (we drive the native
+  ones).
+- Cross-lane coordination / dependency graphs (lanes are independent).
+- Automatic conflict resolution between lanes (isolation prevents conflicts; merge-back is
+  user-reviewed).
 
 ---
 
 ## 3. Architecture
 
-Three layers (see README diagram). The **core engine is the product**; CLI and
-extension are thin surfaces over it.
+Three layers; the **isolation + orchestration core is the product**, the extension is the
+surface that makes it feel native.
 
-### 3.1 `@swarm/core` (headless TypeScript library)
+### 3.1 `@swarm/core` (headless TypeScript engine)
 
-Responsibilities:
-- **Client**: typed wrapper over the Interactions API (create, resume, stream/poll,
-  cancel). Auth via `GEMINI_API_KEY`/`x-goog-api-key`.
-- **Orchestrator**: takes a batch of tasks → spawns interactions with a **concurrency
-  limit** (queue + worker pool) → tracks each as a **Lane** (state machine).
-- **Lane state machine**: `queued → starting → running → (awaiting-input) → done | failed | cancelled`.
-- **Shared config injection**: apply one `AGENTS.md` + skill set to every lane (inline
-  source) so the whole swarm follows the same playbook.
-- **Resilience**: retries with backoff on transient/network errors; idempotent resume
-  via stored environment handles; persistent run journal so a crashed run can resume.
-- **Aggregation**: collect per-lane outputs (final text, diffs/patches, artifacts) into
-  a single run report.
-- **Events**: emit a typed event stream (`lane:update`, `lane:output`, `run:done`) that
-  any surface subscribes to — this is what keeps CLI and extension in sync.
+- **Orchestrator** — batch of tasks → lanes with a **concurrency cap** (worker pool) →
+  per-lane state machine → typed event stream (`lane:update`, `lane:output`, `run:done`).
+- **IsolationProvider** — per-lane sandbox lifecycle:
+  - `WorktreeProvider`: `git worktree add .swarm/lanes/<id> -b swarm/<id>` from the base
+    ref; tears down + prunes on completion.
+  - `SandboxProvider`: wraps lane commands in nsjail (Linux) / AppContainer (Windows);
+    no-op fallback with a loud warning if unavailable.
+  - Composed: **worktree ⨯ sandbox = full isolation** per lane.
+- **LaneRunner** (interface) — drives one agent to completion inside a lane:
+  `CliLaneRunner` (local Antigravity CLI) and `ManagedAgentsLaneRunner` (cloud API).
+- **Merge-back** — each lane is a branch; core surfaces the diff and supports
+  merge/rebase/discard. Aggregated run report at the end.
+- **Resilience** — retries/backoff; a run **journal** in `.swarm/` so a crashed IDE can
+  resume lanes (worktrees + environment handles are persisted).
+- **Budget/limits** — concurrency cap + optional cost ceiling with visible token/cost.
 
-Key types (sketch — see `src/core/types.ts`):
-```ts
-type LaneStatus = 'queued'|'starting'|'running'|'awaiting-input'|'done'|'failed'|'cancelled';
-interface Task { id: string; prompt: string; agentsMd?: string; skills?: Skill[]; }
-interface Lane { id: string; task: Task; status: LaneStatus; environment?: string; ... }
-interface RunOptions { concurrency: number; agentsMd?: string; skills?: Skill[]; }
+Key types: see `src/core/types.ts` (`Lane`, `Task`, `RunOptions`, `SwarmEvent`),
+`src/core/isolation.ts` (`IsolationProvider`), `src/core/runner.ts` (`LaneRunner`).
+
+### 3.2 Extension (`extension/`)
+
+- **Lanes panel** (webview sidebar): add tasks, set concurrency, start/stop, live per-lane
+  stream, per-lane diff + merge/discard buttons. Subscribes to the core event stream.
+- **`@swarm` chat participant**: `/fork` (turn the current chat into a sandboxed lane),
+  `/run <task>` (new lane), `/lanes` (open panel).
+- **Commands**: `Swarm: New Run`, `Swarm: Add Lane`, `Swarm: Open Lanes Panel`,
+  `Swarm: Merge Lane`, `Swarm: Discard Lane`.
+- Runs `@swarm/core` in the extension host; webview ↔ host over the message channel.
+
+### 3.3 Isolation model (the heart of the request)
+
+```
+base repo (clean, untouched)
+   │  git worktree add  (per lane)
+   ├── .swarm/lanes/lane-1  ── branch swarm/lane-1 ── nsjail/AppContainer ── agent
+   ├── .swarm/lanes/lane-2  ── branch swarm/lane-2 ── nsjail/AppContainer ── agent
+   └── .swarm/lanes/lane-3  ── branch swarm/lane-3 ── nsjail/AppContainer ── agent
+                                            review diff ▶ merge / discard ▶ base repo
 ```
 
-### 3.2 CLI + TUI (`swarm`)
-
-- `swarm run <tasks.yaml> [--concurrency N] [--agents-md path] [--json]`
-- `swarm ls` / `swarm logs <laneId>` / `swarm resume <runId>` / `swarm cancel <runId|laneId>`
-- Live **TUI dashboard**: one row per lane (status, elapsed, last action, token/cost),
-  driven by the core event stream. `--json` for CI/non-interactive use.
-
-### 3.3 Antigravity / VS Code extension (`extension/`)
-
-- A **webview panel** showing parallel **lanes** (the UX the feature request asked for):
-  add tasks, set concurrency, start/stop, watch streamed output per lane, open
-  deliverables.
-- Uses `@swarm/core` directly in the extension host; webview ↔ host over the standard
-  message channel.
-- Packaged as `.vsix`; published to **OpenVSX**; installable via the Antigravity CLI.
-- Commands contributed: `Swarm: New Run`, `Swarm: Add Task`, `Swarm: Open Dashboard`.
+Every lane: separate **files** (worktree), separate **process/network/host** (sandbox),
+separate **history** (branch). Nothing shared, nothing to collide.
 
 ---
 
 ## 4. Tech stack
 
-- **Language:** TypeScript (Node ≥ 20) — matches the VS Code/Antigravity extension model
-  and keeps one codebase across core/CLI/extension.
-- **Packaging:** pnpm workspaces — `packages/core`, `packages/cli`, `packages/extension`
-  (current scaffold uses a single package; promote to a monorepo at Phase 3).
-- **HTTP:** native `fetch` (Node 20+); thin retry wrapper.
-- **CLI/TUI:** `commander` + `ink` (or `blessed`) for the dashboard; `yaml` for task files.
-- **Extension:** `@types/vscode`, `esbuild` bundle, `@vscode/vsce`/`ovsx` to publish.
-- **Tests:** `vitest`; the API client is mocked behind an interface so the orchestrator,
-  concurrency, retry, and resume logic are all testable offline.
+- **TypeScript / Node ≥ 20** — one codebase for core + extension.
+- **Extension:** `@types/vscode`, `esbuild` bundle, `@vscode/vsce` + `ovsx` to publish.
+- **Isolation:** `git worktree` (via `simple-git` or raw `git`), nsjail/AppContainer via
+  the Antigravity CLI; `child_process` for spawning.
+- **Webview UI:** lightweight (preact/lit or plain TS) — keep the bundle small.
+- **Tests:** `vitest`; `LaneRunner` and `IsolationProvider` are interfaces, so the
+  orchestrator (concurrency, state machine, merge-back) is testable with fakes offline.
 
 ---
 
 ## 5. Phased roadmap
 
-| Phase | Goal | Deliverable | Exit criteria |
-|------:|------|-------------|---------------|
-| **0** | Scaffold | folder, README, this plan, package skeleton | repo builds, types compile |
-| **1** | Single-agent round-trip | `core` client: create interaction → get result | one task runs end-to-end against the live API |
-| **2** | Parallel engine | orchestrator: fan-out, concurrency cap, lane state machine, resume, event stream | N tasks run with `--concurrency`, survive a restart |
-| **3** | CLI + TUI | `swarm run` + live dashboard + `--json` | batch from `tasks.yaml` with live monitoring |
-| **4** | Extension | webview lanes UI over `core`; `.vsix` | installs in Antigravity, runs a batch from the panel |
-| **5** | Playbooks + aggregation | shared `AGENTS.md`/skills, run report, artifact collection | one playbook applied to all lanes; consolidated report |
-| **6** | Polish | docs, cost/token display, error UX, OpenVSX publish | published extension + tagged release |
+| Phase | Goal | Exit criteria |
+|------:|------|---------------|
+| **0** | Scaffold + plan | repo builds, types compile (✅ this commit) |
+| **1** | Isolation core | `WorktreeProvider` + `SandboxProvider` create/tear down a real isolated lane; verified on Linux (nsjail) |
+| **2** | Lane runner | `CliLaneRunner` runs one agent to completion inside a lane; streamed updates |
+| **3** | Parallel orchestrator | N lanes with concurrency cap, state machine, event stream, journal/resume |
+| **4** | Lanes panel | webview shows live lanes, per-lane output; start a run from the IDE |
+| **5** | Merge-back | per-lane diff + merge/rebase/discard from the panel |
+| **6** | Chat participant | `@swarm` + `/fork` `/run` `/lanes` from native chat |
+| **7** | Cloud runner + polish | `ManagedAgentsLaneRunner`, cost/budget UI, OpenVSX publish, release |
 
-Each phase is independently shippable; Phase 1–2 deliver value via CLI before the
-extension exists.
+Each phase is shippable; Phases 1–3 deliver the engine, 4–6 make it native, 7 scales it.
 
 ---
 
 ## 6. Risks & open questions
 
-1. **API availability & access.** "antigravity-preview-05-2026" is preview; confirm the
-   account has access, quotas, and pricing. _Mitigation:_ core hides the client behind an
-   interface + a fake/record-replay client so all higher layers develop offline.
-2. **Exact API schema.** Field names for `input` parts, the **inline `environment`
-   source** shape (how `AGENTS.md`/skills are passed), and **streaming vs. polling** must
-   be verified against live docs/SDK before Phase 1. The README JSON is directional.
-3. **How results/diffs/artifacts come back.** Need to confirm whether the sandbox returns
-   a patch, a file tree, or artifact handles — drives the aggregation design (Phase 5).
-4. **Remote sandbox ≠ local repo.** Remote agents work in Google-hosted sandboxes. For
-   "operate on *my* repo" we need to clone/push (git URL + token) or use local-environment
-   mode if/when available. _Decision for v1:_ document remote-first; support a git
-   source/sink for real-repo workflows.
-5. **Extension ↔ native Agent Manager.** No documented hook into the native runtime; we
-   intentionally drive the **API**, not the GUI. (The "Antigravity Automation" REST/WS
-   approach is a possible fallback for GUI-driving if a use case demands it.)
-6. **Cost.** Parallel sandboxed agents can get expensive fast — concurrency caps,
-   per-run budget limits, and visible token/cost accounting are first-class, not optional.
+1. **Can an extension reach the native chat runtime?** No documented hook into the
+   built-in agent. _Decision:_ we don't try — lanes run via the **Antigravity CLI** or
+   **Managed Agents API**, presented in our own panel/participant. The native chat is an
+   entry point, not the engine.
+2. **Antigravity CLI surface for headless agents.** Need to confirm the exact CLI command
+   to run an agent non-interactively against a directory, capture streamed output, and how
+   to invoke its sandbox per process. (`docs/sandbox-mode` + CLI reference.)
+3. **Worktree mechanics in a fork.** Confirm whether to reuse Antigravity's "Worktree
+   Mode" programmatically or manage `git worktree` ourselves (likely the latter for
+   control). Handle submodules, untracked files, LFS, and base-ref selection.
+4. **Sandbox availability.** nsjail needs Linux + privileges; macOS lacks nsjail
+   (sandbox-exec? container?). _Decision:_ `SandboxProvider` is pluggable; degrade to
+   worktree-only with a visible warning where OS sandboxing isn't available.
+5. **Resource cost of N local sandboxes.** Each lane = a process tree + worktree (disk).
+   Concurrency cap + disk/cleanup are first-class; offer the cloud runner to offload.
+6. **Managed Agents API schema** (for the cloud runner) — inline `AGENTS.md`/skills shape,
+   streaming, result/diff format — still to confirm against live docs.
+7. **Merge conflicts at merge-back.** Lanes are isolated during work, but two lanes
+   touching the same files still conflict *when merging*. v1: surface conflicts, let the
+   user resolve (or hand a follow-up lane the conflict). No auto-merge of overlaps.
 
 ---
 
-## 7. Immediate next steps (Phase 0 → 1)
+## 7. Immediate next steps (Phase 1)
 
-1. Verify Gemini Managed Agents API access + read the live `interactions` reference;
-   lock down the request/response schema (resolves Q2/Q3).
-2. Implement `src/core/client.ts` against that schema behind the `AgentClient` interface.
-3. Add a record/replay fake client + a single integration test that runs one task.
-4. Build the orchestrator (concurrency + lanes) with unit tests on the fake client.
+1. Implement `WorktreeProvider` (`git worktree add/remove/prune`, branch per lane) with
+   tests against a temp repo.
+2. Implement `SandboxProvider` for Linux/nsjail; confirm the Antigravity CLI sandbox
+   invocation; add the no-op fallback + warning.
+3. Wire `IsolationProvider = worktree ⨯ sandbox`; create + destroy one real lane end to
+   end and assert the base working tree is untouched.
 
 ## Sources
 
 - Build with Google Antigravity — https://developers.googleblog.com/build-with-google-antigravity-our-new-agentic-development-platform/
-- Antigravity Agent (Gemini API) — https://ai.google.dev/gemini-api/docs/antigravity-agent
-- Managed Agents quickstart / building — https://ai.google.dev/gemini-api/docs/managed-agents-quickstart · https://ai.google.dev/gemini-api/docs/custom-agents
-- Introducing Managed Agents in the Gemini API — https://blog.google/innovation-and-ai/technology/developers-tools/managed-agents-gemini-api/
+- Running multiple agents on one repo — worktree isolation — https://antigravitylab.net/en/articles/agents/antigravity-worktree-parallel-agent-isolation-design
+- Antigravity CLI: sandbox, plugins, subagents — https://www.explainx.ai/blog/antigravity-cli-features-sandbox-plugins-subagents-2026
+- Antigravity sandbox mode docs — https://antigravity.google/docs/sandbox-mode
 - Agent Manager docs — https://antigravity.google/docs/agent-manager
-- Parallel agents in Antigravity (Mete Atamel) — https://medium.com/google-cloud/parallel-agents-in-antigravity-64237120161d
-- Feature request: Multi-Agent Workspace Lanes — https://discuss.ai.google.dev/t/feature-request-conversation-management-multi-agent-workspace-lanes/127212
-- Installing VS Code Marketplace extensions in Antigravity — https://medium.com/@agurindapalli/how-to-install-vs-code-marketplace-extensions-in-googles-antigravity-ide-example-deepblue-theme-689cdcd735eb
+- Antigravity 2.0 (4-surface) overview — https://mcp.directory/blog/antigravity-2-launch-google-io-2026
+- VS Code Chat Participant API — https://code.visualstudio.com/api/extension-guides/ai/chat
+- VS Code Webview API — https://code.visualstudio.com/api/extension-guides/webview
+- Antigravity Agent API (Gemini Managed Agents) — https://ai.google.dev/gemini-api/docs/antigravity-agent
 - Antigravity Automation (OpenVSX) — https://open-vsx.org/extension/joecodecreations/antigravity-automation

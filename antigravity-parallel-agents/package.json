@@ -1,15 +1,58 @@
 {
   "name": "antigravity-parallel-agents",
+  "displayName": "Swarm — Parallel Sandboxed Chats",
   "version": "0.0.0",
   "private": true,
-  "description": "Fan out a batch of tasks across many Antigravity agents in parallel, monitor the lanes, and aggregate results.",
+  "description": "Bake parallel, fully-isolated chats into the Antigravity IDE: every chat is a lane running in its own git worktree + OS sandbox.",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20",
+    "vscode": "^1.90.0"
+  },
+  "categories": ["AI", "Chat", "Other"],
+  "keywords": ["antigravity", "gemini", "agents", "parallel", "sandbox", "worktree", "isolation"],
+  "license": "MIT",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
-  "keywords": ["antigravity", "gemini", "agents", "parallel", "orchestration"],
-  "license": "MIT"
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "//contributes": "Phase 4-6 — wired up when the extension entrypoint lands; shape sketched here.",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "swarm.lanes",
+        "name": "swarm",
+        "description": "Spin off a parallel, sandboxed chat lane",
+        "commands": [
+          { "name": "fork", "description": "Fork this chat into an isolated lane" },
+          { "name": "run", "description": "Start a new lane for a task" },
+          { "name": "lanes", "description": "Open the Lanes panel" }
+        ]
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "swarm", "title": "Swarm", "icon": "extension/media/swarm.svg" }
+      ]
+    },
+    "views": {
+      "swarm": [
+        { "id": "swarm.lanesPanel", "name": "Lanes", "type": "webview" }
+      ]
+    },
+    "commands": [
+      { "command": "swarm.newRun", "title": "Swarm: New Run" },
+      { "command": "swarm.addLane", "title": "Swarm: Add Lane" },
+      { "command": "swarm.openPanel", "title": "Swarm: Open Lanes Panel" },
+      { "command": "swarm.mergeLane", "title": "Swarm: Merge Lane" },
+      { "command": "swarm.discardLane", "title": "Swarm: Discard Lane" }
+    ]
+  }
 }
