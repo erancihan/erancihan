@@ -1,30 +1,27 @@
 /**
- * Builds an Orchestrator wired for the IDE: real worktree+sandbox isolation, a journal
- * under the workspace's `.swarm/`, and a lane runner.
+ * Builds an Orchestrator wired for the IDE: real worktree+sandbox isolation (one shared
+ * sandbox), a journal under the workspace's `.swarm/`, and a configurable agent command.
  *
- * The default runner is the local Antigravity CLI runner (Phase 2 — still a stub until
- * the CLI's headless invocation is confirmed). Swap in `ManagedAgentsLaneRunner` to run
- * lanes in cloud sandboxes instead. See docs/PLAN.md §1.4.
+ * The lane command defaults to the Antigravity CLI (provisional flags, docs/PLAN.md §6 Q2)
+ * but is overridable via the `swarm.command` / `swarm.args` settings, so it works today
+ * with any agent CLI. See docs/PLAN.md §1.4.
  */
 
-import { join } from 'node:path';
-import {
-  Orchestrator,
-  createIsolationProvider,
-  FileJournalStore,
-  CliLaneRunner,
-  type LaneRunner,
-} from '../src/core/index.js';
+import { buildSwarm, type Orchestrator } from '../src/core/index.js';
 
 export interface BuildOptions {
   repoRoot: string;
-  runner?: LaneRunner;
+  command?: string;
+  args?: string[];
   noSandbox?: boolean;
 }
 
 export async function buildOrchestrator(opts: BuildOptions): Promise<Orchestrator> {
-  const isolation = await createIsolationProvider({ noSandbox: opts.noSandbox });
-  const journal = new FileJournalStore(join(opts.repoRoot, '.swarm', 'journal'));
-  const runner = opts.runner ?? new CliLaneRunner();
-  return new Orchestrator({ isolation, runner, repoRoot: opts.repoRoot, journal });
+  const { orchestrator } = await buildSwarm({
+    repoRoot: opts.repoRoot,
+    command: opts.command,
+    args: opts.args,
+    noSandbox: opts.noSandbox,
+  });
+  return orchestrator;
 }

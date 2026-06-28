@@ -1,0 +1,6 @@
+# One task per line. Blank lines and #-comments are ignored.
+# Run with:  swarm run --file examples/tasks.txt --concurrency 4
+Add cursor-based pagination to the /users endpoint and write tests
+Migrate the build from webpack to vite, keep all scripts working
+Audit the repo for unhandled promise rejections and fix them
+Write a README for the payments module

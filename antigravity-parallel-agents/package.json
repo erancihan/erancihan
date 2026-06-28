@@ -13,6 +13,7 @@
   "keywords": ["antigravity", "gemini", "agents", "parallel", "sandbox", "worktree", "isolation"],
   "license": "MIT",
   "main": "./dist-ext/extension.cjs",
+  "bin": { "swarm": "./dist/cli/main.js" },
   "activationEvents": ["onChatParticipant:swarm.lanes", "onView:swarm.lanesPanel"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -50,6 +51,27 @@
       "swarm": [
         { "id": "swarm.lanesPanel", "name": "Lanes", "type": "webview" }
       ]
+    },
+    "configuration": {
+      "title": "Swarm",
+      "properties": {
+        "swarm.command": {
+          "type": "string",
+          "default": "antigravity",
+          "description": "Executable used to drive each lane's agent."
+        },
+        "swarm.args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["agent", "run", "--cwd", "${worktree}", "--prompt", "${prompt}"],
+          "description": "Argument template per lane. Tokens: ${prompt} ${worktree} ${agentsMdPath}."
+        },
+        "swarm.concurrency": {
+          "type": "number",
+          "default": 4,
+          "description": "Maximum lanes running at once."
+        }
+      }
     },
     "commands": [
       { "command": "swarm.newRun", "title": "Swarm: New Run" },

@@ -4,8 +4,29 @@
 > with **every chat pinned to its own sandbox** (git worktree + OS sandbox) for full
 > isolation, so agents never step on each other or your working tree.
 
-**Status:** 🟡 Greenfield — investigation done, implementation planned. See
+**Status:** 🟢 **MVP reached.** The end-to-end loop runs today via the `swarm` CLI; the
+Antigravity extension compiles and bundles for in-IDE use. 21 passing tests. Going live
+with AI agents is a one-line config change (point `swarm.command` at an agent CLI). See
 [`docs/PLAN.md`](docs/PLAN.md) for the full design and roadmap.
+
+## Run it today (CLI)
+
+```bash
+npm install && npm run build
+
+# Fan three tasks into parallel, isolated lanes. Each runs your agent command
+# (`--command`/`--arg`) inside its own git worktree, then commits its work.
+swarm run "add tests for auth" "fix the lint errors" "write the changelog" \
+  --concurrency 2 \
+  --command antigravity --arg agent --arg run \
+  --arg --cwd --arg '${worktree}' --arg --prompt --arg '${prompt}'
+
+swarm merge lane-1 --delete    # review each lane's branch, then merge clean
+swarm resume <runId>           # pick up a crashed run where it left off
+```
+
+`${worktree}`, `${prompt}`, and `${agentsMdPath}` are substituted per lane. Any agent CLI
+works — the Antigravity CLI is just the default.
 
 ---
 

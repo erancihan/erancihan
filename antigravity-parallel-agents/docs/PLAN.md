@@ -154,14 +154,25 @@ separate **history** (branch). Nothing shared, nothing to collide.
 |------:|------|---------------|
 | **0** | Scaffold + plan | repo builds, types compile (✅) |
 | **1** | Isolation core | `WorktreeProvider` + `SandboxProvider` create/tear down a real isolated lane (✅ — `GitWorktreeProvider`, nsjail/AppContainer/no-op `SandboxProvider`, `IsolationProvider` composer, 6 passing tests) |
-| **2** | Lane runner | `CliLaneRunner` runs one agent to completion inside a lane; streamed updates _(blocked on confirming the Antigravity CLI headless invocation; interface + fake runner done)_ |
+| **2** | Lane runner | ✅ `ProcessLaneRunner` — runs ANY agent command in the lane's worktree (sandbox-wrapped), streams output, mounts AGENTS.md/skills, then stages+commits the work for merge-back. `CliLaneRunner` is the Antigravity-CLI preset (provisional flags). 4 passing tests against real subprocesses |
 | **3** | Parallel orchestrator | ✅ N lanes, concurrency cap, lane state machine, typed event stream, per-lane failure isolation, cost budget, merge-back branch retention, **crash journal + resume** (`FileJournalStore`/`MemoryJournalStore`, stale-worktree recovery). 12 passing tests total |
 | **4** | Lanes panel | 🟢 webview `LanesViewProvider` renders live lanes + per-lane output, subscribes to the event stream, starts a run from the IDE. Extension typechecks + bundles (esbuild → CJS). Pending: run inside Antigravity |
 | **5** | Merge-back | ✅ core `mergeLane`/`laneDiff`/`discardLane` — merge (no-ff/ff-only/squash), conflict detection + clean abort, diff, branch delete; wired into the panel's merge/discard handlers (3 passing tests) |
 | **6** | Chat participant | 🟢 `@swarm` participant + `/lanes`, launches lanes from native chat (`extension.ts`). Pending: `/fork` of the current chat |
+| **3.5** | Runnable CLI | ✅ `swarm run/merge/resume` — fan-out with live progress + summary, shared sandbox, configurable agent command. 2 e2e tests + verified as a built binary |
 | **7** | Cloud runner + polish | `ManagedAgentsLaneRunner`, cost/budget UI, OpenVSX publish, release |
 
-Each phase is shippable; Phases 1–3 deliver the engine, 4–6 make it native, 7 scales it.
+**MVP status: reached.** The end-to-end loop runs today via the `swarm` CLI (and the
+extension compiles/bundles for in-IDE use): fan a batch of tasks into parallel isolated
+lanes → each runs a real agent command in its own worktree+sandbox, streaming output →
+each commits to its own branch → review the diff → merge clean or discard, with
+crash-resume throughout. **21 passing tests.** Going "live with AI agents" is purely a
+config change: point `swarm.command` at the real Antigravity CLI (or any agent CLI). The
+remaining work (Phase 7: cloud runner, conflict-resolution UX, OpenVSX publish) is
+enhancement, not MVP.
+
+Each phase is shippable; Phases 1–3.5 deliver the working engine + CLI, 4–6 make it
+native to the IDE, 7 scales/publishes it.
 
 ---
 
@@ -171,9 +182,10 @@ Each phase is shippable; Phases 1–3 deliver the engine, 4–6 make it native, 
    built-in agent. _Decision:_ we don't try — lanes run via the **Antigravity CLI** or
    **Managed Agents API**, presented in our own panel/participant. The native chat is an
    entry point, not the engine.
-2. **Antigravity CLI surface for headless agents.** Need to confirm the exact CLI command
-   to run an agent non-interactively against a directory, capture streamed output, and how
-   to invoke its sandbox per process. (`docs/sandbox-mode` + CLI reference.)
+2. **Antigravity CLI surface for headless agents.** _Mitigated:_ `ProcessLaneRunner` runs
+   any agent command with a configurable arg template, so the engine no longer blocks on
+   this — we just need to set `swarm.command`/`swarm.args` to the real flags once confirmed
+   (`docs/sandbox-mode` + CLI reference). The default preset is a best guess.
 3. **Worktree mechanics in a fork.** Confirm whether to reuse Antigravity's "Worktree
    Mode" programmatically or manage `git worktree` ourselves (likely the latter for
    control). Handle submodules, untracked files, LFS, and base-ref selection.

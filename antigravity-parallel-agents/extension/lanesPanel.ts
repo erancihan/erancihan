@@ -38,7 +38,12 @@ export class LanesViewProvider implements vscode.WebviewViewProvider {
       void vscode.window.showErrorMessage('Swarm: open a folder/repo first.');
       return;
     }
-    this.orchestrator = await buildOrchestrator({ repoRoot });
+    const cfg = vscode.workspace.getConfiguration('swarm');
+    this.orchestrator = await buildOrchestrator({
+      repoRoot,
+      command: cfg.get<string>('command') || undefined,
+      args: cfg.get<string[]>('args') || undefined,
+    });
     this.orchestrator.on((e) => this.view?.webview.postMessage(e));
 
     const tasks = prompts.map((prompt, i) => ({ id: `lane-${i}`, prompt }));
