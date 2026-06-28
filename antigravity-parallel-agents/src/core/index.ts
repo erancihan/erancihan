@@ -7,6 +7,7 @@ export * from './runner.js';
 export * from './client.js';
 export * from './orchestrator.js';
 export * from './journal.js';
+export * from './merge.js';
 export { Emitter } from './emitter.js';
 export { mapPool } from './pool.js';
 export { run, output, commandExists } from './exec.js';

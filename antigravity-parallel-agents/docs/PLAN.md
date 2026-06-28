@@ -157,7 +157,7 @@ separate **history** (branch). Nothing shared, nothing to collide.
 | **2** | Lane runner | `CliLaneRunner` runs one agent to completion inside a lane; streamed updates _(blocked on confirming the Antigravity CLI headless invocation; interface + fake runner done)_ |
 | **3** | Parallel orchestrator | ✅ N lanes, concurrency cap, lane state machine, typed event stream, per-lane failure isolation, cost budget, merge-back branch retention, **crash journal + resume** (`FileJournalStore`/`MemoryJournalStore`, stale-worktree recovery). 12 passing tests total |
 | **4** | Lanes panel | 🟢 webview `LanesViewProvider` renders live lanes + per-lane output, subscribes to the event stream, starts a run from the IDE. Extension typechecks + bundles (esbuild → CJS). Pending: run inside Antigravity |
-| **5** | Merge-back | per-lane diff + merge/rebase/discard from the panel _(UI hooks stubbed in `lanesPanel.ts`)_ |
+| **5** | Merge-back | ✅ core `mergeLane`/`laneDiff`/`discardLane` — merge (no-ff/ff-only/squash), conflict detection + clean abort, diff, branch delete; wired into the panel's merge/discard handlers (3 passing tests) |
 | **6** | Chat participant | 🟢 `@swarm` participant + `/lanes`, launches lanes from native chat (`extension.ts`). Pending: `/fork` of the current chat |
 | **7** | Cloud runner + polish | `ManagedAgentsLaneRunner`, cost/budget UI, OpenVSX publish, release |
 

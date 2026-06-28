@@ -8,7 +8,7 @@
 
 import * as vscode from 'vscode';
 import { buildOrchestrator } from './orchestratorFactory.js';
-import type { Orchestrator } from '../src/core/index.js';
+import { mergeLane, discardLane, type Orchestrator } from '../src/core/index.js';
 
 interface WebviewMessage {
   type: 'start' | 'merge' | 'discard';
@@ -54,16 +54,31 @@ export class LanesViewProvider implements vscode.WebviewViewProvider {
         if (msg.laneId) await this.mergeLane(msg.laneId);
         break;
       case 'discard':
-        // Phase 5: delete the lane's branch. Branch name is `swarm/<laneId>`.
+        if (msg.laneId) await this.discardLane(msg.laneId);
         break;
     }
   }
 
-  /** Phase 5: fast-forward / merge the lane branch back into the active branch. */
+  /** Merge a lane's branch back into the active branch; surface conflicts to the user. */
   private async mergeLane(laneId: string): Promise<void> {
-    const branch = `swarm/${laneId}`;
     const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    void vscode.window.showInformationMessage(`Swarm: merge ${branch} (repo ${repoRoot}) — Phase 5`);
+    if (!repoRoot) return;
+    const res = await mergeLane(repoRoot, `swarm/${laneId}`, { deleteBranch: true });
+    if (res.ok) {
+      void vscode.window.showInformationMessage(`Swarm: ${res.message}`);
+    } else if (res.conflicted) {
+      void vscode.window.showWarningMessage(`Swarm: ${res.message} Resolve: ${res.conflicts.join(', ')}`);
+    } else {
+      void vscode.window.showErrorMessage(`Swarm: ${res.message}`);
+    }
+  }
+
+  /** Throw away a lane's branch. */
+  private async discardLane(laneId: string): Promise<void> {
+    const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!repoRoot) return;
+    await discardLane(repoRoot, `swarm/${laneId}`);
+    void vscode.window.showInformationMessage(`Swarm: discarded lane ${laneId}.`);
   }
 
   private html(): string {
