@@ -35,6 +35,13 @@ All phases complete.
   neighbour search and negotiation matchmaking dropped from O(n²) to ~O(n).
   Measured: boids flocking 8.4× faster at 2k entities and 16× at 5k; the sim
   step scales ~linearly (8.5 ms/tick at 8k agents). Determinism preserved.
+- ✅ **Observability (`engine/metrics` + `internal/observability`)** — a
+  thread-safe counters/gauges registry (reusable engine utility) and a plugin
+  that records negotiation rates, settlement success, total wealth, and the
+  **Gini coefficient** of cash each tick. Surfaced to logs and, via a new
+  `TickStats.metrics` map, to the Rust visualizer (live Gini + settle-rate
+  badges). Reveals emergent inequality — Gini rises ≈0.42 → 0.51 over a run
+  while total wealth stays conserved.
 
 ## Two layers
 
