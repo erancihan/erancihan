@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // defaultDelta is the seconds-per-tick used in unbounded mode, where there is

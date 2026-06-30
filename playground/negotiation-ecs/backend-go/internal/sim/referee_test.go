@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine"
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // -----------------------------------------------------------------------------

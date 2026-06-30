@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine"
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/sim"
 )
 

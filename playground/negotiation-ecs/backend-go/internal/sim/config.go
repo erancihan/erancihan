@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // Config holds simulation parameters. It is stored as an ECS resource so any

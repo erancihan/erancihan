@@ -4,7 +4,7 @@
 // reads these components from the outside.
 package sim
 
-import "github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+import "github.com/erancihan/negotiation-ecs/engine/ecs"
 
 // =============================================================================
 // Components — plain data attached to entities.

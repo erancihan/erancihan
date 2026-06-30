@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // Controller is a brain: given an observation of type O it returns commands of

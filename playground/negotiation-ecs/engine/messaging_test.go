@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 type pingEvent struct{ N int }

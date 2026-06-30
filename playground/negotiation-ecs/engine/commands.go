@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // Commands is the inbound command buffer, stored as an ECS resource. It is the

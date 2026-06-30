@@ -23,6 +23,14 @@ the first *application* built on top of it.
 
 All phases complete.
 
+## Beyond the roadmap
+
+- ✅ **Engine extracted into its own module** — `engine/` is now a standalone Go
+  module (`github.com/erancihan/negotiation-ecs/engine`) with zero dependencies;
+  `backend-go` consumes it via `require` + `replace`. The reuse boundary is now
+  compiler-enforced: the engine importing the app would need a module cycle.
+  `go list -m all` in `engine/` returns only the engine itself.
+
 ## Two layers
 
 ### 1. Engine core (domain-agnostic, extractable, zero third-party ECS)

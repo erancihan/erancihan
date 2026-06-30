@@ -1,8 +1,8 @@
 package sim
 
 import (
-	"github.com/erancihan/negotiation-ecs/backend-go/engine"
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // NegotiationView is what a brain observes when it is its turn to act. It is a
