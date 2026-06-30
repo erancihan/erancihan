@@ -9,6 +9,7 @@ import (
 	"github.com/erancihan/negotiation-ecs/engine"
 	"github.com/erancihan/negotiation-ecs/engine/ecs"
 	pb "github.com/erancihan/negotiation-ecs/backend-go/gen/proto/negotiationpb"
+	"github.com/erancihan/negotiation-ecs/backend-go/internal/observability"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/sim"
 )
 
@@ -60,6 +61,7 @@ func BuildFrame(w *ecs.World) *pb.SimFrame {
 			ActiveNegotiations:    active,
 			CompletedNegotiations: completed,
 			TimedOutNegotiations:  timedOut,
+			Metrics:               observability.TrySnapshot(w),
 		},
 	}
 }

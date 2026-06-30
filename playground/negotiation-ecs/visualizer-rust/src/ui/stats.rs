@@ -32,6 +32,14 @@ pub fn draw_stats(ui: &mut egui::Ui, state: &SimState) {
         // Economy: total cash across all agents (a conserved quantity).
         let total_cash: f64 = state.entities.iter().map(|e| e.cash).sum();
         stat_badge(ui, "Total Cash", &format!("{total_cash:.0}"), Color32::from_rgb(120, 200, 120));
+
+        // Observability metrics from the backend.
+        if let Some(gini) = state.stats.metrics.get("wealth.gini") {
+            stat_badge(ui, "Gini", &format!("{gini:.3}"), Color32::from_rgb(220, 150, 110));
+        }
+        if let Some(rate) = state.stats.metrics.get("economy.settlement_rate") {
+            stat_badge(ui, "Settle %", &format!("{:.0}%", rate * 100.0), Color32::from_rgb(150, 200, 130));
+        }
     });
 
     // Connection error

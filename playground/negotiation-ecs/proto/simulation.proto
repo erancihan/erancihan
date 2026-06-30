@@ -196,4 +196,8 @@ message TickStats {
   uint32 completed_negotiations = 3;
   uint32 timed_out_negotiations = 4;
   double avg_negotiation_duration_ticks = 5;
+
+  // Named observability metrics (counters and gauges) — e.g. "wealth.gini",
+  // "economy.settlement_rate". Populated when the observability plugin is active.
+  map<string, double> metrics = 6;
 }

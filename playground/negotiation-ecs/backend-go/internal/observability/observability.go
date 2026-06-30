@@ -25,6 +25,16 @@ func Registry(w *ecs.World) *metrics.Registry { return ecs.MustResource[metricsR
 // Snapshot returns a copy of all current metrics.
 func Snapshot(w *ecs.World) map[string]float64 { return Registry(w).Snapshot() }
 
+// TrySnapshot returns a copy of all current metrics, or nil if the observability
+// plugin is not installed — so callers (e.g. the transport layer) can include
+// metrics opportunistically without depending on the plugin being present.
+func TrySnapshot(w *ecs.World) map[string]float64 {
+	if res, ok := ecs.GetResource[metricsRes](w); ok {
+		return res.r.Snapshot()
+	}
+	return nil
+}
+
 // Plugin records metrics each tick. With LogEvery > 0 it also logs a summary
 // line every LogEvery ticks.
 type Plugin struct {
