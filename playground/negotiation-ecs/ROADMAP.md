@@ -30,6 +30,11 @@ All phases complete.
   `backend-go` consumes it via `require` + `replace`. The reuse boundary is now
   compiler-enforced: the engine importing the app would need a module cycle.
   `go list -m all` in `engine/` returns only the engine itself.
+- ✅ **Spatial index (`engine/spatial`)** — a domain-agnostic uniform-grid
+  spatial hash with deterministic radius queries. Both domains use it: boids
+  neighbour search and negotiation matchmaking dropped from O(n²) to ~O(n).
+  Measured: boids flocking 8.4× faster at 2k entities and 16× at 5k; the sim
+  step scales ~linearly (8.5 ms/tick at 8k agents). Determinism preserved.
 
 ## Two layers
 
