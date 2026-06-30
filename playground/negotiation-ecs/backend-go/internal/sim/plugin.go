@@ -7,6 +7,7 @@ import (
 
 	"github.com/erancihan/negotiation-ecs/engine"
 	"github.com/erancihan/negotiation-ecs/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/spatial"
 )
 
 // Plugin registers the negotiation simulation onto an engine App: it installs
@@ -37,6 +38,8 @@ func (p Plugin) Build(a *engine.App) {
 		ecs.SetResource(w, newBrains())
 		ecs.SetResource(w, newMoveBrains())
 		ecs.SetResource(w, newExternalAgents())
+		// Cell size ~ the pairing radius so each match query touches a few cells.
+		ecs.SetResource(w, matchGrid{g: spatial.NewGrid[int](cfg.PairingRadius)})
 	})
 	a.AddStartupSystem(spawnSystem)
 	a.AddStartupSystem(seedExternalPool)

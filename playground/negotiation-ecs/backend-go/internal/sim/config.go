@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/erancihan/negotiation-ecs/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/spatial"
 )
 
 // Config holds simulation parameters. It is stored as an ECS resource so any
@@ -18,6 +19,10 @@ type Config struct {
 	StartingAssets          map[string]float64
 	NegotiationTimeoutTicks uint64
 	Seed                    int64 // 0 = time-independent default seed
+
+	// PairingRadius bounds how far apart two idle agents can be and still be
+	// matched into a negotiation. It also sets the spatial grid's cell size.
+	PairingRadius float64
 
 	// DecisionTimeout bounds how long the referee waits for brains each tick.
 	// Internal brains return instantly; this is the frame budget for slower
@@ -40,9 +45,14 @@ func DefaultConfig() Config {
 		},
 		NegotiationTimeoutTicks: 100,
 		Seed:                    0,
+		PairingRadius:           300.0,
 		DecisionTimeout:         50 * time.Millisecond,
 	}
 }
+
+// matchGrid holds the reused spatial grid for matchmaking (resource), rebuilt
+// from the idle agents each tick.
+type matchGrid struct{ g *spatial.Grid[int] }
 
 // RNG is the shared random source, stored as a resource. Systems run on the loop
 // goroutine only, so a single non-concurrent source is safe and keeps seeded

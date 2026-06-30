@@ -69,10 +69,15 @@ type idleAgent struct {
 	x, y float64
 }
 
-// pairIdleAgents pairs nearby idle agents into new negotiations, throttled so
-// only a fraction of idle agents pair each tick.
+// pairIdleAgents pairs each idle agent with its nearest idle neighbour within
+// the pairing radius, throttled so only a fraction pair each tick. A reused
+// spatial grid bounds the neighbour search to nearby cells, making this ~O(n)
+// instead of O(n^2). The grid is visited in a deterministic order, so seeded
+// runs stay reproducible.
 func pairIdleAgents(w *ecs.World, tick uint64) {
 	r := rng(w)
+	cfg := config(w)
+	grid := ecs.MustResource[matchGrid](w).g
 
 	var idle []idleAgent
 	q := ecs.Query2[Position, NegotiationState](w)
@@ -83,9 +88,14 @@ func pairIdleAgents(w *ecs.World, tick uint64) {
 		}
 	}
 
+	// Shuffle for fair ordering, then index the (shuffled) idle agents.
 	r.Shuffle(len(idle), func(i, j int) { idle[i], idle[j] = idle[j], idle[i] })
+	grid.Clear()
+	for i := range idle {
+		grid.Insert(idle[i].x, idle[i].y, i)
+	}
 
-	paired := make(map[ecs.Entity]bool)
+	paired := make([]bool, len(idle))
 	maxPairs := len(idle) / 4
 	if maxPairs < 1 {
 		maxPairs = 1
@@ -93,15 +103,15 @@ func pairIdleAgents(w *ecs.World, tick uint64) {
 
 	created := 0
 	for i := 0; i < len(idle) && created < maxPairs; i++ {
-		if paired[idle[i].e] {
+		if paired[i] {
 			continue
 		}
 
 		best := -1
 		bestDist := math.MaxFloat64
-		for j := i + 1; j < len(idle); j++ {
-			if paired[idle[j].e] {
-				continue
+		grid.Query(idle[i].x, idle[i].y, cfg.PairingRadius, func(j int) {
+			if j == i || paired[j] {
+				return
 			}
 			dx := idle[i].x - idle[j].x
 			dy := idle[i].y - idle[j].y
@@ -109,15 +119,14 @@ func pairIdleAgents(w *ecs.World, tick uint64) {
 				bestDist = d
 				best = j
 			}
-		}
+		})
 		if best == -1 {
-			break
+			continue // no idle neighbour within range — stay idle this tick
 		}
 
-		initiator, responder := idle[i].e, idle[best].e
-		paired[initiator] = true
-		paired[responder] = true
-		startNegotiation(w, tick, initiator, responder)
+		paired[i] = true
+		paired[best] = true
+		startNegotiation(w, tick, idle[i].e, idle[best].e)
 		created++
 	}
 }
