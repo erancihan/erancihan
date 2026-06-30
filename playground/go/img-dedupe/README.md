@@ -1,8 +1,8 @@
 # img-dedupe
 
-A small Go tool that finds and removes duplicate images. It can be driven from
-the command line or through a web GUI — both share the same core, so they behave
-identically.
+A small Go tool that finds and removes duplicate images. Use it from the command
+line, a native desktop app (Wails), or a browser-based web GUI — all three share
+the same core, so they behave identically.
 
 It detects duplicates two ways:
 
@@ -72,7 +72,38 @@ Global flags:
 | `--similar` | `false` | Match visually similar images (perceptual hash), not just exact duplicates |
 | `--threshold` | `10` | Max perceptual-hash distance for `--similar` (0–64; lower is stricter) |
 
+## Desktop GUI (Wails)
+
+A native desktop app — no browser — built with [Wails](https://wails.io): the
+same single-page frontend rendered in a system webview, talking to the same
+in-process service. Wails serves the embedded assets and forwards the frontend's
+`/api/*` calls straight to the Go API handler, so there are no separate bindings.
+
+**Prerequisites (Linux):** GTK 3 and WebKit2GTK 4.1.
+
+```sh
+# Ubuntu/Debian
+sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev
+
+# Build (gated behind the `desktop` tag; `webkit2_41` selects WebKit 4.1)
+make gui
+# equivalently:
+go build -tags 'desktop production webkit2_41' -o imgdedupe-gui ./desktop
+
+./imgdedupe-gui
+```
+
+The database lives under your user config dir (e.g. `~/.config/imgdedupe/`),
+overridable with `IMGDEDUPE_DB`. On macOS, Wails uses the system WebView and the
+`webkit2_41` tag isn't needed.
+
+> The desktop dependencies sit behind the `desktop` build tag, so `go build ./...`
+> and the tests never require the native toolchain. A plain `go mod tidy` may drop
+> them — re-add with `go get github.com/wailsapp/wails/v2`.
+
 ## Web GUI
+
+A browser-based alternative (handy for headless/remote use):
 
 ```sh
 ./imgdedupe serve --addr 127.0.0.1:8080
@@ -103,13 +134,14 @@ via `go:embed`, so `imgdedupe` ships as one self-contained executable.
 ## Project layout
 
 ```
-cmd/                 main entry point
+cmd/                 CLI entry point
+desktop/             native desktop app (Wails) — reuses web/ assets + service
 internal/
   cmd/               Cobra commands (root, register-folders, scan, dedupe, serve)
   models/            GORM models (Folder, Image)
   service/           shared core: folders, scan/hash, dedupe, similarity, thumbnails
-  web/               HTTP server + JSON API
-    static/          embedded single-page frontend
+  web/               HTTP server + JSON API (APIHandler reused by the desktop app)
+    static/          embedded single-page frontend (shared by web + desktop)
 ```
 
 ## Roadmap

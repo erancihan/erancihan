@@ -9,5 +9,6 @@ vendor
 # quarantined duplicates
 .imgdedupe-trash/
 
-# built binary
+# built binaries
 /imgdedupe
+/imgdedupe-gui

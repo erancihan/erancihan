@@ -29,10 +29,8 @@ func NewServer(svc *service.Service, addr string) *Server {
 	return &Server{svc: svc, addr: addr}
 }
 
-// Handler builds the HTTP routes (API + embedded static frontend).
-func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
-
+// registerAPI mounts the JSON/image API routes on mux.
+func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/folders", s.handleListFolders)
 	mux.HandleFunc("POST /api/folders", s.handleRegisterFolder)
 	mux.HandleFunc("DELETE /api/folders/{id}", s.handleRemoveFolder)
@@ -42,15 +40,36 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/delete", s.handleDelete)
 	mux.HandleFunc("GET /api/images/{id}/thumb", s.handleThumb)
 	mux.HandleFunc("GET /api/images/{id}/raw", s.handleRaw)
+}
 
-	// Embedded single-page frontend.
-	sub, err := fs.Sub(staticFS, "static")
+// Handler builds the HTTP routes (API + embedded static frontend). Used by the
+// `serve` command to run a standalone browser-based GUI.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	s.registerAPI(mux)
+
+	sub, err := StaticFS()
 	if err != nil {
 		panic(err) // embedded at build time; cannot fail in practice
 	}
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 
 	return mux
+}
+
+// APIHandler returns a handler serving only the JSON/image API, for hosts that
+// serve the frontend assets themselves (e.g. the Wails desktop app's asset
+// server, which calls this for any request its embedded assets don't satisfy).
+func (s *Server) APIHandler() http.Handler {
+	mux := http.NewServeMux()
+	s.registerAPI(mux)
+	return mux
+}
+
+// StaticFS returns the embedded frontend assets rooted so index.html is at the
+// top level. Shared by the web server and the desktop app.
+func StaticFS() (fs.FS, error) {
+	return fs.Sub(staticFS, "static")
 }
 
 // ListenAndServe starts the server and blocks until ctx is cancelled, then
