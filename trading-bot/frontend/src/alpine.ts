@@ -1,3 +1,5 @@
+import type { AccountView } from "./types";
+
 // Small typed accessors for Alpine's magic properties, so components stay
 // strictly typed without sprinkling `any` everywhere.
 
@@ -25,12 +27,14 @@ export function nextTick(ctx: unknown): Promise<void> {
   return (ctx as AlpineNextTick).$nextTick();
 }
 
-// Shared "live" state: a single toggle + heartbeat that every auto-refreshing
-// component consults, so one pause button stops the whole dashboard.
+// Shared "live" state. A single SSE stream bumps `tick` (a heartbeat every
+// component re-fetches on) and pushes the latest `account`; one pause button
+// stops the whole dashboard.
 export interface LiveStore {
   enabled: boolean;
   lastUpdated: string;
-  intervalMs: number;
+  tick: number;
+  account: AccountView | null;
   stamp(): void;
   toggle(): void;
 }
@@ -43,11 +47,12 @@ export function live(ctx: unknown): LiveStore {
   return (ctx as AlpineStores).$store.live;
 }
 
-export function makeLiveStore(intervalMs = 15000): LiveStore {
+export function makeLiveStore(): LiveStore {
   return {
     enabled: true,
     lastUpdated: "",
-    intervalMs,
+    tick: 0,
+    account: null,
     stamp() {
       this.lastUpdated = new Date().toLocaleTimeString();
     },

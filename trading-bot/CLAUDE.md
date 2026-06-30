@@ -208,9 +208,11 @@ Next candidates (not started):
   (no disk writes + network isolation) is the first tier; `sandbox.py` returns a
   capability report and degrades gracefully where a mechanism is unavailable.
 
-(Dashboard auto-refresh is polling-based via a shared `live` Alpine store; true
-websocket *push* was deemed unnecessary for a local dashboard — revisit only if
-sub-second updates are needed.)
+(Dashboard updates via a single **SSE** stream `/sse/dashboard` into a shared
+`live` Alpine store: it pushes the account snapshot and bumps a `live:tick`
+heartbeat that the chart/table components re-fetch on; one pause toggle gates it.
+SSE over WebSocket because the dashboard is read-only (server→client) and gets
+free auto-reconnect — see `web/routes/sse.py` + `frontend/src/sse.ts`.)
 
 ## Definition of done (every change)
 

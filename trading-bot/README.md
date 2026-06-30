@@ -270,8 +270,9 @@ each contestant's equity curve. The **Run** page launches a backtest or dry-run
 forward-test from the browser (a background job → polled → summary + equity
 chart), all on synthetic data with no credentials. The **Chart** page shows a
 candlestick of the bars the bot acted on, with buy/sell order pins overlaid. A
-live account header (equity/cash/buying-power/market status from `/api/account`)
-and the equity curve auto-refresh while a session runs, with a one-click pause.
+live account header (equity/cash/buying-power/market status) and the equity curve
+update live over a single **SSE** stream while a session runs, with a one-click
+pause.
 The **Seasons** page shows each live-league season's standings and a
 return-over-the-season chart.
 

@@ -89,6 +89,14 @@ def test_orders_api(client):
     assert any(r["symbol"] == "SPY" and r["side"] == "buy" for r in rows)
 
 
+def test_sse_dashboard_streams_account(client):
+    r = client.get("/sse/dashboard?limit=1&interval=0")
+    assert r.status_code == 200
+    assert "text/event-stream" in r.headers["content-type"]
+    assert "event: account" in r.text
+    assert '"source"' in r.text          # account snapshot JSON is present
+
+
 def test_account_api(client):
     a = client.get("/api/account").json()
     # No creds in tests -> falls back to the local snapshot from the SQLite log.

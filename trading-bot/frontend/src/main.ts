@@ -3,14 +3,15 @@
 
 import Alpine from "alpinejs";
 
+import type { LiveStore } from "./alpine";
 import { makeLiveStore } from "./alpine";
-import { accountHeader } from "./components/accountHeader";
 import { arenaChart } from "./components/arena";
 import { candleChart } from "./components/candleChart";
 import { equityChart } from "./components/dashboard";
 import { jobRunner } from "./components/jobRunner";
 import { partialLoader } from "./components/partialLoader";
 import { seasonChart } from "./components/seasonChart";
+import { startSse } from "./sse";
 
 declare global {
   interface Window {
@@ -20,7 +21,6 @@ declare global {
 
 Alpine.store("live", makeLiveStore());
 
-Alpine.data("accountHeader", accountHeader);
 Alpine.data("equityChart", equityChart);
 Alpine.data("arenaChart", arenaChart);
 Alpine.data("candleChart", candleChart);
@@ -30,3 +30,6 @@ Alpine.data("partialLoader", partialLoader);
 
 window.Alpine = Alpine;
 Alpine.start();
+
+// Single SSE stream drives live updates for the whole dashboard.
+startSse(Alpine.store("live") as LiveStore);

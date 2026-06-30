@@ -3,24 +3,24 @@
 
 import { getPartial } from "../api/client";
 import { el, live } from "../alpine";
+import { LIVE_TICK } from "../sse";
 
-export function partialLoader(url: string, intervalMs = 0) {
+export function partialLoader(url: string) {
   return {
     html: "",
     async init() {
       this.html = el(this).innerHTML;
       await this.refresh();
-      const period = intervalMs || live(this).intervalMs;
-      setInterval(() => {
+      // Re-fetch on each SSE heartbeat (unless paused).
+      window.addEventListener(LIVE_TICK, () => {
         if (live(this).enabled) {
           void this.refresh();
         }
-      }, period);
+      });
     },
     async refresh() {
       try {
         this.html = await getPartial(url);
-        live(this).stamp();
       } catch (error) {
         console.error(error);
       }
