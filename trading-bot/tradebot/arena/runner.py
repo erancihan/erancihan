@@ -121,13 +121,16 @@ def _apply_limits(cpu_seconds: int | None, memory_mb: int | None) -> None:
 
 
 def _subprocess_work(contestant, frames, risk_config, config, result_queue,
-                     cpu_seconds, memory_mb, harden) -> None:
+                     cpu_seconds, memory_mb, harden, seccomp) -> None:
     """Child entrypoint: apply limits, optionally sandbox, simulate, ship back."""
     _apply_limits(cpu_seconds, memory_mb)
-    if harden:
+    if harden or seccomp:
         from .sandbox import apply_hardening
 
-        apply_hardening()
+        # ``seccomp`` is the adversarial tier; it can be requested on its own, but
+        # we still keep the default no-write/no-network layers on when hardening.
+        apply_hardening(no_write=harden, isolate_network=harden,
+                        max_open_files=256 if harden else 0, seccomp=seccomp)
     try:
         result = simulate(policy_for(contestant), frames, RiskManager(risk_config), config)
         result_queue.put(("ok", result))
@@ -138,7 +141,7 @@ def _subprocess_work(contestant, frames, risk_config, config, result_queue,
 class SubprocessRunner:
     def __init__(self, time_budget_s: float = 10.0,
                  cpu_seconds: int | None = None, memory_mb: int | None = None,
-                 harden: bool = False) -> None:
+                 harden: bool = False, seccomp: bool = False) -> None:
         if not fork_available():
             raise RuntimeError("SubprocessRunner requires the 'fork' start method (POSIX).")
         self.time_budget_s = time_budget_s
@@ -147,6 +150,7 @@ class SubprocessRunner:
         self.cpu_seconds = cpu_seconds if cpu_seconds is not None else int(math.ceil(time_budget_s)) + 1
         self.memory_mb = memory_mb
         self.harden = harden
+        self.seccomp = seccomp
         self._ctx = mp.get_context("fork")
 
     def run(self, contestant, frames, risk, config, scorer) -> ContestantResult:
@@ -155,7 +159,7 @@ class SubprocessRunner:
         proc = self._ctx.Process(
             target=_subprocess_work,
             args=(contestant, frames, risk.config, config, result_queue,
-                  self.cpu_seconds, self.memory_mb, self.harden),
+                  self.cpu_seconds, self.memory_mb, self.harden, self.seccomp),
             name=f"arena-{contestant.name}", daemon=True,
         )
         proc.start()
@@ -205,13 +209,14 @@ class SubprocessRunner:
 
 def default_runner(time_budget_s: float = 10.0, isolation: str = "process",
                    cpu_seconds: int | None = None, memory_mb: int | None = None,
-                   harden: bool = True) -> Runner:
+                   harden: bool = True, seccomp: bool = False) -> Runner:
     """Select a runner from an isolation mode.
 
     - ``"process"`` (default): hard subprocess isolation. **Raises** if fork is
       unavailable — it never silently downgrades a hard guarantee to soft limits.
       With ``harden=True`` the child is additionally sandboxed (no disk writes,
-      no network) — see :mod:`tradebot.arena.sandbox`.
+      no network) — see :mod:`tradebot.arena.sandbox`. ``seccomp=True`` adds the
+      adversarial tier: a syscall filter denying ``execve``/``ptrace``.
     - ``"thread"``: the soft in-process runner (explicit opt-in to weak limits).
     - ``"auto"``: process if fork is available, otherwise a warned fall back to
       the in-process runner.
@@ -221,7 +226,7 @@ def default_runner(time_budget_s: float = 10.0, isolation: str = "process",
             f"Unknown isolation {isolation!r}; expected one of {_ISOLATION_MODES}."
         )
     if isolation == "thread":
-        if harden:
+        if harden or seccomp:
             # Default-on hardening simply doesn't apply to in-process execution;
             # keep this quiet (debug) so the common thread path isn't noisy.
             log.debug("hardening skipped: thread isolation can't sandbox in-process code")
@@ -241,4 +246,5 @@ def default_runner(time_budget_s: float = 10.0, isolation: str = "process",
             "soft (non-killable, unlimited) limits, or --isolation auto to fall back "
             "automatically."
         )
-    return SubprocessRunner(time_budget_s, cpu_seconds, memory_mb, harden=harden)
+    return SubprocessRunner(time_budget_s, cpu_seconds, memory_mb,
+                            harden=harden, seccomp=seccomp)

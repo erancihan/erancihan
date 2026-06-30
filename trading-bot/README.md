@@ -259,8 +259,10 @@ into the on-disk cache, and serves everything else from disk — so a given
 
 > Contestants run in isolated subprocesses with a hard timeout + CPU/memory
 > limits, and are **sandboxed by default** — **no disk writes, no network**
-> (`--no-harden` to opt out). Fully adversarial code still wants seccomp/
-> containers; see `CLAUDE.md`.
+> (`--no-harden` to opt out). For fully adversarial code, add `--seccomp` to also
+> install a syscall filter denying `execve`/`execveat`/`ptrace` (blocks
+> `subprocess`/`os.system`). The next tier up is OS-level container/gVisor
+> containment; see `CLAUDE.md`.
 
 ## Dashboard (web UI)
 

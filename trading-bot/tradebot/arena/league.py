@@ -109,6 +109,7 @@ def run_league(
     pace_s: float = 0.0,
     on_snapshot=None,
     harden: bool = True,
+    seccomp: bool = False,
 ) -> LeagueResult:
     """Run a league and return its evolving standings + final ranking.
 
@@ -116,7 +117,8 @@ def run_league(
     display); ``pace_s`` sleeps between snapshots to simulate a live season.
     """
     outcome = run_tournament(paths, scenario, metric, runner, time_budget_s,
-                             isolation, cpu_seconds, memory_mb, harden=harden)
+                             isolation, cpu_seconds, memory_mb,
+                             harden=harden, seccomp=seccomp)
     scorer = get_scorer(metric)
     ok = [e for e in outcome.leaderboard.entries if e.ok and e.result is not None]
 

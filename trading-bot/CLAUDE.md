@@ -161,8 +161,15 @@ build) on changes under `trading-bot/**`.
   Hardening (`sandbox.py`) is **ON by default** for process isolation
   (`run_tournament`/`run_league`/`default_runner` default `harden=True`,
   `--no-harden` to opt out): the child gets no disk writes + a fresh empty net
-  namespace. The continuous `season` recompute runs on `thread` isolation for
-  speed (can't sandbox) and passes `harden=False` explicitly.
+  namespace. The **seccomp** tier is opt-in (`--seccomp`, default off): on top of
+  hardening it loads a `libseccomp` filter (via ctypes, `libseccomp.so.2`)
+  denying `execve`/`execveat`/`ptrace` with `EPERM`, so a contestant can't shell
+  out (`subprocess`/`os.system`) or trace another process. It is applied **last**
+  in `apply_hardening` and forces `no_new_privs` on first (an unprivileged
+  seccomp load requires it); it deliberately does **not** block `clone`/`fork`
+  (multiprocessing's result-queue feeder thread needs it). The continuous
+  `season` recompute runs on `thread` isolation for speed (can't sandbox) and
+  passes `harden=False` explicitly.
 - **Pydantic coercion:** typing a request field `dict[str, float]` coerces
   integer params (e.g. `fast`, `period`) to floats and breaks `rolling`/`.iloc`.
   `web/schemas.py JobRequest.params` is deliberately left untyped (`dict | None`).
@@ -190,7 +197,8 @@ Done: trading core · dry-run · arena (loading, both interfaces, Alpaca cache,
 persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits,
 **strict isolation modes** — process/thread/auto, no silent downgrade,
 **sandbox ON by default** for process isolation: no disk writes +
-network-namespace isolation, `--no-harden` to opt out) ·
+network-namespace isolation, `--no-harden` to opt out; **seccomp tier**
+`--seccomp` blocks `execve`/`ptrace`) ·
 dashboard (equity+orders+positions+leaderboards, order markers, browser-run
 backtests/dry-runs, **candlestick price chart** w/ order markers, **live account
 header + dashboard auto-refresh** w/ pause + last-updated, `/api/account`) · CI ·
@@ -203,10 +211,16 @@ the whole loop is dry-run-testable offline via `season run --simulate`,
 `/seasons` dashboard standings view).
 
 Next candidates (not started):
-- Deeper sandboxing for fully adversarial code: **seccomp** syscall filtering
-  (block `execve` etc; `libseccomp.so.2` is present — wire via pyseccomp or a
-  ctypes BPF) and **container/gVisor** containment. The `--harden` layer
-  (no disk writes + network isolation) is the first tier; `sandbox.py` returns a
+- **Container/gVisor containment** — the strongest, OS-level tier, for fully
+  untrusted third-party code. The in-process tiers escalate as: rlimits →
+  `--harden` (no disk writes + net isolation) → `--seccomp` (deny
+  `execve`/`ptrace`); a container/gVisor runner would be the next step up. It's
+  documented-not-built on purpose: it changes the execution model (fork passes
+  non-picklable factories/frames by inherited memory — a container boundary
+  can't, so contestants would be re-discovered from file paths *inside* the
+  container) and adds a docker/image dependency to the run + CI path. `docker` is
+  available in the dev env; the seam is `default_runner` returning a
+  `ContainerRunner` for a new `isolation="container"` mode. `sandbox.py` returns a
   capability report and degrades gracefully where a mechanism is unavailable.
 
 (Dashboard updates via a single **SSE** stream `/sse/dashboard` into a shared

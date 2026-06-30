@@ -287,7 +287,7 @@ def cmd_arena_run(args: argparse.Namespace) -> int:
     outcome = run_tournament(
         args.algos, scenario, metric=args.score, time_budget_s=args.time_budget,
         isolation=args.isolation, cpu_seconds=args.cpu_seconds, memory_mb=args.memory_mb,
-        harden=args.harden,
+        harden=args.harden, seccomp=args.seccomp,
     )
     print(outcome.leaderboard.table())
     for e in outcome.load_errors:
@@ -364,6 +364,7 @@ def cmd_arena_league(args: argparse.Namespace) -> int:
         args.algos, scenario, metric=args.score, snapshots=args.snapshots,
         time_budget_s=args.time_budget, isolation=args.isolation,
         cpu_seconds=args.cpu_seconds, memory_mb=args.memory_mb, harden=args.harden,
+        seccomp=args.seccomp,
         pace_s=args.pace, on_snapshot=lambda snap: print(_format_standings(snap)),
     )
     print(result.final.table())
@@ -608,6 +609,10 @@ def build_parser() -> argparse.ArgumentParser:
     ar.add_argument("--no-harden", dest="harden", action="store_false", default=True,
                     help="disable the contestant sandbox (no-disk-writes / no-network); "
                          "hardening is ON by default for process isolation")
+    ar.add_argument("--seccomp", action="store_true", default=False,
+                    help="adversarial tier: also install a seccomp filter denying "
+                         "execve/execveat/ptrace (blocks subprocess/os.system); "
+                         "process isolation only")
     ar.add_argument("--out", help="write the leaderboard to this JSON file")
     ar.add_argument("--save", action="store_true", help="persist this run to the arena DB")
     ar.add_argument("--db", default="arena.db", help="arena results DB (default arena.db)")
@@ -628,6 +633,9 @@ def build_parser() -> argparse.ArgumentParser:
     aL.add_argument("--memory-mb", dest="memory_mb", type=int, default=None)
     aL.add_argument("--no-harden", dest="harden", action="store_false", default=True,
                     help="disable the contestant sandbox; hardening is ON by default")
+    aL.add_argument("--seccomp", action="store_true", default=False,
+                    help="adversarial tier: also install a seccomp filter denying "
+                         "execve/execveat/ptrace; process isolation only")
     aL.set_defaults(func=cmd_arena_league)
 
     aS = asub.add_parser("season", help="durable, resumable real-time league season")

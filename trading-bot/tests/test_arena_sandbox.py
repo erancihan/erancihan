@@ -11,7 +11,13 @@ from tradebot.arena.simulation import SimConfig
 from tradebot.data.synthetic import synthetic_ohlcv
 from tradebot.risk import RiskConfig, RiskManager
 
+from tradebot.arena.sandbox import seccomp_available
+
 needs_fork = pytest.mark.skipif(not fork_available(), reason="requires fork")
+needs_seccomp = pytest.mark.skipif(
+    not (fork_available() and seccomp_available()),
+    reason="requires fork + libseccomp",
+)
 
 
 # --- direct hardening checks (in a forked child) -----------------------------
@@ -58,9 +64,9 @@ def test_apply_hardening_isolates_network(tmp_path):
 
 # --- runner integration ------------------------------------------------------
 
-def _run(factory, harden):
+def _run(factory, harden, seccomp=False):
     df = synthetic_ohlcv(periods=40, seed=1)
-    runner = SubprocessRunner(time_budget_s=5.0, harden=harden)
+    runner = SubprocessRunner(time_budget_s=5.0, harden=harden, seccomp=seccomp)
     contestant = Contestant(name="x", factory=factory, kind="event")
     return runner.run(contestant, {"DEMO": df}, RiskManager(RiskConfig()),
                       SimConfig(), get_scorer("total_return"))
@@ -96,3 +102,49 @@ def test_hardened_runner_blocks_a_disk_writing_contestant(tmp_path):
 def test_default_runner_hardens_by_default():
     assert default_runner(isolation="process").harden is True       # on by default
     assert default_runner(isolation="process", harden=False).harden is False
+
+
+# --- seccomp tier ------------------------------------------------------------
+
+@needs_seccomp
+def test_apply_seccomp_blocks_execve(tmp_path):
+    """A direct exec attempt must fail with EPERM once the filter is loaded."""
+    pid = os.fork()
+    if pid == 0:  # child
+        from tradebot.arena.sandbox import apply_hardening
+        report = apply_hardening(seccomp=True)
+        if not report.get("seccomp"):
+            os._exit(7)            # filter didn't load -> distinguish from a pass
+        try:
+            os.execv("/bin/true", ["/bin/true"])
+            os._exit(0)            # exec succeeded -> NOT blocked
+        except OSError:
+            os._exit(42)           # blocked (EPERM)
+    _, status = os.waitpid(pid, 0)
+    assert os.waitstatus_to_exitcode(status) == 42
+
+
+class _Spawner(Algo):
+    def on_bar(self, bar, ctx):
+        import subprocess
+        subprocess.run(["/bin/true"], check=True)   # needs execve -> blocked
+        return Action.flat()
+
+
+@needs_seccomp
+def test_seccomp_runner_blocks_a_spawning_contestant():
+    # Under seccomp a contestant that shells out can't exec -> run fails, not ok.
+    assert _run(_Spawner, harden=True, seccomp=True).status != "ok"
+
+
+@needs_seccomp
+def test_seccomp_runner_still_runs_a_normal_contestant():
+    # The filter must leave an ordinary numeric contestant (and the result pipe,
+    # which forks a feeder thread via clone) untouched.
+    assert _run(_FlatAlgo, harden=True, seccomp=True).status == "ok"
+
+
+@needs_fork
+def test_default_runner_seccomp_is_opt_in():
+    assert default_runner(isolation="process").seccomp is False        # off by default
+    assert default_runner(isolation="process", seccomp=True).seccomp is True
