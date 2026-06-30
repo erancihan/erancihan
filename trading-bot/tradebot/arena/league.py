@@ -108,7 +108,7 @@ def run_league(
     memory_mb: int | None = None,
     pace_s: float = 0.0,
     on_snapshot=None,
-    harden: bool = False,
+    harden: bool = True,
 ) -> LeagueResult:
     """Run a league and return its evolving standings + final ranking.
 

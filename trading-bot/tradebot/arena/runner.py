@@ -205,7 +205,7 @@ class SubprocessRunner:
 
 def default_runner(time_budget_s: float = 10.0, isolation: str = "process",
                    cpu_seconds: int | None = None, memory_mb: int | None = None,
-                   harden: bool = False) -> Runner:
+                   harden: bool = True) -> Runner:
     """Select a runner from an isolation mode.
 
     - ``"process"`` (default): hard subprocess isolation. **Raises** if fork is
@@ -222,8 +222,9 @@ def default_runner(time_budget_s: float = 10.0, isolation: str = "process",
         )
     if isolation == "thread":
         if harden:
-            log.warning("--harden has no effect with thread isolation (in-process "
-                        "code can't be sandboxed); use process isolation.")
+            # Default-on hardening simply doesn't apply to in-process execution;
+            # keep this quiet (debug) so the common thread path isn't noisy.
+            log.debug("hardening skipped: thread isolation can't sandbox in-process code")
         return InProcessRunner(time_budget_s)
     if not fork_available():
         if isolation == "auto":

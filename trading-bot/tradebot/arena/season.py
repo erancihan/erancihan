@@ -263,6 +263,7 @@ class Season:
         outcome = run_tournament(
             self.config.algo_paths, self.config.scenario(),
             metric=self.config.metric, isolation=self.config.isolation, frames=frames,
+            harden=False,  # season uses fast thread isolation, which can't sandbox
         )
         standings = _standings_from_leaderboard(outcome.leaderboard)
         self.store.record_standings(self.id, step, ts, standings)

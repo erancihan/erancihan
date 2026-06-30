@@ -158,6 +158,11 @@ build) on changes under `trading-bot/**`.
   task ends, silently defeating the timeout.
   Subprocess uses `fork` (args passed by inherited memory, so non-picklable
   contestant factories/frames are fine; only the result is pickled back).
+  Hardening (`sandbox.py`) is **ON by default** for process isolation
+  (`run_tournament`/`run_league`/`default_runner` default `harden=True`,
+  `--no-harden` to opt out): the child gets no disk writes + a fresh empty net
+  namespace. The continuous `season` recompute runs on `thread` isolation for
+  speed (can't sandbox) and passes `harden=False` explicitly.
 - **Pydantic coercion:** typing a request field `dict[str, float]` coerces
   integer params (e.g. `fast`, `period`) to floats and breaks `rolling`/`.iloc`.
   `web/schemas.py JobRequest.params` is deliberately left untyped (`dict | None`).
@@ -184,7 +189,8 @@ build) on changes under `trading-bot/**`.
 Done: trading core · dry-run · arena (loading, both interfaces, Alpaca cache,
 persistence, **hard subprocess isolation** w/ kill-on-timeout + CPU/mem limits,
 **strict isolation modes** — process/thread/auto, no silent downgrade,
-`--harden` **sandbox**: no disk writes + network-namespace isolation) ·
+**sandbox ON by default** for process isolation: no disk writes +
+network-namespace isolation, `--no-harden` to opt out) ·
 dashboard (equity+orders+positions+leaderboards, order markers, browser-run
 backtests/dry-runs, **candlestick price chart** w/ order markers, **live account
 header + dashboard auto-refresh** w/ pause + last-updated, `/api/account`) · CI ·

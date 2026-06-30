@@ -64,10 +64,11 @@ tradebot arena history && tradebot arena show
   chosen by `default_runner` via `--isolation`: `process` (default, hard
   kill-on-timeout + CPU/memory `rlimit`s — **raises** if fork is unavailable,
   never silently downgrades), `thread` (portable **soft** runner), `auto`
-  (process if possible, else warned soft fallback). Add `--harden` (process
-  isolation) to sandbox each contestant via `sandbox.py` — no disk writes +
-  network-namespace isolation. For *fully adversarial* code go further (seccomp
-  syscall filtering / containers) — don't touch `tournament.py`/`scoring.py`.
+  (process if possible, else warned soft fallback). Each contestant is
+  **sandboxed by default** (process isolation) via `sandbox.py` — no disk writes
+  + network-namespace isolation; `--no-harden` opts out. For *fully adversarial*
+  code go further (seccomp syscall filtering / containers) — don't touch
+  `tournament.py`/`scoring.py`.
 - **Persistence:** `tradebot/arena/store.py` (SQLite `arena_runs`/`arena_results`,
   equity curves as JSON). The web dashboard reads these.
 

@@ -29,7 +29,7 @@ def run_tournament(
     cpu_seconds: int | None = None,
     memory_mb: int | None = None,
     frames=None,
-    harden: bool = False,
+    harden: bool = True,
 ) -> TournamentOutcome:
     """Load contestants from ``paths`` and rank them over ``scenario``.
 

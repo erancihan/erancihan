@@ -93,6 +93,6 @@ def test_hardened_runner_blocks_a_disk_writing_contestant(tmp_path):
 
 
 @needs_fork
-def test_default_runner_passes_harden_through():
-    runner = default_runner(isolation="process", harden=True)
-    assert isinstance(runner, SubprocessRunner) and runner.harden is True
+def test_default_runner_hardens_by_default():
+    assert default_runner(isolation="process").harden is True       # on by default
+    assert default_runner(isolation="process", harden=False).harden is False

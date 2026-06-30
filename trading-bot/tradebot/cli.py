@@ -587,9 +587,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="hard CPU-time limit per contestant (process isolation)")
     ar.add_argument("--memory-mb", dest="memory_mb", type=int, default=None,
                     help="hard memory limit in MB per contestant (process isolation)")
-    ar.add_argument("--harden", action="store_true",
-                    help="sandbox each contestant: no disk writes, no network "
-                         "(process isolation only)")
+    ar.add_argument("--no-harden", dest="harden", action="store_false", default=True,
+                    help="disable the contestant sandbox (no-disk-writes / no-network); "
+                         "hardening is ON by default for process isolation")
     ar.add_argument("--out", help="write the leaderboard to this JSON file")
     ar.add_argument("--save", action="store_true", help="persist this run to the arena DB")
     ar.add_argument("--db", default="arena.db", help="arena results DB (default arena.db)")
@@ -608,8 +608,8 @@ def build_parser() -> argparse.ArgumentParser:
     aL.add_argument("--isolation", choices=["process", "thread", "auto"], default="process")
     aL.add_argument("--cpu-seconds", dest="cpu_seconds", type=int, default=None)
     aL.add_argument("--memory-mb", dest="memory_mb", type=int, default=None)
-    aL.add_argument("--harden", action="store_true",
-                    help="sandbox each contestant: no disk writes, no network")
+    aL.add_argument("--no-harden", dest="harden", action="store_false", default=True,
+                    help="disable the contestant sandbox; hardening is ON by default")
     aL.set_defaults(func=cmd_arena_league)
 
     aS = asub.add_parser("season", help="durable, resumable real-time league season")
