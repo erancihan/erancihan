@@ -32,6 +32,7 @@ import (
 	"github.com/erancihan/negotiation-ecs/engine/ecs"
 	pb "github.com/erancihan/negotiation-ecs/backend-go/gen/proto/negotiationpb"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/economy"
+	"github.com/erancihan/negotiation-ecs/backend-go/internal/observability"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/sim"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/transport"
 )
@@ -57,11 +58,18 @@ func main() {
 	log.Printf("Agents: %d | Tick Rate: %d Hz | Headless: %v | Seed: %d",
 		cfg.NumAgents, *tickRate, *headless, cfg.Seed)
 
+	// Log cadence: every ~5 seconds of sim time (or every 100 ticks unbounded).
+	logEvery := uint64(100)
+	if *tickRate > 0 {
+		logEvery = uint64(*tickRate * 5)
+	}
+
 	app := engine.New().
 		WithTickRate(*tickRate).
 		WithMaxTicks(*maxTicks).
 		AddPlugin(sim.NewPlugin(cfg)).
-		AddPlugin(economy.NewPlugin())
+		AddPlugin(economy.NewPlugin()).
+		AddPlugin(observability.Plugin{LogEvery: logEvery})
 
 	// Initialize the world (spawn agents, install resources) before serving, so
 	// read RPCs never race ahead of world setup.
@@ -89,12 +97,8 @@ func main() {
 		}()
 	}
 
-	// Progress logging.
+	// Progress logging (same cadence as the metrics summary).
 	start := time.Now()
-	logEvery := uint64(100)
-	if *tickRate > 0 {
-		logEvery = uint64(*tickRate * 5)
-	}
 	app.AddSystem(engine.StageLast, func(w *ecs.World) {
 		t := ecs.MustResource[engine.Time](w)
 		if logEvery > 0 && t.Tick%logEvery == 0 {
