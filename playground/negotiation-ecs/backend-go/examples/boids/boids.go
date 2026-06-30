@@ -1,8 +1,9 @@
 // Package boids is a second, unrelated simulation built on the same engine — a
 // Reynolds flocking model. It exists to prove the engine core is reusable: it
-// imports only engine and engine/ecs, with zero negotiation/economy/transport
-// code. If flocking emerges from the same App/Schedule/ECS that runs the
-// negotiation sim, the engine is genuinely domain-agnostic.
+// imports only engine, engine/ecs, and the engine/spatial utility, with zero
+// negotiation/economy/transport code. If flocking emerges from the same
+// App/Schedule/ECS that runs the negotiation sim, the engine is genuinely
+// domain-agnostic.
 package boids
 
 import (
@@ -11,6 +12,7 @@ import (
 
 	"github.com/erancihan/negotiation-ecs/engine"
 	"github.com/erancihan/negotiation-ecs/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/spatial"
 )
 
 // Position is a boid's location.
@@ -72,6 +74,8 @@ func (p Plugin) Build(a *engine.App) {
 	a.AddStartupSystem(func(w *ecs.World) {
 		ecs.SetResource(w, cfg)
 		ecs.SetResource(w, rngRes{r: rand.New(rand.NewSource(seed))})
+		// Cell size ~ the neighbor radius so each query touches a few cells.
+		ecs.SetResource(w, flockGrid{g: spatial.NewGrid[int](cfg.NeighborRadius)})
 	})
 	a.AddStartupSystem(spawnSystem)
 	a.AddSystem(engine.StageUpdate, FlockingSystem)
@@ -90,40 +94,75 @@ func spawnSystem(w *ecs.World) {
 	}
 }
 
-// FlockingSystem applies separation, alignment, and cohesion. New velocities are
-// computed from the current snapshot and applied afterward, so the result is
-// independent of iteration order (and therefore deterministic).
+// boidState is a per-tick snapshot of a boid, decoupling the flocking
+// computation from the ECS so it can be tested and benchmarked directly.
+type boidState struct {
+	e              ecs.Entity
+	px, py, vx, vy float64
+}
+
+// flockGrid holds the reused spatial grid (resource), rebuilt each tick.
+type flockGrid struct{ g *spatial.Grid[int] }
+
+// FlockingSystem applies separation, alignment, and cohesion. It rebuilds a
+// spatial grid each tick and queries only nearby cells, making neighbor finding
+// ~O(n) instead of O(n^2). New velocities are computed from the snapshot and
+// applied afterward, so the result is independent of write order; and because
+// the grid is visited in a deterministic order, the run stays reproducible.
 func FlockingSystem(w *ecs.World) {
 	cfg := config(w)
+	grid := ecs.MustResource[flockGrid](w).g
 
-	type boid struct {
-		e              ecs.Entity
-		px, py, vx, vy float64
+	boids := snapshotBoids(w)
+
+	grid.Clear()
+	for i := range boids {
+		grid.Insert(boids[i].px, boids[i].py, i)
 	}
-	var boids []boid
+
+	newVel := computeVelocities(boids, cfg, func(i int, visit func(j int)) {
+		grid.Query(boids[i].px, boids[i].py, cfg.NeighborRadius, visit)
+	})
+
+	for i := range boids {
+		if v, ok := ecs.Get[Velocity](w, boids[i].e); ok {
+			*v = newVel[i]
+		}
+	}
+}
+
+// snapshotBoids reads all boids' kinematic state into a slice.
+func snapshotBoids(w *ecs.World) []boidState {
+	var boids []boidState
 	q := ecs.Query2[Position, Velocity](w)
 	for q.Next() {
 		p, v := q.Get()
-		boids = append(boids, boid{q.Entity(), p.X, p.Y, v.X, v.Y})
+		boids = append(boids, boidState{q.Entity(), p.X, p.Y, v.X, v.Y})
 	}
+	return boids
+}
 
+// computeVelocities is the shared flocking math. Neighbor enumeration is
+// injected (grid-backed in production, brute-force in tests/benchmarks), so the
+// rules live in one place regardless of how neighbors are found.
+func computeVelocities(boids []boidState, cfg *Config, neighbors func(i int, visit func(j int))) []Velocity {
 	radius2 := cfg.NeighborRadius * cfg.NeighborRadius
 	sep2 := cfg.SeparationDist * cfg.SeparationDist
-	newVel := make([]Velocity, len(boids))
+	out := make([]Velocity, len(boids))
 
 	for i := range boids {
 		var aliX, aliY, cohX, cohY, sepX, sepY float64
 		var n, sepN int
 
-		for j := range boids {
+		neighbors(i, func(j int) {
 			if i == j {
-				continue
+				return
 			}
 			dx := boids[i].px - boids[j].px
 			dy := boids[i].py - boids[j].py
 			d2 := dx*dx + dy*dy
 			if d2 == 0 || d2 > radius2 {
-				continue
+				return
 			}
 			n++
 			aliX += boids[j].vx
@@ -135,7 +174,7 @@ func FlockingSystem(w *ecs.World) {
 				sepY += dy
 				sepN++
 			}
-		}
+		})
 
 		vx, vy := boids[i].vx, boids[i].vy
 		if n > 0 {
@@ -149,12 +188,17 @@ func FlockingSystem(w *ecs.World) {
 			vx += sepX * cfg.SeparationWeight
 			vy += sepY * cfg.SeparationWeight
 		}
-		newVel[i] = clamp(vx, vy, cfg.MaxSpeed)
+		out[i] = clamp(vx, vy, cfg.MaxSpeed)
 	}
+	return out
+}
 
-	for i := range boids {
-		if v, ok := ecs.Get[Velocity](w, boids[i].e); ok {
-			*v = newVel[i]
+// bruteForceNeighbors enumerates every other boid — the O(n^2) reference used by
+// tests and benchmarks to validate and contrast the grid path.
+func bruteForceNeighbors(boids []boidState) func(i int, visit func(j int)) {
+	return func(_ int, visit func(j int)) {
+		for j := range boids {
+			visit(j)
 		}
 	}
 }
