@@ -43,6 +43,9 @@ pub struct TickStatsView {
     pub active_negotiations: u32,
     pub completed_negotiations: u32,
     pub timed_out_negotiations: u32,
+
+    /// Named observability metrics from the backend (e.g. "wealth.gini").
+    pub metrics: std::collections::HashMap<String, f64>,
 }
 
 /// The central shared state between the network thread and the UI thread.

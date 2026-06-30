@@ -179,6 +179,7 @@ async fn connect_and_stream(
             active_negotiations: s.active_negotiations,
             completed_negotiations: s.completed_negotiations,
             timed_out_negotiations: s.timed_out_negotiations,
+            metrics: s.metrics.clone(),
         }).unwrap_or_default();
 
         // Update shared state — this is the only lock acquisition point
