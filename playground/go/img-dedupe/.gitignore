@@ -12,3 +12,10 @@ vendor
 # built binaries
 /imgdedupe
 /imgdedupe-gui
+
+# release artifacts
+/dist/
+
+# packaging inputs live here; re-include them (repo-root ignores /**/build/)
+!/build/
+!/build/**

@@ -10,12 +10,14 @@ import (
 )
 
 // Execute builds the command tree and runs it, returning a process exit code.
-func Execute(ctx context.Context) int {
+// version is injected at build time and surfaced via `imgdedupe --version`.
+func Execute(ctx context.Context, version string) int {
 	_ = godotenv.Load() // optional .env, ignored if absent
 
 	root := &cobra.Command{
 		Use:           "imgdedupe",
 		Short:         "Find and remove duplicate images",
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Open the database once and stash the service in the command context so

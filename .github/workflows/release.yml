@@ -1,0 +1,83 @@
+name: img-dedupe release
+
+# Tag the img-dedupe project as `imgdedupe-vX.Y.Z` to cut a release.
+on:
+  push:
+    tags:
+      - 'imgdedupe-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build (e.g. 0.1.0)
+        required: true
+        default: 0.0.0
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: playground/go/img-dedupe
+
+jobs:
+  linux-windows:
+    name: Linux + Windows installers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: playground/go/img-dedupe/go.mod
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev nsis
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Resolve version
+        run: echo "VERSION=${VERSION:-${GITHUB_REF_NAME#imgdedupe-v}}" >> "$GITHUB_ENV"
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+      - name: Build Linux (.deb/.rpm) and Windows (.exe) installers
+        run: make package-linux package-windows VERSION="$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-windows
+          path: |
+            playground/go/img-dedupe/dist/*.deb
+            playground/go/img-dedupe/dist/*.rpm
+            playground/go/img-dedupe/dist/*-setup.exe
+
+  macos:
+    name: macOS installer
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: playground/go/img-dedupe/go.mod
+      - name: Resolve version
+        run: echo "VERSION=${VERSION:-${GITHUB_REF_NAME#imgdedupe-v}}" >> "$GITHUB_ENV"
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+      - name: Build macOS (.app/.dmg)
+        run: make package-macos VERSION="$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: playground/go/img-dedupe/dist/*.dmg
+
+  release:
+    name: Publish GitHub Release
+    needs: [linux-windows, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

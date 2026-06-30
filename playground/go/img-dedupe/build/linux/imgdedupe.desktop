@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=img-dedupe
+GenericName=Image Deduplicator
+Comment=Find and remove duplicate images
+Exec=imgdedupe-gui
+Icon=imgdedupe
+Terminal=false
+Categories=Graphics;Utility;
+Keywords=images;duplicates;dedupe;photos;

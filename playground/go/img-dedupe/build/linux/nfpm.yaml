@@ -1,0 +1,36 @@
+# nfpm config for building Linux packages (.deb / .rpm).
+#   VERSION=1.2.3 nfpm pkg -f build/linux/nfpm.yaml -p deb -t dist/
+# Binaries are expected under dist/linux/ (see `make package-linux`).
+name: imgdedupe
+arch: amd64
+platform: linux
+version: ${VERSION}
+maintainer: erancihan <erancihan@gmail.com>
+description: |
+  Find and remove duplicate images. Detects exact duplicates (SHA-256) and
+  visually similar images (perceptual hash), with a CLI and a native GUI.
+homepage: https://github.com/erancihan/erancihan
+license: MIT
+section: graphics
+priority: optional
+
+contents:
+  - src: ./dist/linux/imgdedupe
+    dst: /usr/bin/imgdedupe
+  - src: ./dist/linux/imgdedupe-gui
+    dst: /usr/bin/imgdedupe-gui
+  - src: ./build/linux/imgdedupe.desktop
+    dst: /usr/share/applications/imgdedupe.desktop
+  - src: ./build/appicon.png
+    dst: /usr/share/icons/hicolor/256x256/apps/imgdedupe.png
+
+# The GUI needs the system WebKit2GTK runtime at runtime.
+overrides:
+  deb:
+    depends:
+      - libgtk-3-0
+      - libwebkit2gtk-4.1-0
+  rpm:
+    depends:
+      - gtk3
+      - webkit2gtk4.1

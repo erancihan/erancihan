@@ -131,6 +131,41 @@ via `go:embed`, so `imgdedupe` ships as one self-contained executable.
 | `GET` | `/api/images/{id}/thumb` | JPEG thumbnail (`?size=`) |
 | `GET` | `/api/images/{id}/raw` | Original image bytes |
 
+## Packaging & releases
+
+Per-platform installers are produced with `make`:
+
+| Platform | Command | Output | Tooling |
+|----------|---------|--------|---------|
+| Linux | `make package-linux` | `.deb`, `.rpm` | [nfpm](https://nfpm.goreleaser.com) |
+| Windows | `make package-windows` | `.exe` installer | [NSIS](https://nsis.sourceforge.io) |
+| macOS | `make package-macos` | `.app` inside a `.dmg` | `sips` / `iconutil` / `hdiutil` (ship with macOS) |
+
+```sh
+make release VERSION=1.2.0     # build every installer the host can produce
+```
+
+`VERSION` is baked into the binaries (`imgdedupe --version`) and the installer
+metadata.
+
+**Cross-build notes.** The Windows binary uses the pure-Go WebView2 binding, so
+it cross-compiles from any host — a Linux or macOS box builds the Windows
+installer too. The Linux and macOS builds use native CGO webviews and must run on
+their own OS, so `make release` builds the host's package **plus** Windows. To
+produce all three from one place, push a release tag:
+
+```sh
+git tag imgdedupe-v1.2.0 && git push origin imgdedupe-v1.2.0
+```
+
+`.github/workflows/release.yml` then builds the Linux/Windows installers on an
+Ubuntu runner and the macOS `.dmg` on a macOS runner and attaches them to a
+GitHub Release.
+
+**Prerequisites:** `nfpm` (`go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest`)
+for Linux packages and `makensis` (NSIS) for the Windows installer; macOS
+packaging uses tools bundled with macOS.
+
 ## Project layout
 
 ```
@@ -142,6 +177,8 @@ internal/
   service/           shared core: folders, scan/hash, dedupe, similarity, thumbnails
   web/               HTTP server + JSON API (APIHandler reused by the desktop app)
     static/          embedded single-page frontend (shared by web + desktop)
+build/               packaging inputs: app icon, nfpm, NSIS, Info.plist, scripts
+Makefile             build + per-platform release targets
 ```
 
 ## Roadmap

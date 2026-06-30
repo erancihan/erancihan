@@ -26,6 +26,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
+// version is set at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	dbPath, err := defaultDBPath()
 	if err != nil {
@@ -43,8 +46,13 @@ func main() {
 		log.Fatalf("failed to load frontend assets: %v", err)
 	}
 
+	title := "img-dedupe"
+	if version != "" && version != "dev" {
+		title += " " + version
+	}
+
 	app := &options.App{
-		Title:  "img-dedupe",
+		Title:  title,
 		Width:  1100,
 		Height: 800,
 		AssetServer: &assetserver.Options{
