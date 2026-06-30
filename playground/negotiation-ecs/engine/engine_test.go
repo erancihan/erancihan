@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // -----------------------------------------------------------------------------

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine"
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 func run(ticks uint64, seed int64) *engine.App {

@@ -1,7 +1,8 @@
-.PHONY: proto backend visualizer run run-headless test clean sdk-python sdk-java sdk-go help
+.PHONY: proto backend visualizer run run-headless test test-go test-engine clean sdk-python sdk-java sdk-go help
 
 PROTO_DIR = proto
 GO_DIR = backend-go
+ENGINE_DIR = engine
 RUST_DIR = visualizer-rust
 GO_GEN_DIR = $(GO_DIR)/gen/proto/negotiationpb
 GOPATH_BIN = $(shell go env GOPATH)/bin
@@ -93,8 +94,12 @@ test: backend ## Run integration test: 100 agents, 1000 ticks
 	./bin/server --headless --agents 100 --tick-rate 0 --max-ticks 1000 --seed 42
 	@echo "==> Integration test complete"
 
-test-go: ## Run Go unit tests
-	@echo "==> Running Go tests..."
+test-engine: ## Run the standalone engine module's tests
+	@echo "==> Running engine module tests..."
+	cd $(ENGINE_DIR) && go test ./...
+
+test-go: test-engine ## Run Go unit tests (engine module + backend module)
+	@echo "==> Running backend tests..."
 	cd $(GO_DIR) && go test ./...
 
 # =============================================================================

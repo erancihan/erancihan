@@ -65,22 +65,36 @@ make run-headless
 ```
 negotiation-ecs/
 ├── proto/
-│   └── simulation.proto       # Shared protobuf contract
-├── backend-go/
-│   ├── cmd/server/main.go     # Server entry point
-│   ├── internal/ecs/          # Ark ECS components & systems
-│   └── internal/network/      # gRPC server & broadcaster
+│   └── simulation.proto        # Shared protobuf contract
+├── engine/                     # Standalone, dependency-free engine module
+│   ├── ecs/                    #   hand-rolled sparse-set ECS
+│   ├── app.go schedule.go ...  #   loop, schedule, plugins, control
+│   ├── events.go commands.go   #   per-tick event bus, command buffer
+│   ├── controller.go observer.go  # actor model + observer/broadcaster
+│   └── arch_test.go            #   import-boundary guard (no app imports)
+├── backend-go/                 # Negotiation app module (depends on engine)
+│   ├── cmd/server/             #   gRPC server entry point
+│   ├── cmd/boids/              #   boids demo runner
+│   ├── internal/sim/           #   domain: components, referee, brains, movement
+│   ├── internal/economy/       #   settlement plugin (separate package)
+│   ├── internal/transport/     #   gRPC adapter (only proto/grpc consumer)
+│   ├── examples/boids/         #   flocking sim — proves engine reuse
+│   └── gen/proto/              #   generated Go protobuf/gRPC
 ├── visualizer-rust/
-│   ├── src/main.rs            # eframe/egui entry point
-│   ├── src/network.rs         # Async gRPC receiver
-│   ├── src/state.rs           # Shared simulation state
-│   └── src/ui/                # Canvas, logs, stats panels
+│   ├── src/main.rs             # eframe/egui entry point + controls
+│   ├── src/network.rs          # async gRPC stream + control client
+│   └── src/ui/                 # canvas, logs, stats panels
 ├── SDKs/
-│   ├── python/                # Python agent SDK
-│   ├── go/                    # Go agent SDK
-│   └── java/                  # Java agent SDK
-└── Makefile                   # Build orchestration
+│   ├── python/                 # Python agent SDK
+│   ├── go/                     # Go agent SDK (own module)
+│   └── java/                   # Java agent SDK (Maven)
+├── ROADMAP.md                  # Architecture model + phase history
+└── Makefile                    # Build orchestration
 ```
+
+The **engine** is its own Go module with zero third-party dependencies and no
+knowledge of negotiation; the **backend-go** app builds on it. Run `cd engine &&
+go list -m all` — the result is just the engine itself.
 
 ## Server CLI Flags
 

@@ -1,6 +1,6 @@
 package sim
 
-import "github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+import "github.com/erancihan/negotiation-ecs/engine/ecs"
 
 // NegotiationEvent records a discrete negotiation transition during a tick.
 // Systems publish these on the engine event bus; the transport layer reads them

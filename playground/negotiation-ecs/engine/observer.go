@@ -3,7 +3,7 @@ package engine
 import (
 	"sync"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // Observer receives a snapshot of type S each tick. Implementations are sinks —

@@ -7,19 +7,19 @@ import (
 )
 
 // TestEngineCoreHasNoForbiddenImports enforces the boundary discipline: the
-// engine core must stay domain-agnostic and dependency-free. If this fails, the
-// engine has reached into the application (or a third-party ECS), and is no
-// longer cleanly extractable.
+// engine is its own module and must stay domain-agnostic and dependency-free.
+// Now that it is extracted, importing the application (github.com/.../backend-go)
+// would require adding it to go.mod and would create a module cycle — so this is
+// belt-and-suspenders, catching such a mistake at test time rather than at the
+// eventual build failure.
 //
 // It inspects production imports only (not test files), so tests are free to
 // import whatever they need.
 func TestEngineCoreHasNoForbiddenImports(t *testing.T) {
 	forbidden := []string{
-		"negotiation-ecs/backend-go/internal", // domain: sim, transport
-		"negotiation-ecs/backend-go/gen/proto", // wire format
-		"negotiation-ecs/backend-go/cmd",       // entry point
-		"mlange-42/ark",                        // third-party ECS
-		"google.golang.org/grpc",               // transport
+		"negotiation-ecs/backend-go", // the entire application module
+		"mlange-42/ark",              // third-party ECS
+		"google.golang.org/grpc",     // transport
 	}
 
 	// Relative to this test file: the engine package and the ecs subpackage.

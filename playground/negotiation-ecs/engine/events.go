@@ -3,7 +3,7 @@ package engine
 import (
 	"reflect"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // Events is the per-tick event bus, stored as an ECS resource. Systems publish

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine"
+	"github.com/erancihan/negotiation-ecs/engine"
 	pb "github.com/erancihan/negotiation-ecs/backend-go/gen/proto/negotiationpb"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/sim"
 	"github.com/erancihan/negotiation-ecs/backend-go/internal/transport"

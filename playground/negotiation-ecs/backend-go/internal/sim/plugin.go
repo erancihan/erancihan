@@ -5,8 +5,8 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine"
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // Plugin registers the negotiation simulation onto an engine App: it installs

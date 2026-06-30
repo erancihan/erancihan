@@ -1,6 +1,6 @@
 package engine
 
-import "github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+import "github.com/erancihan/negotiation-ecs/engine/ecs"
 
 // System is a unit of per-tick logic. It reads and mutates the world; any other
 // services it needs (time, events, commands) are fetched as ECS resources.

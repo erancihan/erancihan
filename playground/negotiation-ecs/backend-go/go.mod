@@ -3,9 +3,13 @@ module github.com/erancihan/negotiation-ecs/backend-go
 go 1.24.0
 
 require (
+	github.com/erancihan/negotiation-ecs/engine v0.0.0
 	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.6
 )
+
+// The engine core is a separate, standalone module developed in this repo.
+replace github.com/erancihan/negotiation-ecs/engine => ../engine
 
 require (
 	golang.org/x/net v0.35.0 // indirect

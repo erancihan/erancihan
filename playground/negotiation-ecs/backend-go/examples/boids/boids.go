@@ -9,8 +9,8 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/erancihan/negotiation-ecs/backend-go/engine"
-	"github.com/erancihan/negotiation-ecs/backend-go/engine/ecs"
+	"github.com/erancihan/negotiation-ecs/engine"
+	"github.com/erancihan/negotiation-ecs/engine/ecs"
 )
 
 // Position is a boid's location.
