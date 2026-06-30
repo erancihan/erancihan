@@ -124,6 +124,61 @@ def test_run_season_without_supervise_propagates():
         run_season(_FlakySeason(), _CountFeed(4))
 
 
+def _dt(y, m, d, h, mi=0):
+    from datetime import datetime, timezone
+    return datetime(y, m, d, h, mi, tzinfo=timezone.utc)
+
+
+def test_daemon_gates_on_market_hours(tmp_path):
+    from tradebot.arena.season import run_season_daemon
+
+    closed = _dt(2024, 1, 6, 15, 0)      # Saturday
+    open_ = _dt(2024, 1, 3, 14, 30)      # Wed 09:30 ET
+    times = iter([closed, open_, open_, open_, open_, open_])
+    with SeasonStore(tmp_path / "s.db") as store:
+        season = Season.create(store, _config())
+        feed = ReplaySeasonFeed({"DEMO": synthetic_ohlcv(periods=20, seed=1)})
+        ticks = run_season_daemon(season, feed, poll_seconds=0, max_ticks=3,
+                                  clock=lambda: next(times), sleep=lambda s: None)
+        assert ticks == 3                            # closed tick skipped, 3 steps
+        assert store.step_count(season.id) >= 1      # standings recorded
+
+
+def test_daemon_ignore_market_hours_steps_when_closed(tmp_path):
+    from tradebot.arena.season import run_season_daemon
+
+    closed = _dt(2024, 1, 6, 15, 0)
+    with SeasonStore(tmp_path / "s.db") as store:
+        season = Season.create(store, _config())
+        feed = ReplaySeasonFeed({"DEMO": synthetic_ohlcv(periods=20, seed=1)})
+        ticks = run_season_daemon(season, feed, poll_seconds=0, max_ticks=3,
+                                  ignore_market_hours=True,
+                                  clock=lambda: closed, sleep=lambda s: None)
+        assert ticks == 3
+
+
+def test_daemon_stops_when_replay_feed_exhausted(tmp_path):
+    from tradebot.arena.season import run_season_daemon
+
+    open_ = _dt(2024, 1, 3, 14, 30)
+    with SeasonStore(tmp_path / "s.db") as store:
+        season = Season.create(store, _config())
+        feed = ReplaySeasonFeed({"DEMO": synthetic_ohlcv(periods=8, seed=1)})
+        ticks = run_season_daemon(season, feed, poll_seconds=0, stop_on_empty=True,
+                                  clock=lambda: open_, sleep=lambda s: None)
+        assert ticks == 8                            # all bars consumed, then stop
+
+
+def test_cli_season_run_simulate(tmp_path, capsys):
+    db = str(tmp_path / "season.db")
+    main(["arena", "season", "create", "--name", "sim", "--symbols", "DEMO",
+          "--algos", str(ALGOS), "--score", "total_return", "--db", db])
+    capsys.readouterr()
+    assert main(["arena", "season", "run", "1", "--simulate",
+                 "--replay-periods", "30", "--db", db]) == 0
+    assert "simulated daemon" in capsys.readouterr().out
+
+
 def test_cli_season_create_run_standings(tmp_path, capsys):
     db = str(tmp_path / "season.db")
     assert main(["arena", "season", "create", "--name", "wk", "--symbols", "DEMO",

@@ -432,7 +432,25 @@ def cmd_season_run(args: argparse.Namespace) -> int:
 
     with SeasonStore(args.db) as store:
         season = Season.load(store, args.season_id)
-        if args.replay:
+        if args.simulate:
+            # Dry-run the real daemon offline: replay feed + a simulated
+            # market-open clock + no-op sleep, exercising the gating/partial-bar/
+            # supervision/persist path without creds or wall-clock waits.
+            from datetime import datetime, timezone
+
+            from .arena.season import run_season_daemon
+            frames = {
+                sym: synthetic_ohlcv(periods=args.replay_periods, seed=42 + i)
+                for i, sym in enumerate(season.config.symbols)
+            }
+            open_dt = datetime(2024, 1, 3, 14, 30, tzinfo=timezone.utc)  # Wed 09:30 ET
+            print(f"Running season #{season.id} '{season.config.name}' (simulated daemon):")
+            run_season_daemon(season, ReplaySeasonFeed(frames), poll_seconds=0,
+                              ignore_market_hours=args.ignore_market_hours,
+                              max_ticks=args.max_ticks, stop_on_empty=True,
+                              clock=lambda: open_dt, sleep=lambda s: None,
+                              on_step=printer, on_error=on_error)
+        elif args.replay:
             frames = {
                 sym: synthetic_ohlcv(periods=args.replay_periods, seed=42 + i)
                 for i, sym in enumerate(season.config.symbols)
@@ -640,6 +658,8 @@ def build_parser() -> argparse.ArgumentParser:
     sr.add_argument("season_id", type=int)
     sr.add_argument("--db", default="season.db")
     sr.add_argument("--replay", action="store_true", help="drive offline with synthetic bars")
+    sr.add_argument("--simulate", action="store_true",
+                    help="dry-run the daemon offline (replay feed + simulated market clock)")
     sr.add_argument("--replay-periods", dest="replay_periods", type=int, default=250)
     sr.add_argument("--max-ticks", dest="max_ticks", type=int, default=None)
     sr.add_argument("--poll-seconds", dest="poll_seconds", type=float, default=60.0)

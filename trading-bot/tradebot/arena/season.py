@@ -356,33 +356,42 @@ def run_season(season: Season, feed, max_ticks: int | None = None,
 
 def run_season_daemon(season: Season, feed, poll_seconds: float = 60.0,
                       ignore_market_hours: bool = False, max_ticks: int | None = None,
-                      on_step=None, on_error=None) -> int:
-    """Live daemon loop: gate on US market hours, drop still-forming bars, and
-    step under supervision.
+                      on_step=None, on_error=None, clock=None, sleep=None,
+                      stop_on_empty: bool = False) -> int:
+    """Daemon loop: gate on US market hours, drop still-forming bars, step under
+    supervision. Returns the number of ticks applied.
 
-    Not exercised by the test suite — it needs a live feed and real wall-clock
-    time. Its building blocks (market clock, partial-bar drop, supervised step)
-    are tested individually.
+    ``clock`` (-> tz-aware now) and ``sleep`` are injected so the *whole* loop is
+    testable/runnable offline — pass a simulated clock + no-op sleep + a replay
+    feed (that's what ``season run --simulate`` does). ``stop_on_empty`` ends the
+    run when a (replay) feed is exhausted instead of polling forever.
     """
     from datetime import datetime, timezone
 
     from .market import drop_incomplete_bars, is_market_open
 
+    if clock is None:
+        clock = lambda: datetime.now(timezone.utc)  # noqa: E731
+    if sleep is None:
+        sleep = time.sleep
+
     ticks = 0
     while max_ticks is None or ticks < max_ticks:
-        now = datetime.now(timezone.utc)
+        now = clock()
         if not ignore_market_hours and not is_market_open(now):
-            time.sleep(poll_seconds)
+            sleep(poll_seconds)
             continue
         bar = feed.next()
         if bar is None:
-            time.sleep(poll_seconds)
+            if stop_on_empty:
+                break
+            sleep(poll_seconds)
             continue
         bar = {s: drop_incomplete_bars(df, season.config.timeframe, now)
                for s, df in bar.items()}
         bar = {s: df for s, df in bar.items() if df is not None and len(df) > 0}
         if not bar:
-            time.sleep(poll_seconds)
+            sleep(poll_seconds)
             continue
         try:
             snapshot = season.step(bar)
@@ -392,5 +401,5 @@ def run_season_daemon(season: Season, feed, poll_seconds: float = 60.0,
             if on_error is not None:
                 on_error(exc)
         ticks += 1
-        time.sleep(poll_seconds)
+        sleep(poll_seconds)
     return ticks

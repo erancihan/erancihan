@@ -198,8 +198,9 @@ arena **league** (`arena league` — standings evolve
 over a replayed season) · durable **season** (`arena season` — resumable
 real-time league: SQLite bars/standings that survive restarts; replay feed +
 thin live Alpaca feed) · **season daemon** (`market.py` market-hours gating +
-next_open + partial-bar drop, supervised loop, `/seasons` dashboard standings
-view; live daemon loop itself is thin & untested).
+next_open + partial-bar drop, supervised loop with **injected clock/sleep** so
+the whole loop is dry-run-testable offline via `season run --simulate`,
+`/seasons` dashboard standings view).
 
 Next candidates (not started):
 - Deeper sandboxing for fully adversarial code: **seccomp** syscall filtering
