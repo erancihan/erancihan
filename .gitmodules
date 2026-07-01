@@ -7,3 +7,6 @@
 [submodule "projects/image-deduplicate"]
 	path = projects/image-deduplicate
 	url = git@github.com:erancihan/image-deduplicate.git
+[submodule "projects/tradebot"]
+	path = projects/tradebot
+	url = git@github.com:erancihan/tradebot.git
