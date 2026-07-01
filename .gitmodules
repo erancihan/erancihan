@@ -2,5 +2,11 @@
 	path = dotfiles
 	url = git@github.com:erancihan/dotfiles.git
 [submodule "tmux-wsl-info"]
-	path = tmux-wsl-info
+	path = projects/tmux-wsl-info
 	url = git@github.com:erancihan/tmux-wsl-info.git
+[submodule "projects/image-deduplicate"]
+	path = projects/image-deduplicate
+	url = git@github.com:erancihan/image-deduplicate.git
+[submodule "projects/tradebot"]
+	path = projects/tradebot
+	url = git@github.com:erancihan/tradebot.git
