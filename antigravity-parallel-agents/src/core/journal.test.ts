@@ -77,6 +77,25 @@ describe('journal + resume', () => {
     expect(await readFile(join(repo, 'app.txt'), 'utf8')).toBe('original\n');
   });
 
+  it('recovers after a failed write: a transient error does not freeze all later saves', async () => {
+    // Put a FILE where the journal dir should be so the first mkdir(recursive) fails; then
+    // remove it so the next save can succeed. Pre-fix, the poisoned chain skipped it.
+    const journalDir = join(repo, 'jdir');
+    await writeFile(journalDir, 'blocker');
+    const store = new FileJournalStore(join(journalDir, 'sub'));
+    const state = {
+      runId: 'r', repoRoot: repo, options: { concurrency: 1 },
+      lanes: [], updatedAt: 1,
+    } as unknown as Parameters<FileJournalStore['save']>[0];
+
+    await expect(store.save(state)).rejects.toBeTruthy(); // first write fails (ENOTDIR)
+    await rm(journalDir, { force: true }); // clear the blocker
+    await store.save({ ...state, updatedAt: 2 }); // must now succeed, not be skipped
+
+    const loaded = await store.load('r');
+    expect(loaded?.updatedAt).toBe(2);
+  });
+
   it('resume requires a journal store', async () => {
     const orch = new Orchestrator({
       isolation: await createIsolationProvider(),

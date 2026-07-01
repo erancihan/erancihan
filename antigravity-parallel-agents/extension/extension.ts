@@ -25,6 +25,17 @@ export function activate(context: vscode.ExtensionContext): void {
       });
       if (input) await lanes.startRun(splitTasks(input));
     }),
+    vscode.commands.registerCommand('swarm.addLane', async () => {
+      const input = await vscode.window.showInputBox({ prompt: 'Swarm: task for a new lane' });
+      if (input) await lanes.startRun([input.trim()]);
+    }),
+    vscode.commands.registerCommand('swarm.discardLane', async () => {
+      const laneId = await vscode.window.showInputBox({ prompt: 'Swarm: lane id to discard (e.g. lane-0)' });
+      if (laneId) await lanes.discardLane(laneId.trim());
+    }),
+    vscode.commands.registerCommand('swarm.mergeLane', () =>
+      vscode.commands.executeCommand(`${LanesViewProvider.viewId}.focus`),
+    ),
   );
 
   // `@swarm` chat participant: entry point from the IDE's built-in chat.

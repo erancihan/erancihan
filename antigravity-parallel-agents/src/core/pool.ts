@@ -16,7 +16,10 @@ export async function mapPool<T, R>(
   worker: (item: T, index: number) => Promise<R>,
 ): Promise<Settled<R>[]> {
   const results: Settled<R>[] = new Array(items.length);
-  const max = Math.max(1, Math.min(limit, items.length));
+  // Guard against a non-finite limit (e.g. NaN from a bad CLI arg), which would otherwise
+  // make Array.from({length: NaN}) spawn zero workers and silently run nothing.
+  const safeLimit = Number.isFinite(limit) ? Math.floor(limit) : 1;
+  const max = Math.max(1, Math.min(safeLimit, items.length));
   let next = 0;
 
   async function runner(): Promise<void> {

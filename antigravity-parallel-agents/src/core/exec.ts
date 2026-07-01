@@ -19,13 +19,22 @@ export interface ExecOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Merge caller-supplied env over the parent environment. A bare `env` passed to
+ * spawn/execFile REPLACES process.env entirely, which drops PATH and breaks resolution of
+ * unqualified commands — so we always extend rather than replace.
+ */
+function mergedEnv(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv | undefined {
+  return env ? { ...process.env, ...env } : undefined;
+}
+
 /** Run a command and capture its output. Never shells out (no shell injection). */
 export function run(cmd: string, args: string[], opts: ExecOptions = {}): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
     execFile(
       cmd,
       args,
-      { cwd: opts.cwd, env: opts.env, signal: opts.signal, maxBuffer: 64 * 1024 * 1024 },
+      { cwd: opts.cwd, env: mergedEnv(opts.env), signal: opts.signal, maxBuffer: 64 * 1024 * 1024 },
       (err, stdout, stderr) => {
         const code = err && typeof (err as { code?: unknown }).code === 'number'
           ? (err as { code: number }).code
@@ -63,7 +72,11 @@ export async function* streamLines(
   args: string[],
   opts: ExecOptions = {},
 ): AsyncGenerator<StreamChunk, number, void> {
-  const child = spawn(cmd, args, { cwd: opts.cwd, env: opts.env, signal: opts.signal });
+  const child = spawn(cmd, args, { cwd: opts.cwd, env: mergedEnv(opts.env), signal: opts.signal });
+  // Decode as UTF-8 across chunk boundaries so multibyte characters split between two
+  // 'data' events aren't corrupted into replacement characters.
+  child.stdout?.setEncoding('utf8');
+  child.stderr?.setEncoding('utf8');
 
   const queue: StreamChunk[] = [];
   let wake: (() => void) | null = null;
@@ -78,18 +91,32 @@ export async function* streamLines(
   };
   const finish = () => { done = true; wake?.(); wake = null; };
 
-  child.stdout?.on('data', (d) => push({ stream: 'stdout', data: d.toString() }));
-  child.stderr?.on('data', (d) => push({ stream: 'stderr', data: d.toString() }));
-  child.on('error', (e) => { failure = e; finish(); });
-  child.on('close', (code) => { exitCode = code ?? 0; finish(); });
+  const onOut = (d: string) => push({ stream: 'stdout', data: d });
+  const onErr = (d: string) => push({ stream: 'stderr', data: d });
+  const onError = (e: Error) => { failure = e; finish(); };
+  const onClose = (code: number | null) => { exitCode = code ?? 0; finish(); };
+  child.stdout?.on('data', onOut);
+  child.stderr?.on('data', onErr);
+  child.on('error', onError);
+  child.on('close', onClose);
 
-  while (true) {
-    if (queue.length) { yield queue.shift()!; continue; }
-    if (done) break;
-    await new Promise<void>((r) => { wake = r; });
+  try {
+    while (true) {
+      if (queue.length) { yield queue.shift()!; continue; }
+      if (done) break;
+      await new Promise<void>((r) => { wake = r; });
+    }
+    if (failure) throw failure;
+    return exitCode;
+  } finally {
+    // If the consumer abandons us early (break/throw/return), tear the process down so we
+    // don't leak a live child and its file descriptors.
+    child.stdout?.off('data', onOut);
+    child.stderr?.off('data', onErr);
+    child.off('error', onError);
+    child.off('close', onClose);
+    if (child.exitCode === null && !child.killed) child.kill();
   }
-  if (failure) throw failure;
-  return exitCode;
 }
 
 /** Whether an executable is resolvable on PATH (uses `which`/`where`). */

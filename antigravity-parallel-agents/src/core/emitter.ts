@@ -11,6 +11,15 @@ export class Emitter<T extends { type: string }> {
   }
 
   emit(event: T): void {
-    for (const l of this.listeners) l(event);
+    // Snapshot so add/remove during dispatch is well-defined, and isolate each listener so
+    // one throwing subscriber (e.g. buggy UI code) can't break the emitter's caller — which
+    // for the orchestrator would turn a healthy lane into a spurious failure or abort the run.
+    for (const l of [...this.listeners]) {
+      try {
+        l(event);
+      } catch {
+        /* isolate listener errors */
+      }
+    }
   }
 }

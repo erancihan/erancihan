@@ -61,6 +61,21 @@ describe('merge-back', () => {
     expect(await readFile(join(repo, 'app.txt'), 'utf8')).toBe('line1\nBASE-EDIT\n');
   });
 
+  it('a conflicting SQUASH merge is aborted cleanly, leaving no conflict markers', async () => {
+    const branch = await laneWith(repo, 'sq', 'app.txt', 'line1\nLANE-EDIT\n');
+    await writeFile(join(repo, 'app.txt'), 'line1\nBASE-EDIT\n');
+    await run('git', ['commit', '-aqm', 'base edit'], { cwd: repo });
+
+    const res = await mergeLane(repo, branch, { strategy: 'squash' });
+
+    expect(res.ok).toBe(false);
+    expect(res.conflicted).toBe(true);
+    // The critical assertion: `git merge --abort` can't abort a squash, so this exercises
+    // the reset-based recovery. Tree must be clean, no conflict markers.
+    expect(await output('git', ['status', '--porcelain'], { cwd: repo })).toBe('');
+    expect(await readFile(join(repo, 'app.txt'), 'utf8')).toBe('line1\nBASE-EDIT\n');
+  });
+
   it('laneDiff shows what a lane changed; discardLane removes it', async () => {
     const branch = await laneWith(repo, 'd', 'new.txt', 'content\n');
     const diff = await laneDiff(repo, branch);

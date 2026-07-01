@@ -40,6 +40,8 @@ export interface SwarmConfig {
   /** Persist a journal here for resume; defaults to `<repoRoot>/.swarm/journal`. */
   journalDir?: string;
   env?: NodeJS.ProcessEnv;
+  /** Flat per-lane cost estimate (USD) so `budgetUsd` can enforce for process runners. */
+  estimatedCostUsd?: number;
 }
 
 /**
@@ -61,6 +63,7 @@ export async function buildSwarm(cfg: SwarmConfig): Promise<{
       args: cfg.args ?? ['agent', 'run', '--cwd', '${worktree}', '--prompt', '${prompt}'],
       sandbox,
       env: cfg.env,
+      estimatedCostUsd: cfg.estimatedCostUsd,
     });
   const journal = new FileJournalStore(cfg.journalDir ?? join(cfg.repoRoot, '.swarm', 'journal'));
   const orchestrator = new Orchestrator({ isolation, runner, repoRoot: cfg.repoRoot, journal });

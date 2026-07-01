@@ -60,7 +60,7 @@ export async function mergeLane(
   // Did it fail because of conflicts? List them, then abort to keep the tree clean.
   const conflicts = await conflictedPaths(repoRoot);
   if (conflicts.length > 0) {
-    await run('git', ['merge', '--abort'], { cwd: repoRoot }).catch(() => undefined);
+    await abortMerge(repoRoot, strategy);
     return {
       ok: false,
       conflicted: true,
@@ -69,6 +69,19 @@ export async function mergeLane(
     };
   }
   return { ok: false, conflicted: false, conflicts: [], message: m.stderr.trim() || 'merge failed' };
+}
+
+/**
+ * Recover a clean working tree after a conflicted merge. `--squash` never records a
+ * MERGE_HEAD, so `git merge --abort` fails for it — reset --hard instead. (The pre-merge
+ * tree is required to be clean, so reset --hard only discards our own half-applied merge.)
+ */
+async function abortMerge(repoRoot: string, strategy: MergeStrategy): Promise<void> {
+  if (strategy === 'squash') {
+    await run('git', ['reset', '--hard'], { cwd: repoRoot }).catch(() => undefined);
+  } else {
+    await run('git', ['merge', '--abort'], { cwd: repoRoot }).catch(() => undefined);
+  }
 }
 
 /** The diff a lane introduced relative to its merge-base with `baseRef` (default HEAD). */

@@ -16,6 +16,8 @@ export interface RunBatchOptions {
   args?: string[];
   agentsMdPath?: string;
   budgetUsd?: number;
+  /** Flat per-lane cost estimate (USD) so `budgetUsd` can actually be enforced. */
+  costPerLaneUsd?: number;
   noSandbox?: boolean;
   runId?: string;
   /** Sink for human-readable progress (default: console.log). */
@@ -31,10 +33,14 @@ export async function runBatch(opts: RunBatchOptions): Promise<RunSummary> {
     command: opts.command,
     args: opts.args,
     noSandbox: opts.noSandbox,
+    estimatedCostUsd: opts.costPerLaneUsd,
   });
 
   if (sandbox.kind === 'none') {
     log('⚠️  No OS sandbox active — lanes are isolated by git worktree only.');
+  }
+  if (opts.budgetUsd !== undefined && !opts.costPerLaneUsd) {
+    log('⚠️  --budget has no effect without --cost-per-lane (process agents don\'t self-report cost).');
   }
   orchestrator.on((e) => log(formatEvent(e)));
 

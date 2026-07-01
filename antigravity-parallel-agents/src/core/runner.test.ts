@@ -80,4 +80,49 @@ describe('ProcessLaneRunner (real subprocess)', () => {
     // No empty commit created.
     await expect(stat(join(iso.worktree, 'out.txt'))).rejects.toThrow();
   });
+
+  it('rejects a skill name that tries to traverse out of the worktree', async () => {
+    const iso = await lane(repo, 'r5');
+    const runner = new ProcessLaneRunner({ command: process.execPath, args: ['-e', 'console.log(1)'] });
+    await expect(
+      drain({ prompt: 'x', isolation: iso, skills: [{ name: '../../evil', body: 'PWNED' }] }, runner),
+    ).rejects.toThrow(/unsafe skill name/);
+    // Nothing was written outside the skills dir.
+    await expect(stat(join(iso.worktree, '..', 'evil'))).rejects.toThrow();
+  });
+
+  it('does not re-substitute placeholder tokens that appear literally in the prompt', async () => {
+    const iso = await lane(repo, 'r6');
+    // Echo the received arg verbatim; if token-bleed occurred, ${worktree} would be a path.
+    const runner = new ProcessLaneRunner({
+      command: process.execPath,
+      args: ['-e', 'console.log(process.argv[1])', '${prompt}'],
+    });
+    const updates = await drain({ prompt: 'edit the ${worktree} file', isolation: iso }, runner);
+    const streamed = updates.map((u) => u.chunk ?? '').join('');
+    expect(streamed).toContain('edit the ${worktree} file');
+    expect(streamed).not.toContain(iso.worktree);
+  });
+
+  it('keeps the TAIL of output (the concluding answer) when it exceeds the cap', async () => {
+    const iso = await lane(repo, 'r7');
+    // Emit ~300 chars of noise then the final answer; cap at 50 so only the tail survives.
+    const script = 'process.stdout.write("N".repeat(300)); console.log("FINAL-ANSWER");';
+    const runner = new ProcessLaneRunner({ command: process.execPath, args: ['-e', script], maxOutputChars: 50 });
+    const updates = await drain({ prompt: 'x', isolation: iso }, runner);
+    const text = updates.at(-1)!.result?.text ?? '';
+    expect(text).toContain('FINAL-ANSWER');
+    expect(text.length).toBeLessThanOrEqual(50);
+  });
+
+  it('populates usage.costUsd when an estimate is configured (so budgets can enforce)', async () => {
+    const iso = await lane(repo, 'r8');
+    const runner = new ProcessLaneRunner({
+      command: process.execPath,
+      args: ['-e', 'require("fs").writeFileSync("a.txt","1")'],
+      estimatedCostUsd: 0.25,
+    });
+    const updates = await drain({ prompt: 'x', isolation: iso }, runner);
+    expect(updates.at(-1)!.result?.usage?.costUsd).toBe(0.25);
+  });
 });

@@ -8,7 +8,7 @@
  * an alternative. The orchestrator depends only on the `LaneRunner` interface.
  */
 
-import { join, dirname } from 'node:path';
+import { join, dirname, relative, isAbsolute } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { run, streamLines } from './exec.js';
 import type { SandboxProvider } from './isolation.js';
@@ -52,6 +52,28 @@ export interface ProcessRunnerOptions {
   commit?: boolean;
   /** Max stdout characters kept for the result summary (default 8000). */
   maxOutputChars?: number;
+  /**
+   * Flat cost attributed to each completed lane, in USD. Lets `budgetUsd` actually enforce
+   * a ceiling for process-based agents (which don't self-report token cost). Default 0.
+   */
+  estimatedCostUsd?: number;
+}
+
+/**
+ * Restrict a mounted skill's name to a single safe path segment so `skill.name` can't
+ * traverse (`../`) out of the worktree and clobber arbitrary files. Throws on anything
+ * that isn't a plain segment.
+ */
+function safeSkillDir(worktree: string, name: string): string {
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || name === '.' || name === '..') {
+    throw new Error(`unsafe skill name: ${JSON.stringify(name)}`);
+  }
+  const dir = join(worktree, '.agents', 'skills', name);
+  const rel = relative(join(worktree, '.agents', 'skills'), dir);
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    throw new Error(`skill name escapes worktree: ${JSON.stringify(name)}`);
+  }
+  return dir;
 }
 
 export class ProcessLaneRunner implements LaneRunner {
@@ -68,16 +90,21 @@ export class ProcessLaneRunner implements LaneRunner {
     }
     if (mountConfig && input.skills?.length) {
       for (const skill of input.skills) {
-        const file = join(wt, '.agents', 'skills', skill.name, 'SKILL.md');
+        const file = join(safeSkillDir(wt, skill.name), 'SKILL.md');
         await mkdir(dirname(file), { recursive: true });
         await writeFile(file, skill.body);
       }
     }
 
+    // Single-pass substitution so a token that appears literally inside the prompt is not
+    // itself re-scanned and rewritten by a later replacement.
+    const tokens: Record<string, string> = {
+      '${prompt}': input.prompt,
+      '${worktree}': wt,
+      '${agentsMdPath}': agentsMdPath,
+    };
     const subst = (s: string) =>
-      s.replaceAll('${prompt}', input.prompt)
-        .replaceAll('${worktree}', wt)
-        .replaceAll('${agentsMdPath}', agentsMdPath);
+      s.replace(/\$\{(prompt|worktree|agentsMdPath)\}/g, (m) => tokens[m] ?? m);
 
     let cmd = this.opts.command;
     let args = this.opts.args.map(subst);
@@ -89,8 +116,9 @@ export class ProcessLaneRunner implements LaneRunner {
 
     yield { lastAction: `running ${this.opts.command}`, done: false };
 
-    const buf: string[] = [];
-    let size = 0;
+    // Keep a rolling tail of the output — the agent's concluding answer is at the END, so
+    // when output exceeds the cap we retain the last `cap` chars, not the first.
+    let tail = '';
     const cap = this.opts.maxOutputChars ?? 8000;
     const stream = streamLines(cmd, args, { cwd: wt, env: this.opts.env, signal: input.signal });
 
@@ -99,7 +127,7 @@ export class ProcessLaneRunner implements LaneRunner {
       const next = await stream.next();
       if (next.done) { exitCode = next.value; break; }
       const { data } = next.value;
-      if (size < cap) { buf.push(data); size += data.length; }
+      tail = (tail + data).slice(-cap);
       yield { chunk: data, done: false };
     }
 
@@ -107,7 +135,7 @@ export class ProcessLaneRunner implements LaneRunner {
       throw new Error(`agent command exited with code ${exitCode}`);
     }
 
-    const result = await this.collectResult(wt, input.prompt, buf.join('').slice(-cap));
+    const result = await this.collectResult(wt, input.prompt, tail.trim());
     yield { lastAction: 'completed', done: true, result };
   }
 
@@ -120,7 +148,12 @@ export class ProcessLaneRunner implements LaneRunner {
       const subject = `swarm: ${prompt.replace(/\s+/g, ' ').slice(0, 60)}`;
       await run('git', ['commit', '-m', subject], { cwd: worktree });
     }
-    return { text: text.trim() || 'completed', patch: patch || undefined };
+    const cost = this.opts.estimatedCostUsd;
+    return {
+      text: text || 'completed',
+      patch: patch || undefined,
+      usage: cost ? { costUsd: cost } : undefined,
+    };
   }
 }
 

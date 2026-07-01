@@ -6,7 +6,7 @@
  * explicit merge-back. See docs/PLAN.md §3.3.
  */
 
-import { join, isAbsolute, resolve, dirname } from 'node:path';
+import { join, isAbsolute, resolve, dirname, relative } from 'node:path';
 import { rm, mkdir, writeFile, access } from 'node:fs/promises';
 import { run, output } from './exec.js';
 import type { IsolationRequest, WorktreeProvider } from './isolation.js';
@@ -34,8 +34,9 @@ export class GitWorktreeProvider implements WorktreeProvider {
 
     // Keep the lane worktrees out of the base repo's git status. When they live inside
     // the repo (the default `.swarm/lanes`), drop a self-ignoring `.gitignore` at the
-    // `.swarm` root so worktree churn never shows up as untracked noise.
-    if (lanesRoot.startsWith(repoRoot)) {
+    // `.swarm` root so worktree churn never shows up as untracked noise. Use a path-aware
+    // containment check so a sibling dir like `<repo>2/…` isn't mistaken for inside.
+    if (isInside(repoRoot, lanesRoot)) {
       await ensureIgnored(dirname(lanesRoot));
     }
 
@@ -61,6 +62,15 @@ export class GitWorktreeProvider implements WorktreeProvider {
   private async clearStale(repoRoot: string, worktree: string, branch: string): Promise<void> {
     await run('git', ['worktree', 'remove', '--force', worktree], { cwd: repoRoot }).catch(() => undefined);
     await rm(worktree, { recursive: true, force: true }).catch(() => undefined);
+    // The branch may be checked out in a DIFFERENT worktree path (e.g. after a config
+    // change or a crash); `git branch -D` would then fail and the subsequent
+    // `worktree add -b` abort with "branch already exists". Force-remove whatever worktree
+    // holds this branch before deleting it.
+    const owner = await worktreeHoldingBranch(repoRoot, branch);
+    if (owner && owner !== worktree) {
+      await run('git', ['worktree', 'remove', '--force', owner], { cwd: repoRoot }).catch(() => undefined);
+      await rm(owner, { recursive: true, force: true }).catch(() => undefined);
+    }
     await run('git', ['worktree', 'prune'], { cwd: repoRoot }).catch(() => undefined);
     const hasBranch = await run('git', ['rev-parse', '--verify', '--quiet', branch], { cwd: repoRoot });
     if (hasBranch.code === 0) {
@@ -103,6 +113,27 @@ async function ensureIgnored(dir: string): Promise<void> {
   } catch {
     await writeFile(gitignore, '*\n');
   }
+}
+
+/** True when `child` is `parent` or nested under it (path-aware, not string-prefix). */
+function isInside(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+/**
+ * Parse `git worktree list --porcelain` to find the worktree path currently checked out on
+ * `branch` (matched as `refs/heads/<branch>`), or undefined if none.
+ */
+async function worktreeHoldingBranch(repoRoot: string, branch: string): Promise<string | undefined> {
+  const r = await run('git', ['worktree', 'list', '--porcelain'], { cwd: repoRoot });
+  if (r.code !== 0) return undefined;
+  let current: string | undefined;
+  for (const line of r.stdout.split('\n')) {
+    if (line.startsWith('worktree ')) current = line.slice('worktree '.length).trim();
+    else if (line === `branch refs/heads/${branch}`) return current;
+  }
+  return undefined;
 }
 
 async function assertGitRepo(repoRoot: string): Promise<void> {

@@ -174,6 +174,31 @@ enhancement, not MVP.
 Each phase is shippable; Phases 1–3.5 deliver the working engine + CLI, 4–6 make it
 native to the IDE, 7 scales/publishes it.
 
+### Review & hardening pass
+
+Before in-IDE testing, an 8-dimension adversarial review (parallel reviewers +
+per-finding refutation) surfaced 27 confirmed defects; all were fixed with regression
+tests (**41 passing** total). Highlights:
+
+- **Security:** skill-name path traversal (arbitrary file write) → strict segment
+  validation; webview XSS (agent output via `innerHTML`, no CSP) → CSP nonce +
+  `textContent`; `env` clobbering `PATH` → merge over `process.env`.
+- **Correctness:** a lane finishing after a sibling tripped the budget was mislabeled
+  `cancelled` and its committed work destroyed on resume → classify by the lane's own
+  result; squash-merge conflicts couldn't be aborted (dirty tree) → `reset --hard`
+  recovery; UTF-8 corruption across stdout chunk boundaries → `setEncoding`; result
+  summary kept the first not the last `cap` chars → rolling tail.
+- **Robustness:** journal write-chain poisoning froze all saves after one FS error →
+  settled-tail chaining; a throwing event listener could fail a healthy lane → per-listener
+  isolation; `streamLines` leaked the child process on early consumer exit → try/finally
+  kill; stale worktree holding a branch broke resume → force-remove the owning worktree.
+- **CLI/UX:** `--flag=value` unsupported, non-numeric `--concurrency` silently ran
+  nothing, trailing `--arg` crashed → real parser + validation (unit-tested); dead
+  contributed commands registered; overlapping webview runs guarded.
+
+Remaining is genuinely IDE-dependent: install the `.vsix` in Antigravity and exercise the
+`@swarm` participant + Lanes panel against the real agent runtime.
+
 ---
 
 ## 6. Risks & open questions

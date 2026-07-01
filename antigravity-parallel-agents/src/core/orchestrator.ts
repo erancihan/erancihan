@@ -10,6 +10,7 @@
  * with fakes and works identically over local (CLI) or cloud (Managed Agents) runners.
  */
 
+import { randomUUID } from 'node:crypto';
 import { Emitter } from './emitter.js';
 import { mapPool } from './pool.js';
 import { IsolationProvider } from './isolation.js';
@@ -48,7 +49,9 @@ export class Orchestrator {
   }
 
   async run(tasks: Task[], options: RunOptions): Promise<RunSummary> {
-    const runId = options.runId ?? `run-${Date.now()}-${tasks.length}`;
+    // Include random entropy so two same-size batches launched in the same millisecond
+    // never share a journal file.
+    const runId = options.runId ?? `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const lanes: Lane[] = tasks.map((task, i) => ({
       id: this.deps.laneId?.(task, i) ?? task.id,
       task,
@@ -133,7 +136,11 @@ export class Orchestrator {
       }
 
       lane.endedAt = Date.now();
-      await this.transition(state, lane, ac.signal.aborted ? 'cancelled' : 'done');
+      // Classify by THIS lane's own outcome, not the global abort flag: a lane that ran to
+      // completion (produced a result) is 'done' even if a sibling tripped the budget
+      // mid-flight — otherwise its committed work is later destroyed on resume.
+      const finished = Boolean(lane.result);
+      await this.transition(state, lane, finished ? 'done' : ac.signal.aborted ? 'cancelled' : 'done');
 
       // Preserve the branch for merge-back only if the lane produced work.
       const producedWork = Boolean(lane.result?.patch || lane.result?.text);

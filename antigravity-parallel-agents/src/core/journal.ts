@@ -49,14 +49,19 @@ export class FileJournalStore implements JournalStore {
   async save(state: JournalState): Promise<void> {
     // Serialize writes; each writes the full current snapshot (last-write-wins, atomic).
     const snapshot = structuredClone(state);
-    this.writeChain = this.writeChain.then(async () => {
+    const write = async () => {
       await mkdir(this.dir, { recursive: true });
       const target = this.file(snapshot.runId);
       const tmp = `${target}.${snapshot.updatedAt}.tmp`;
       await writeFile(tmp, JSON.stringify(snapshot, null, 2));
       await rename(tmp, target);
-    });
-    await this.writeChain;
+    };
+    // Chain on a SETTLED tail (run `write` whether the previous save fulfilled or rejected)
+    // so one transient FS failure can't permanently poison the chain and silently freeze
+    // every subsequent save.
+    const result = this.writeChain.then(write, write);
+    this.writeChain = result.catch(() => undefined);
+    await result;
   }
 
   async load(runId: string): Promise<JournalState | null> {

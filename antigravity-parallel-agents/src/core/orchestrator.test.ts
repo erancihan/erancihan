@@ -124,4 +124,30 @@ describe('Orchestrator', () => {
     expect(done + cancelled).toBe(5);
     expect(summary.totalCostUsd).toBeGreaterThanOrEqual(2.0);
   });
+
+  it('never marks a lane that produced a result as cancelled, even under concurrent budget aborts', async () => {
+    // FakeRunner ignores the abort signal, so lanes finishing after a sibling trips the
+    // budget are the exact race that used to be mislabeled 'cancelled' (losing work on resume).
+    for (let i = 0; i < 12; i++) {
+      const isolation = await createIsolationProvider();
+      const orch = new Orchestrator({ isolation, runner: new FakeRunner(1.0), repoRoot: repo });
+      const summary = await orch.run(tasks(['A', 'B', 'C', 'D']), { concurrency: 2, budgetUsd: 1.0 });
+      for (const l of summary.lanes) {
+        // Invariant: cancelled ⟹ no result. A completed lane is always 'done'.
+        expect(l.status === 'cancelled' && Boolean(l.result)).toBe(false);
+        if (l.result) expect(l.status).toBe('done');
+      }
+      await rm(join(repo, '.swarm'), { recursive: true, force: true }).catch(() => undefined);
+      await run('git', ['worktree', 'prune'], { cwd: repo });
+    }
+  });
+
+  it('isolates a throwing event listener: the run still completes and lanes are done', async () => {
+    const isolation = await createIsolationProvider();
+    const orch = new Orchestrator({ isolation, runner: new FakeRunner(), repoRoot: repo });
+    orch.on(() => { throw new Error('buggy UI listener'); });
+
+    const summary = await orch.run(tasks(['A', 'B']), { concurrency: 2 });
+    expect(summary.lanes.every((l) => l.status === 'done')).toBe(true);
+  });
 });
