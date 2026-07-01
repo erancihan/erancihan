@@ -10,3 +10,6 @@
 [submodule "projects/tradebot"]
 	path = projects/tradebot
 	url = git@github.com:erancihan/tradebot.git
+[submodule "projects/antigravity-usage-monitor"]
+	path = projects/antigravity-usage-monitor
+	url = git@github.com:erancihan/antigravity-usage-monitor.git
