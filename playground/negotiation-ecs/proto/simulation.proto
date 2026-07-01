@@ -1,0 +1,203 @@
+syntax = "proto3";
+
+package negotiation.v1;
+
+option go_package = "github.com/erancihan/negotiation-ecs/backend-go/gen/proto/negotiationpb";
+option java_package = "com.erancihan.negotiation.proto";
+option java_outer_classname = "SimulationProto";
+
+// =============================================================================
+// Core Simulation Streaming Service
+// =============================================================================
+service SimulationService {
+  // Server-streaming: pushes simulation frames at the configured tick rate.
+  // Each connected visualizer or observer receives an independent stream.
+  rpc StreamSimulation(StreamRequest) returns (stream SimFrame);
+
+  // External agents submit negotiation proposals into the simulation.
+  rpc SubmitProposal(Proposal) returns (ProposalAck);
+
+  // Snapshot of the current world state (all entities, all active negotiations).
+  rpc GetWorldState(WorldStateRequest) returns (WorldState);
+
+  // Control the simulation (pause, resume, step, reset).
+  rpc ControlSimulation(SimControlRequest) returns (SimControlResponse);
+}
+
+// =============================================================================
+// Request / Response Messages
+// =============================================================================
+
+message StreamRequest {
+  // Maximum frames per second the client wants to receive.
+  // 0 = unlimited (receive every tick).
+  uint32 max_fps = 1;
+}
+
+message WorldStateRequest {}
+
+// -----------------------------------------------------------------------------
+// Simulation Frame — the primary data unit streamed to observers.
+// -----------------------------------------------------------------------------
+message SimFrame {
+  // Monotonically increasing tick counter.
+  uint64 tick = 1;
+
+  // Logical simulation time in seconds since simulation start.
+  double timestamp = 2;
+
+  // Full state of every entity this tick.
+  repeated EntityState entities = 3;
+
+  // Negotiation events that occurred during this tick.
+  repeated NegotiationEvent events = 4;
+
+  // Summary statistics for this tick.
+  TickStats stats = 5;
+}
+
+// -----------------------------------------------------------------------------
+// Entity State
+// -----------------------------------------------------------------------------
+message EntityState {
+  // Unique entity identifier within the ECS world.
+  uint64 entity_id = 1;
+
+  // Role descriptor: "agent", "resource_node", "channel", etc.
+  string role = 2;
+
+  // Display label for the entity.
+  string label = 3;
+
+  // Spatial coordinates.
+  Vec2 position = 4;
+
+  // Movement vector (units per second).
+  Vec2 velocity = 5;
+
+  // Current holdings.
+  Inventory inventory = 6;
+
+  // Current negotiation status label.
+  NegotiationStatus negotiation_status = 7;
+
+  // If in a negotiation, the counter-party entity ID.
+  uint64 counter_party_id = 8;
+}
+
+message Vec2 {
+  double x = 1;
+  double y = 2;
+}
+
+message Inventory {
+  double cash = 1;
+  map<string, double> assets = 2;
+}
+
+// -----------------------------------------------------------------------------
+// Negotiation Types
+// -----------------------------------------------------------------------------
+enum NegotiationStatus {
+  NEGOTIATION_STATUS_IDLE = 0;
+  NEGOTIATION_STATUS_OFFERING = 1;
+  NEGOTIATION_STATUS_COUNTERING = 2;
+  NEGOTIATION_STATUS_ACCEPTED = 3;
+  NEGOTIATION_STATUS_REJECTED = 4;
+  NEGOTIATION_STATUS_TIMEOUT = 5;
+}
+
+enum NegotiationAction {
+  NEGOTIATION_ACTION_UNSPECIFIED = 0;
+  NEGOTIATION_ACTION_OFFER_MADE = 1;
+  NEGOTIATION_ACTION_COUNTER_OFFER = 2;
+  NEGOTIATION_ACTION_ACCEPTED = 3;
+  NEGOTIATION_ACTION_REJECTED = 4;
+  NEGOTIATION_ACTION_TIMEOUT = 5;
+}
+
+message NegotiationEvent {
+  // Tick at which this event occurred.
+  uint64 tick = 1;
+
+  // Entities involved.
+  uint64 initiator_id = 2;
+  uint64 responder_id = 3;
+
+  // What happened.
+  NegotiationAction action = 4;
+
+  // Human-readable summary.
+  string summary = 5;
+
+  // Structured proposal data (JSON-encoded for flexibility).
+  string proposal_json = 6;
+}
+
+// -----------------------------------------------------------------------------
+// External Agent Proposal
+// -----------------------------------------------------------------------------
+message Proposal {
+  // Identifier of the external agent submitting the proposal.
+  string agent_id = 1;
+
+  // Target entity to negotiate with (0 = let the engine assign).
+  uint64 target_entity_id = 2;
+
+  // Proposal payload — JSON-encoded offer structure.
+  // Example: {"offer_cash": 100, "request_asset": "gold", "request_amount": 5}
+  string offer_json = 3;
+}
+
+message ProposalAck {
+  bool accepted = 1;
+  string reason = 2;
+  uint64 assigned_entity_id = 3;
+}
+
+// -----------------------------------------------------------------------------
+// World State Snapshot
+// -----------------------------------------------------------------------------
+message WorldState {
+  uint64 current_tick = 1;
+  double current_time = 2;
+  uint32 entity_count = 3;
+  uint32 active_negotiations = 4;
+  repeated EntityState entities = 5;
+}
+
+// -----------------------------------------------------------------------------
+// Simulation Control
+// -----------------------------------------------------------------------------
+enum SimCommand {
+  SIM_COMMAND_UNSPECIFIED = 0;
+  SIM_COMMAND_PAUSE = 1;
+  SIM_COMMAND_RESUME = 2;
+  SIM_COMMAND_STEP = 3;       // Advance exactly one tick.
+  SIM_COMMAND_RESET = 4;
+}
+
+message SimControlRequest {
+  SimCommand command = 1;
+}
+
+message SimControlResponse {
+  bool success = 1;
+  string message = 2;
+  uint64 current_tick = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Tick Statistics
+// -----------------------------------------------------------------------------
+message TickStats {
+  uint32 total_entities = 1;
+  uint32 active_negotiations = 2;
+  uint32 completed_negotiations = 3;
+  uint32 timed_out_negotiations = 4;
+  double avg_negotiation_duration_ticks = 5;
+
+  // Named observability metrics (counters and gauges) — e.g. "wealth.gini",
+  // "economy.settlement_rate". Populated when the observability plugin is active.
+  map<string, double> metrics = 6;
+}
