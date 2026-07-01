@@ -210,18 +210,22 @@ next_open + partial-bar drop, supervised loop with **injected clock/sleep** so
 the whole loop is dry-run-testable offline via `season run --simulate`,
 `/seasons` dashboard standings view).
 
-Next candidates (not started):
+Deferred (decided, do not re-propose without a new ask):
 - **Container/gVisor containment** — the strongest, OS-level tier, for fully
   untrusted third-party code. The in-process tiers escalate as: rlimits →
   `--harden` (no disk writes + net isolation) → `--seccomp` (deny
-  `execve`/`ptrace`); a container/gVisor runner would be the next step up. It's
-  documented-not-built on purpose: it changes the execution model (fork passes
-  non-picklable factories/frames by inherited memory — a container boundary
-  can't, so contestants would be re-discovered from file paths *inside* the
-  container) and adds a docker/image dependency to the run + CI path. `docker` is
-  available in the dev env; the seam is `default_runner` returning a
-  `ContainerRunner` for a new `isolation="container"` mode. `sandbox.py` returns a
-  capability report and degrades gracefully where a mechanism is unavailable.
+  `execve`/`ptrace`); a container/gVisor runner would be the next step up.
+  **Deferred by owner decision**: contestant code is human-reviewed before it
+  runs, so the threat model doesn't warrant tight OS-level containment now — the
+  `--harden`/`--seccomp` tiers are sufficient. If the model ever changes (e.g.
+  accepting unreviewed third-party submissions), this is the build: it changes
+  the execution model (fork passes non-picklable factories/frames by inherited
+  memory — a container boundary can't, so contestants would be re-discovered from
+  file paths *inside* the container) and adds a docker/image dependency to the
+  run + CI path. `docker` is available in the dev env; the seam is
+  `default_runner` returning a `ContainerRunner` for a new `isolation="container"`
+  mode. `sandbox.py` returns a capability report and degrades gracefully where a
+  mechanism is unavailable.
 
 (Dashboard updates via a single **SSE** stream `/sse/dashboard` into a shared
 `live` Alpine store: it pushes the account snapshot and bumps a `live:tick`
