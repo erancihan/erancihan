@@ -1,0 +1,13 @@
+# Everything the packaged extension does NOT need (source is bundled into dist-ext).
+src/**
+extension/**/*.ts
+extension/tsconfig.json
+docs/**
+examples/**
+node_modules/**
+.gitignore
+tsconfig.json
+**/*.test.ts
+**/*.map
+package-lock.json
+.vscode/**

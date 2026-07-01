@@ -2,7 +2,8 @@
   "name": "antigravity-parallel-agents",
   "displayName": "Swarm — Parallel Sandboxed Chats",
   "version": "0.0.0",
-  "private": true,
+  "publisher": "erancihan",
+  "repository": { "type": "git", "url": "https://github.com/erancihan/erancihan.git", "directory": "antigravity-parallel-agents" },
   "description": "Bake parallel, fully-isolated chats into the Antigravity IDE: every chat is a lane running in its own git worktree + OS sandbox.",
   "type": "module",
   "engines": {
@@ -20,11 +21,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:ext": "tsc -p extension/tsconfig.json",
     "bundle:ext": "esbuild extension/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist-ext/extension.cjs",
+    "package": "npm run bundle:ext && vsce package --no-dependencies --allow-missing-repository -o swarm.vsix",
     "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.32.0",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"

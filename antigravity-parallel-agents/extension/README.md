@@ -14,14 +14,21 @@ The IDE surface — bakes parallel, sandboxed chats into Antigravity.
 
 All real work lives in [`../src/core`](../src/core); this layer is a thin host.
 
-## Build
+## Build & package
 
 ```bash
 npm run typecheck:ext   # type-check the extension against @types/vscode
 npm run bundle:ext      # esbuild -> dist-ext/extension.cjs (vscode external)
+npm run package         # bundle + vsce -> swarm.vsix (installable artifact)
 ```
 
-Packaging to `.vsix` (via `@vscode/vsce`) and publishing to OpenVSX is Phase 7.
+Install the built `swarm.vsix` in Antigravity via its CLI:
+
+```bash
+<antigravity-cli> --install-extension swarm.vsix
+```
+
+Publishing to OpenVSX (`ovsx publish`) is the remaining Phase 7 step.
 
 ## Status / caveats
 
