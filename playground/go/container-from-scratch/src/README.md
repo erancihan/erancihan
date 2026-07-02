@@ -25,6 +25,8 @@ $ go build -o bin/step3-reexec ./step3-reexec
 
 ## The steps
 
+**Core path (1–7)** — build up to the capstone, one primitive per step:
+
 | Binary | Adds | Needs root? | Needs a rootfs? |
 | --- | --- | :---: | :---: |
 | `step1-exec` | just runs a process (no isolation) | no | no |
@@ -35,8 +37,19 @@ $ go build -o bin/step3-reexec ./step3-reexec
 | `step6-cgroups` | cgroup v2 memory + PID limits | yes | no |
 | `mini-docker` (step7) | all of the above combined | yes | **yes** |
 
+**Going further (8–10)** — the "what to build next" features from
+[chapter 13](../docs/13-comparison-and-further-reading.md), as runnable code:
+
+| Binary | Adds | Needs root? | Needs a rootfs? |
+| --- | --- | :---: | :---: |
+| `step8-rootless` | `CLONE_NEWUSER` + UID/GID maps — a container with **no sudo** | **no** | no |
+| `step9-overlayfs` | image layers + copy-on-write via OverlayFS | yes | **yes** (as the base layer) |
+| `step10-hardening` | `no_new_privs` + drop every capability (`prctl`/`capset`) | yes | no |
+
 Each `main.go` starts with a comment block explaining exactly what it demonstrates
-and how to try it.
+and how to try it. Networking (veth/bridge/NAT) and an OCI image puller are left as
+exercises — their design is covered in [chapter 07](../docs/07-networking.md) and
+[chapter 09](../docs/09-how-docker-really-works.md).
 
 ## Getting a root filesystem (steps 5 and 7)
 
@@ -70,7 +83,16 @@ $ make rootfs
 $ sudo ROOTFS=/tmp/alpine ./bin/step5-rootfs-pivot-root run /bin/sh
 $ sudo ./bin/step6-cgroups run /bin/sh            # try a fork bomb; it's capped
 $ sudo ROOTFS=/tmp/alpine ./bin/mini-docker run /bin/sh   # the whole thing
+
+# going further:
+$ ./bin/step8-rootless run /bin/sh                # NO sudo — user namespace; `id` says root
+$ sudo ROOTFS=/tmp/alpine ./bin/step9-overlayfs run /bin/sh -c 'echo hi > /x; ls /'
+$ sudo ./bin/step10-hardening run /bin/sh -c 'grep -E "^Cap|^NoNewPrivs" /proc/self/status'
 ```
+
+> **step8 (rootless)** needs unprivileged user namespaces enabled — the default on
+> most modern kernels. Check `cat /proc/sys/user/max_user_namespaces` is non-zero
+> (and on Debian/Ubuntu, `sysctl kernel.unprivileged_userns_clone`).
 
 ## Environment knobs (step 7)
 

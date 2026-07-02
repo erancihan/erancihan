@@ -156,7 +156,10 @@ container-from-scratch/
     ├── step4-pid-and-proc/
     ├── step5-rootfs-pivot-root/
     ├── step6-cgroups/
-    └── step7-mini-docker/
+    ├── step7-mini-docker/     ← the capstone
+    ├── step8-rootless/        ← going further: a container with no sudo
+    ├── step9-overlayfs/       ← going further: image layers + copy-on-write
+    └── step10-hardening/      ← going further: drop capabilities + no_new_privs
 ```
 
 ---

@@ -264,6 +264,16 @@ Two honest caveats:
 - A rootless net namespace can't reach host interfaces, so rootless setups use a userspace
   network shim like `slirp4netns`. See [networking](07-networking.md) for the wiring.
 
+This is exactly what [`src/step8-rootless`](../src/step8-rootless/main.go) does — run it as
+an ordinary user and watch a container appear with **no `sudo`**:
+
+```console
+$ ./bin/step8-rootless run /bin/sh -c 'id; cat /proc/self/uid_map'
+[step8] parent uid=1000 ... — creating a USER namespace (no root needed)
+uid=0(root) gid=0(root) groups=0(root)
+         0       1000          1        # container uid 0 maps to your real uid outside
+```
+
 ---
 
 ## LSMs: mandatory access control on top
@@ -326,10 +336,27 @@ That ordering is not incidental — it's the **only** correct place:
    `no_new_privs` first so the unprivileged seccomp load is allowed; caps dropped so the
    new program starts demoted; seccomp last so it covers the very first syscall.
 
-And if you added `CLONE_NEWUSER` with the mappings shown above to the `run()` function's
-`SysProcAttr`, mini-docker would become **rootless** — you could launch it without
-`sudo`, and a breakout would surface as your own unprivileged uid. That single flag is the
-difference between "isolation" and "isolation with a safety net."
+[`src/step10-hardening`](../src/step10-hardening/main.go) fills in that spot with
+standard-library code only (no libcap/libseccomp): it sets `no_new_privs` via
+`prctl`, empties the bounding set (`prctl(PR_CAPBSET_DROP)` across every capability),
+and zeroes the effective/permitted/inheritable sets with `capset(2)` — then execs into
+capability-less root:
+
+```console
+$ sudo ./bin/step10-hardening run /bin/sh -c 'grep -E "^Cap|^NoNewPrivs" /proc/self/status'
+CapInh: 0000000000000000
+CapPrm: 0000000000000000
+CapEff: 0000000000000000   # no capabilities at all
+CapBnd: 0000000000000000   # and none can ever be regained
+NoNewPrivs: 1
+```
+
+The seccomp layer is the one piece left to the reader, because a real BPF filter
+needs libseccomp or `golang.org/x/sys/unix`. And if you added `CLONE_NEWUSER` with the
+mappings shown above to the `run()` `SysProcAttr` (as [`step8-rootless`](../src/step8-rootless/main.go)
+does), mini-docker would become **rootless** — you could launch it without `sudo`, and a
+breakout would surface as your own unprivileged uid. That single flag is the difference
+between "isolation" and "isolation with a safety net."
 
 ---
 
