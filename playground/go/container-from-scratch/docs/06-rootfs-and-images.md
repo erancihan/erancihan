@@ -280,10 +280,21 @@ share the same layer blobs on disk**. Ten containers from the same image add ten
 `upperdir`s, not ten full root filesystems. That sharing is the entire economic
 argument for layered images.
 
-Our `mini-docker` deliberately stops short of this — it points `pivot_root` at a
-single already-flattened directory. Wiring an overlay mount in front of `pivot_root`
-(mount the overlay, then pivot into `merged`) is the natural next exercise, and the
-code calls it out as the "overlayfs layering (docs/06)" TODO.
+Our `mini-docker` (step 7) deliberately stops short of this — it points `pivot_root`
+at a single already-flattened directory. But [`src/step9-overlayfs`](../src/step9-overlayfs/main.go)
+does the real thing: it stacks an app layer over a base image, mounts the union, and
+pivots into `merged`, then proves copy-on-write by showing that everything the
+container wrote landed in `upperdir` while the base image stayed byte-for-byte
+untouched.
+
+```console
+$ sudo ROOTFS=/tmp/alpine ./bin/step9-overlayfs run /bin/sh -c 'echo hi > /new.txt; ls /'
+[step9] mounting overlay at /tmp/overlay-demo/merged
+         lowerdir=.../app-layer:/tmp/alpine,upperdir=.../upper,workdir=.../work
+...
+[step9] contents of the writable UPPER layer after the run:
+         + new.txt          # the write copied up here; the base image is unchanged
+```
 
 ## What an OCI/Docker image actually is
 

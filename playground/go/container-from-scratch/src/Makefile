@@ -8,7 +8,10 @@ STEPS := \
 	step3-reexec \
 	step4-pid-and-proc \
 	step5-rootfs-pivot-root \
-	step6-cgroups
+	step6-cgroups \
+	step8-rootless \
+	step9-overlayfs \
+	step10-hardening
 
 BIN := bin
 

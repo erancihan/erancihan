@@ -162,21 +162,28 @@ or you move right on the spectrum to gVisor or a Kata microVM and accept the cos
 ## What to build next with `mini-docker`
 
 Your capstone ([src/step7-mini-docker](../src/step7-mini-docker/main.go)) already does
-namespaces, `pivot_root`, and cgroups. Natural next features, each mapping to a chapter:
+namespaces, `pivot_root`, and cgroups. Three of the natural next features now ship as
+runnable steps of their own:
+
+- ✅ **Rootless mode** ([src/step8-rootless](../src/step8-rootless/main.go)) — the whole
+  container inside a user namespace with UID/GID maps, so **no `sudo`** is required
+  ([chapter 8](08-security-and-hardening.md)).
+- ✅ **OverlayFS layers** ([src/step9-overlayfs](../src/step9-overlayfs/main.go)) — stack a
+  read-only image under a writable upper dir with copy-on-write, the way real images work
+  ([chapter 6](06-rootfs-and-images.md)).
+- ✅ **Capability drop + `no_new_privs`** ([src/step10-hardening](../src/step10-hardening/main.go)) —
+  strip every capability and slam the privilege-regain door before `exec`
+  ([chapter 8](08-security-and-hardening.md)).
+
+And two are left as exercises, with their design fully covered in the prose:
 
 - **Networking** — a `veth` pair into a bridge with NAT and port publishing, so the
   container can actually talk to the world ([chapter 7](07-networking.md)).
-- **Capability drop + seccomp** — strip `CAP_SYS_ADMIN` and friends, then install a
-  syscall allowlist so a compromised process can't reach the dangerous kernel surface
-  ([chapter 8](08-security-and-hardening.md)).
-- **OverlayFS layers** — stack a read-only image over a writable upper dir so `run`
-  is instant and disposable, the way real images work ([chapter 6](06-rootfs-and-images.md)).
-- **An image puller** — fetch and unpack an OCI image from a registry (manifest →
-  layers → tarballs) instead of hand-preparing a rootfs ([chapter 9](09-how-docker-really-works.md)).
-- **Rootless mode** — run the whole thing inside a user namespace with UID/GID maps so
-  no `sudo` is required ([chapter 8](08-security-and-hardening.md)).
+- **seccomp + an image puller** — a BPF syscall allowlist (needs libseccomp /
+  `x/sys`), and fetching/unpacking an OCI image from a registry, manifest → layers →
+  tarballs ([chapter 9](09-how-docker-really-works.md)).
 
-Ship two or three of those and you have, genuinely, a tiny container runtime.
+Ship those last two as well and you have, genuinely, a small but complete container runtime.
 
 ---
 
