@@ -32,8 +32,9 @@ Everything referenced across the guide, plus the best of what's out there, organ
 
 | Resource | What it's for |
 |---|---|
-| ⭐ **Ali Elzoheiry (YouTube)** — combo system: https://www.youtube.com/watch?v=Q5xk5PYlQ1k ; Smart Enemy AI playlist: https://www.youtube.com/playlist?list=PLNwKK6OwH7eW1n49TW6-FmiZhqRn97cRy | The best BP series for this genre: combos, damage-info structs, group AI with **attack tokens** (Part 11), EQS strafing (Part 4), boss fights (Parts 20–22). Ch. 6/8/9 follow the same architecture. |
-| **UnrealRPGMastery — Soulslike Combat series** — https://www.youtube.com/watch?v=HWxS-oe0kTo ; full Udemy course: https://www.udemy.com/course/unreal-engine-5-soulslike-combat/ | Soup-to-nuts soulslike melee: stats component, combos, directional dodge, lock-on, hit detection, boss AI |
+| ⭐ **Ali Elzoheiry (YouTube)** — Smart Enemy AI playlist: https://www.youtube.com/playlist?list=PLNwKK6OwH7eW1n49TW6-FmiZhqRn97cRy ; damage system: https://www.youtube.com/watch?v=o3uFXnNxwKE | The best BP series for this genre's combat/AI: damage-info structs, group AI with **attack tokens** (Part 11: https://www.youtube.com/watch?v=tGHjB1Bu8b4), EQS strafing (Part 4), player block/parry/combos (Part 19), boss fights (Parts 20–22: https://www.youtube.com/watch?v=rf-WXW1eI4Q). Ch. 6/8/9 follow the same architecture. |
+| **Unreal University — Attack Combo System** — https://www.youtube.com/watch?v=Q5xk5PYlQ1k | Montage-section combo chain with input buffering — the alternative combo style noted in Ch. 6.1 |
+| **Game Code Mastery (formerly UnrealRPGMastery) — Soulslike Combat series** — https://www.youtube.com/watch?v=HWxS-oe0kTo ; full Udemy course: https://www.udemy.com/course/unreal-engine-5-soulslike-combat/ | Soup-to-nuts soulslike melee: stats component, combos, directional dodge, lock-on, hit detection, boss AI |
 | **Gorka Games — UE5 RPG series #12 (Target Lock & Dodge Roll)** — https://dev.epicgames.com/community/learning/tutorials/JXnb/unreal-engine-5-rpg-tutorial-series-12-target-lock-and-dodge-roll | Free text+video lock-on & roll matching Ch. 4/7 |
 | Epic community — Networked Dash (Root Motion) — https://dev.epicgames.com/community/learning/tutorials/WzoK/unreal-engine-networked-dash-root-motion | The Server→Multicast root-motion montage recipe (our dodge) |
 | Epic community — Dodge Roll with Root Motion — https://dev.epicgames.com/community/learning/tutorials/aVpz/how-to-make-a-dodge-roll-with-root-motion-in-unreal-engine-5 | Root-motion roll setup |
@@ -97,4 +98,4 @@ Everything referenced across the guide, plus the best of what's out there, organ
 
 ---
 
-*A note on link rot: URLs verified July 2026. Epic's dev.epicgames.com slugs are stable; YouTube links less so — search the listed title + author if one dies.*
+*A note on link rot: every URL above was link-checked from an unrestricted network in July 2026 (HTTP 200, and YouTube links verified by title + channel via oEmbed). Four sites block automated checks but confirmed live by other means: fab.com, udemy.com, nexusmods.com (open them in a browser), and remnant2.wiki.gg (page confirmed via its MediaWiki API). If a YouTube link dies later, search the listed title + author.*

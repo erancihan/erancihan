@@ -110,4 +110,4 @@ Diagrams are [Mermaid](https://mermaid.js.org/) and render directly on GitHub.
 
 ---
 
-*Written July 2026 against UE 5.4–5.6. Sources and further reading: [resources.md](resources.md).*
+*Written July 2026 against UE 5.4–5.6; current stable at time of writing is 5.8, and everything here uses core 5.x systems that are unchanged in it. UE6 is announced (May 2026) but years from usable — build on UE5. Sources and further reading: [resources.md](resources.md).*
