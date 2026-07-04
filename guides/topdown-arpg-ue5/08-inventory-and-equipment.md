@@ -88,7 +88,7 @@ Blueprint: AC_Equipment — function Unequip (Slot) → bool
 
 Open `WBP_StatSheet` (C, from Chapter 3), equip a rare, and watch six stats jump at once. That's the pipeline doing in one call what a hand-rolled system does in six bug-prone ones.
 
-> **Multiplayer note:** in single-player, "the client edits its own inventory" is fine. Online, inventory ops and equip validation are two of the five things that must become server-authoritative — the [co-op soulslike guide](../coop-soulslike-ue5/) shows the RPC pattern, and [Chapter 12](12-saving-packaging-cpp.md) lists the rest.
+> **Multiplayer note:** in single-player, "the client edits its own inventory" is fine. Online, inventory ops and equip validation are two of the five things that must become server-authoritative — [Chapter 13](13-coop-multiplayer.md) converts this component's API to Guid-referencing Server RPCs, and the one-mutation-API rule you're building here is what makes that a rename, not a rewrite.
 
 ## 8.4 The weapon drives Attack skills
 

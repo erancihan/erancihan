@@ -105,7 +105,7 @@ Everything in this guide ships as-is — Blueprint carries a solo ARPG all the w
 
 Two practical notes. First, GAS cannot be set up in pure Blueprint — the ASC and AttributeSets are C++-only, so budget a thin C++ layer; the [soulslike guide's Chapter 12](../coop-soulslike-ue5/12-packaging-and-beyond.md) covers that on-ramp in detail. Second, migrate **behind your existing interfaces**: keep `GetStat`, `TryCast`, and the dispatchers as the public surface and swap the guts — UI, AI, and executors never notice.
 
-> **Multiplayer note:** this guide is single-player by design, and bolting replication on afterward is a rewrite, not a patch. If co-op is the goal, the sibling guide's [Chapter 2](../coop-soulslike-ue5/02-multiplayer-foundations.md) and [Chapter 3](../coop-soulslike-ue5/03-sessions-and-joining.md) teach the authority model and session flow. Five things in *this* game that must become server-authoritative, no exceptions: **damage** (the whole Ch 4 pipeline runs on the server), **loot rolls** (`BFL_LootGen` server-side or clients print legendaries), **inventory operations** (add/remove/drop validated server-side), **skill validation** (`TryCast`'s mana/cooldown checks — clients only *request*), and **XP** (awarded by the server's `OnEnemyKilled`, never claimed by clients).
+> **Multiplayer note:** GAS is also the multiplayer endgame — its prediction keys and replicated GameplayEffects are the engine-grade version of what [Chapter 13](13-coop-multiplayer.md) builds by hand. Five things in this game that must become server-authoritative, no exceptions: **damage** (the whole Ch 4 pipeline runs on the server), **loot rolls** (`BFL_LootGen` server-side or clients print legendaries), **inventory operations** (add/remove/drop validated server-side), **skill validation** (`TryCast`'s mana/cooldown checks — clients only *request*), and **XP** (awarded by the server's `OnEnemyKilled`, never claimed by clients). Chapter 13 executes all five.
 
 ## 12.5 Cut scope, then ship
 
@@ -123,7 +123,7 @@ You have every system the genre requires. If you're now pointing this at a real,
 
 What you don't cut: the modifier pipeline, skills-as-data, or the item generator. Those three chapters *are* the game; everything else is dressing on them.
 
-And that's the guide. You built an ARPG the way the studios that define the genre build them — content in tables, one stat pipeline, executors that don't know what they're executing — and you have a packaged build to prove it. The gap between you and a shipped game is no longer systems; it's content, tuning, and the discipline to stop adding chapters of your own. Zip the build, send it to three friends, and watch the first one instinctively hover an item label. **Ship something.**
+And that's the solo game, complete. You built an ARPG the way the studios that define the genre build them — content in tables, one stat pipeline, executors that don't know what they're executing — and you have a packaged build to prove it. The gap between you and a shipped game is no longer systems; it's content, tuning, and the discipline to stop adding chapters of your own. Zip the build, send it to three friends, and watch the first one instinctively hover an item label. **Ship something** — and when those three friends ask to play *together*, [Chapter 13](13-coop-multiplayer.md) is the answer.
 
 ## 12.6 Ship checklist
 
@@ -140,4 +140,4 @@ And that's the guide. You built an ARPG the way the studios that define the genr
 
 ---
 
-*All green? Then you're done reading guides — you're patching a game. Every doc, talk, and repo referenced along the way lives in the [Resources appendix](resources.md).*
+*All green? Then the solo game ships — and one chapter remains: [Chapter 13](13-coop-multiplayer.md) takes it online. Every doc, talk, and repo referenced along the way lives in the [Resources appendix](resources.md).*

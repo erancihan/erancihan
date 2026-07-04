@@ -132,7 +132,7 @@ The damage moment is an anim notify, not a delay node: add `AN_SkillExecute` (pl
 
 > **Pitfall:** capture the cursor at *commit*, not inside the notify. If you re-read it at execute time, a player who flicks the mouse during the windup fires a projectile sideways out of a character who hasn't turned yet. Committed aim also matches how the genre feels: the click *is* the decision.
 
-> **Multiplayer note:** in a networked ARPG, `TryCast` becomes a Server RPC and every check reruns with authority — the [co-op soulslike guide's Chapter 6](../coop-soulslike-ue5/06-melee-combat.md) shows that shape. Single-player means we simply don't care, and the code above stays this short.
+> **Multiplayer note:** in a networked ARPG, `TryCast` becomes a Server RPC and every check reruns with authority — the [co-op soulslike guide's Chapter 6](../coop-soulslike-ue5/06-melee-combat.md) shows that shape, and [Chapter 13](13-coop-multiplayer.md) performs the split. Until then we simply don't care, and the code above stays this short.
 
 ## 5.4 BuildDamagePacket — the build side of Chapter 4
 

@@ -170,7 +170,7 @@ Cache "last non-zero move input" as a Vector in the 2.3 graph (one Set node when
 
 > **Pitfall:** `Launch Character` with XY Override replaces your horizontal velocity but friction eats it fast. If the dash feels like a hiccup instead of a dash, temporarily raise Character Movement → Ground Friction (or set Braking Friction Factor to 0) for the dash window and restore it on the same `DashDuration` timer. Tune until the dash covers ~450–600uu.
 
-> **Multiplayer note:** in single-player, "press key → instant launch" is the whole implementation. Networked, a dash with i-frames needs client prediction and server validation — the [co-op soulslike guide's dodge roll](../coop-soulslike-ue5/04-character-locomotion.md) walks that exact pattern.
+> **Multiplayer note:** in single-player, "press key → instant launch" is the whole implementation. Networked, a dash with i-frames needs client prediction and server validation — the [co-op soulslike guide's dodge roll](../coop-soulslike-ue5/04-character-locomotion.md) walks that exact pattern, and [Chapter 13](13-coop-multiplayer.md) applies it to this dash.
 
 ## 2.8 Test before moving on
 

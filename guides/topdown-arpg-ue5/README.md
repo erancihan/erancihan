@@ -1,10 +1,10 @@
 # Building a Top-Down ARPG in Unreal Engine 5 — A Step-by-Step Guide
 
-A 12-chapter, Blueprint-first implementation guide for a Path of Exile / Diablo-style top-down action RPG — hordes of monsters, data-driven skills, randomly generated loot with affixes, a passive tree, and procedurally stitched zones — with a deliberately arcade-y feel: fast, loud, and generous with feedback. Written to be followed in order.
+A 13-chapter, Blueprint-first implementation guide for a Path of Exile / Diablo-style top-down action RPG — hordes of monsters, data-driven skills, randomly generated loot with affixes, a passive tree, and procedurally stitched zones — with a deliberately arcade-y feel: fast, loud, and generous with feedback. Written to be followed in order.
 
 > **The one rule the whole guide is built on:** *content is data; Blueprints are executors* — and **every number flows through one modifier pipeline**. Every skill, monster, affix, and passive node is a row in a Data Table, and anything that changes a stat (an equipped ring, a passive node, a chill debuff, a monster mod) is the same `F_StatMod` applied to the same component. Get this right in Chapters 3–5 and the rest of the game is content entry.
 
-This guide is **single-player by design**. The ARPG-specific systems — stat math, the skill system, the item generator — are a full guide on their own. If you want online co-op, the sibling [co-op soulslike guide](../coop-soulslike-ue5/) teaches the replication model; [Chapter 12](12-saving-packaging-cpp.md) maps what would have to change here.
+This guide is **single-player first, co-op last**. The ARPG-specific systems — stat math, the skill system, the item generator — are a full guide on their own, so Chapters 1–12 build the game solo (leaving deliberate multiplayer breadcrumbs along the way), and [Chapter 13](13-coop-multiplayer.md) then takes it online as 2–4 player drop-in co-op. The networking *fundamentals* are not re-taught: Chapter 13 leans on the sibling [co-op soulslike guide](../coop-soulslike-ue5/)'s documentation for the authority model and sessions, and spends its pages purely on the ARPG-specific problems (server-side loot rolls, instanced drops, seed-replicated procedural zones, bring-your-own-hero saves).
 
 ---
 
@@ -19,6 +19,7 @@ This guide is **single-player by design**. The ARPG-specific systems — stat ma
 - A town hub, waypoints, seeded procedurally stitched dungeon zones, and an arcade endgame arena
 - The full arcade feedback layer — pooled damage numbers, hit flash, hitstop, loot fountains — *and* the performance work that keeps hordes at 60 fps
 - Save slots, a packaged Windows build, and a mapped migration path to C++/GAS
+- 2–4 player drop-in co-op: server-authoritative skills/damage/loot, instanced drops, monster scaling by player count, shared procedural zones that replicate as a single seed
 
 ## Chapters
 
@@ -35,7 +36,8 @@ This guide is **single-player by design**. The ARPG-specific systems — stat ma
 | 9 | [XP, Levels & the Passive Tree](09-progression-and-passives.md) | XP curve, level-up flow, a 30-node passive tree with keystones, respec |
 | 10 | [Zones, Waypoints & Procedural Maps](10-zones-and-maps.md) | Town hub, zone levels, seeded room-tile dungeons via Level Instances, arena endgame |
 | 11 | [The Arcade Layer](11-arcade-layer.md) | Damage numbers, hit flash, hitstop, loot feel, corpse management — and the horde performance pass |
-| 12 | [Saving, Packaging & the Road to C++/GAS](12-saving-packaging-cpp.md) | Save slots, packaged build, the GAS migration map, multiplayer notes |
+| 12 | [Saving, Packaging & the Road to C++/GAS](12-saving-packaging-cpp.md) | Save slots, packaged build, the GAS migration map |
+| 13 | [Co-op: Taking the ARPG Online](13-coop-multiplayer.md) | The multiplayer retrofit: server-authoritative everything, instanced loot, seed-replicated zones, party play |
 | A | [Resources appendix](resources.md) | Every doc, tutorial, talk, sample repo & plugin, annotated |
 
 ## System dependency map
@@ -60,6 +62,7 @@ flowchart TD
     C9 --> C12[12 Save / ship / C++]
     C10 --> C12
     C11 --> C12
+    C12 --> C13[13 Co-op retrofit]
     style C3 fill:#1e5a8a,color:#fff
     style C5 fill:#1e5a8a,color:#fff
     style C7 fill:#1e5a8a,color:#fff
@@ -91,6 +94,8 @@ gantt
     section Ship it
     Ch 11 Arcade layer + perf         :12, 2
     Ch 12 Save + package              :14, 1
+    section Go online
+    Ch 13 Co-op retrofit              :15, 3
 ```
 
 ## How to read the code examples

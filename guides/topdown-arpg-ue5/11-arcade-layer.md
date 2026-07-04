@@ -74,7 +74,7 @@ Damage-scaled shake means clearing trash whispers and a crit on a Rare thumps �
 
 > **Pitfall:** never reach for `Set Global Time Dilation` here. It slows the whole world including UI animation and any `Delay` node you'd use to end it, and at ARPG attack speeds a global stutter fires several times per second. Per-actor `Set Custom Time Dilation` is the only sane tool; timers (which ignore the victim's dilation) end it reliably.
 
-> **Multiplayer note:** hitstop and shake are local-only cosmetics even in networked games — the sibling guide's [Chapter 5](../coop-soulslike-ue5/05-stats-and-damage.md) shows the replicated version of this exact stack.
+> **Multiplayer note:** hitstop and shake are local-only cosmetics even in networked games — the sibling guide's [Chapter 5](../coop-soulslike-ue5/05-stats-and-damage.md) shows the replicated version of this exact stack, and in [Chapter 13](13-coop-multiplayer.md) this whole layer survives untouched — it's the one chapter co-op doesn't rewrite.
 
 ## 11.4 Dying loudly, cleaning up quietly
 

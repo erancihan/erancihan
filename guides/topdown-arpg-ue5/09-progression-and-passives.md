@@ -55,7 +55,7 @@ XP arrives through the `OnEnemyKilled(EnemyDef, Rarity, Level, Location)` dispat
 
 The HUD XP bar is a plain ProgressBar in `WBP_HUD` bound to `OnXPChanged` (event-driven, not a Tick binding — same rule as every widget in this guide). `AC_Equipment` already reads `Level` for its `ReqLevel` gate ([Chapter 8](08-inventory-and-equipment.md)); nothing else changes there.
 
-> **Multiplayer note:** in co-op, XP/level live on PlayerState, not a pawn component — see the soulslike guide's [souls chapter](../coop-soulslike-ue5/10-bonfires-death-souls.md) for why. Single-player gets to keep it simple.
+> **Multiplayer note:** in co-op, XP/level live on PlayerState, not a pawn component — see the soulslike guide's [souls chapter](../coop-soulslike-ue5/10-bonfires-death-souls.md) for why, and [Chapter 13](13-coop-multiplayer.md) for the party-HUD payoff. Until then, single-player gets to keep it simple.
 
 ## 9.2 No automatic stat growth — on purpose
 

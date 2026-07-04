@@ -215,7 +215,7 @@ Every roll in this chapter — base, rarity, affix, tier, value, drop count, tos
 
 Why bother in single-player? Because a seeded stream makes loot **reproducible**: the same seed produces the same drops, which turns "a rare dropped with a broken affix" from an unreproducible ghost into a bug you can replay; it lets Chapter 10 regenerate a zone's layout *and* its loot identically from one saved seed; and Chapter 12 saves a single int instead of world state. Determinism is a property you can only buy early — retrofitting it means auditing every random node you ever placed.
 
-> **Multiplayer note:** in co-op, loot rolls are one of the five things that must become server-authoritative — the server rolls, clients receive results. The sibling guide's replication model ([co-op soulslike, Ch. 2–3](../coop-soulslike-ue5/)) shows the shape; [Chapter 12](12-saving-packaging-cpp.md) lists the rest.
+> **Multiplayer note:** in co-op, loot rolls are one of the five things that must become server-authoritative — the server rolls, clients receive results. The sibling guide's replication model ([co-op soulslike, Ch. 2–3](../coop-soulslike-ue5/)) shows the shape; [Chapter 13](13-coop-multiplayer.md) does the move — including per-player instanced drops built on exactly these streams.
 
 ## 7.10 Test before moving on
 

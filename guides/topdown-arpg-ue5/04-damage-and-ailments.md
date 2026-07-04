@@ -91,7 +91,7 @@ Blueprint: AC_Stats — function ReceiveDamage (Packet: F_DamagePacket)
 
 **Why crit multiplies after mitigation.** It's one multiplier on one number, instead of inflating four per-type values before armour gets to distort them non-linearly. Same final feel, half the graph — and the damage number Ch 11 shows is exactly `Mitigated`.
 
-> **Multiplayer note:** in single-player, whoever calls `ReceiveDamage` is fine. In co-op, this entire function must run server-side and `CurrentLife` becomes replicated state — the [co-op soulslike guide's damage chapter](../coop-soulslike-ue5/05-stats-and-damage.md) is this exact pipeline rebuilt with authority checks, if you're curious what that costs.
+> **Multiplayer note:** in single-player, whoever calls `ReceiveDamage` is fine. In co-op, this entire function must run server-side and `CurrentLife` becomes replicated state — the [co-op soulslike guide's damage chapter](../coop-soulslike-ue5/05-stats-and-damage.md) is this exact pipeline rebuilt with authority checks, and [Chapter 13](13-coop-multiplayer.md) makes that move here (it costs one Authority branch — the single-entry-point design is why).
 
 ## 4.4 `AC_StatusEffects`: ailments are timed stat mods
 

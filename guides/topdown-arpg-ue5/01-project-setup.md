@@ -89,7 +89,7 @@ Wire everything up:
 - **`BP_ARPGGameMode` Class Defaults:** Default Pawn Class = `BP_Hero`, Player Controller Class = `BP_ARPGPlayerController`.
 - In each map's **World Settings**, leave GameMode Override empty so the project default applies.
 
-> **Multiplayer note:** no GameState, no PlayerState, no replication flags — this guide is single-player by design, and the framework is deliberately this small. If you want to see what the co-op version of this exact layer looks like, read the [co-op soulslike guide](../coop-soulslike-ue5/) Chapters 1–3; [Chapter 12](12-saving-packaging-cpp.md) maps what would have to change here.
+> **Multiplayer note:** no GameState, no PlayerState, no replication flags — Chapters 1–12 build the game single-player, and the framework is deliberately this small. [Chapter 13](13-coop-multiplayer.md) retrofits co-op onto exactly this layer, leaning on the [co-op soulslike guide](../coop-soulslike-ue5/) Chapters 1–3 for the fundamentals.
 
 ## 1.5 Enhanced Input: the full action set, day one
 

@@ -158,7 +158,7 @@ Blueprint: BP_ArenaDirector — wave loop
 
 Ten waves, escalating rarity, and a loot fountain at the end — it exercises every system in the guide in one room, and the fountain is [Chapter 11](11-arcade-layer.md)'s physics-toss feel at firehose volume. Many shipped arcade ARPGs are, honestly, this loop with art.
 
-> **Multiplayer note:** `Open Level` transitions and a GameInstance courier are single-player luxuries — in co-op, travel becomes server-driven seamless travel or session reconnects, and seeds must replicate before generation. The [co-op soulslike guide](../coop-soulslike-ue5/) Chapter 2–3 replication model is where that thinking starts.
+> **Multiplayer note:** `Open Level` transitions and a GameInstance courier are single-player luxuries — in co-op, travel becomes server-driven seamless travel, and seeds must replicate before generation. The [co-op soulslike guide](../coop-soulslike-ue5/) Chapter 2–3 replication model is where that thinking starts, and [Chapter 13](13-coop-multiplayer.md) cashes in this chapter's determinism: the whole dungeon replicates as one seed.
 
 ## 10.8 Test before moving on
 

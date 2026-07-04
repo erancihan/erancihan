@@ -13,5 +13,5 @@ Long-form implementation guides and tutorials I keep for my own learning.
 | Guide | Description |
 |---|---|
 | [coop-soulslike-ue5](coop-soulslike-ue5/) | A 12-chapter, Blueprint-first guide to building a 2–4 player online co-op soulslike in Unreal Engine 5 |
-| [topdown-arpg-ue5](topdown-arpg-ue5/) | A 12-chapter, Blueprint-first guide to building a Path of Exile / Diablo-style top-down ARPG in Unreal Engine 5 — data-driven skills, affix-based loot, hordes, passive tree |
+| [topdown-arpg-ue5](topdown-arpg-ue5/) | A 13-chapter, Blueprint-first guide to building a Path of Exile / Diablo-style top-down ARPG in Unreal Engine 5 — data-driven skills, affix-based loot, hordes, passive tree, and a closing co-op multiplayer retrofit |
 | [container-from-scratch](container-from-scratch/) | A 13-chapter guide to how OS-level containerization works, building a Docker-style runtime in Go from Linux primitives — with 10 runnable steps, plus how macOS, Windows & AppImage isolation compare |

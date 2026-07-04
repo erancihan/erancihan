@@ -86,6 +86,13 @@ Everything referenced across the guide, plus the best of what's out there, organ
 | Lyra Starter Game — see the ability-systems table above | Modern architecture reference once you speak GAS |
 | Blueprint sharing — https://blueprintue.com/ | Paste-bin for BP graphs (search "inventory", "top down", "projectile"…) |
 
+## Co-op & networking (Chapter 13)
+
+| Resource | What it's for |
+|---|---|
+| ⭐ The [co-op soulslike guide's resources appendix](../coop-soulslike-ue5/resources.md) — Multiplayer & replication + Sessions sections | Chapter 13 deliberately re-teaches nothing: the Network Compendium, Epic's replication/RPC docs, WizardCell, Vorixo, and the Advanced Sessions plugin are all annotated and link-checked there |
+| Epic docs — Travelling in Multiplayer — https://dev.epicgames.com/documentation/en-us/unreal-engine/travelling-in-multiplayer-in-unreal-engine | `ServerTravel` vs `Open Level` and seamless travel — the Ch. 13.8 zone-travel change |
+
 ## Books
 
 | Book | Notes |

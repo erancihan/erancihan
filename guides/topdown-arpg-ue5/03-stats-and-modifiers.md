@@ -182,7 +182,7 @@ Blueprint: AC_Stats — function EvaluateStat (Stat, Base)   (Pure)
 
 Sanity-check it against 3.1: base 100, mods `(Flat 20)`, `(Increased 40)`, `(Increased 20)`, `(More 30)` → **249.6**. If you get 262.08 you multiplied the increases; if 228 you added the more.
 
-> **Multiplayer note:** in single-player, "who computes stats" has one answer. If you ever go online, this entire component must become server-authoritative — the sibling guide's [Chapter 2](../coop-soulslike-ue5/02-multiplayer-foundations.md) shows the model, and [Chapter 12](12-saving-packaging-cpp.md) notes that GAS's `FAggregator` implements literally this Flat/Increased/More pipeline for you.
+> **Multiplayer note:** in single-player, "who computes stats" has one answer. When we go online in [Chapter 13](13-coop-multiplayer.md), this entire component becomes server-authoritative — the sibling guide's [Chapter 2](../coop-soulslike-ue5/02-multiplayer-foundations.md) shows the model, and [Chapter 12](12-saving-packaging-cpp.md) notes that GAS's `FAggregator` implements literally this Flat/Increased/More pipeline for you.
 
 ## 3.6 Pools vs computed stats
 
