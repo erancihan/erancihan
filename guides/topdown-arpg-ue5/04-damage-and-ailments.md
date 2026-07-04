@@ -36,7 +36,7 @@ Blueprint: AC_SkillCaster — function BuildDamagePacket (SkillRow) → F_Damage
 [For Each: SkillRow.DamageMin/Max per E_DamageType]
  → [Random Float in Range (Min, Max)]                    ◄ the roll
  → [Apply AC_Stats Damage<Type> mods via the Ch 3 formula]   ◄ (Base+Flat) × (1+ΣInc) × Π(1+More)
-[Branch: Random Float < GetStat(CritChance)]
+[Branch: Random Float in Range (0, 100) < GetStat(CritChance)]   ◄ CritChance is percent
  → [Set bIsCrit]                                         ◄ ONE roll per use — every hit of this
                                                            cast crits or none do (PoE-style; arcade-
                                                            simple, and AoE crits feel amazing)

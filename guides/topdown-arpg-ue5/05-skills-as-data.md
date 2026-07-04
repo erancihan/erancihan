@@ -95,20 +95,21 @@ Blueprint: AC_SkillCaster — function TryCast (Slot)
 [Branch: bCasting OR GetCooldownRemaining(Slot) > 0 OR CurrentMana < Skill.ManaCost]
    true → return                             ◄ fail silently — no error spam;
                                                the bar grays/sweeps the slot
-[AC_Stats → SpendMana (Skill.ManaCost)]      ◄ spend at COMMIT, not on hit —
+[AC_Stats → ModifyMana (−Skill.ManaCost)]    ◄ spend at COMMIT, not on hit —
 [StartCooldown (Slot, Skill.CooldownS)]        refund logic is a bug farm
 [Set CurrentTargetLoc = BP_ARPGPlayerController → GetCursorWorldLocation()]
+                                             ◄ Chapter 6 adds an AI aim override here
 [Face CurrentTargetLoc]                      ◄ the RInterp yaw from Chapter 2
 [Set bCasting = true]
 [Rate = (Montage Play Length / Skill.BaseUseTime)
-        × GetStat(Attack tag ? AttackSpeed : CastSpeed) / 100]
+        × GetStat(Attack tag ? AttackSpeed : CastSpeed)]   ◄ speed stats are 1.0-based
 [Play Anim Montage (Skill.Montage, Rate)]    ◄ any-length montage compresses to
- → [On Completed / Interrupted]                BaseUseTime at 100% speed
+ → [On Completed / Interrupted]                BaseUseTime at speed stat 1.0
      → [Set bCasting = false]
 [Call OnCastCommitted (Slot, Skill.Id)]
 
 [StartCooldown (Slot, CooldownS)]
- → [Effective = CooldownS / (GetStat(CooldownRate) / 100)]
+ → [Effective = CooldownS / GetStat(CooldownRate)]   ◄ CooldownRate is 1.0-based
  → [Set Timer by Event (Effective, no loop)] → [Cooldowns.Add(Slot, Handle)]
 
 [GetCooldownRemaining (Slot) → float]        ◄ pure; UI reads this every frame
@@ -148,7 +149,8 @@ Blueprint: AC_SkillCaster — function BuildDamagePacket (Skill) → F_DamagePac
  → [Roll ×= 1 + Skill.DamagePerLevelPct/100 × (CasterLevel − 1)]
  → [Packet.DamageByType.Add (Type, Roll)]
 [Packet.bIsCrit        = bCurrentCastCrit]
-[Packet.CritMultiplier = GetStat(CritMulti) / 100]
+[Packet.CritMultiplier = GetStat(CritMulti)]         ◄ stays in percent (150 = ×1.5);
+                                                       ReceiveDamage divides by 100
 [Packet.AilmentChance  = Skill.AilmentChance]
 [Packet.SourceActor    = Owner] ; [Packet.SourceLevel = CasterLevel]
 [Packet.SkillTags      = Skill.Tags]
@@ -194,7 +196,9 @@ Every executor is spawned with `Caster`, `SkillRow`, `TargetLoc` exposed on spaw
 [Event BeginPlay]
  → [Loc = TargetLoc clamped to ExecutorParams.Range from Caster]
       ◄ Range 0 = cast on self, skip the telegraph (that's FrostNova)
- → [FinalRadius = ExecutorParams.Radius × (1 + Caster.GetStat(AreaOfEffect)/100)]
+ → [FinalRadius = ExecutorParams.Radius × Caster.GetStat(AreaOfEffect)]
+      ◄ AreaOfEffect is a 1.0-based multiplier; "increased AoE" mods already
+        multiplied into it by the Chapter 3 pipeline
  → [Spawn decal (M_Telegraph, size = FinalRadius)] → [Delay (TelegraphTime)]
       ◄ TelegraphTime: class default 0.6 s; 0 when self-cast
  → [Sphere Overlap Actors (Pawn, Loc, FinalRadius)]
