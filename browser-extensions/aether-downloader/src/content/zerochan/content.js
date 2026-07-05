@@ -1,5 +1,15 @@
 // AetherDownloader — Zerochan Content Script
-// Overrides download buttons and adds hover preview
+// Adds download buttons + hover preview on Zerochan listings and detail pages.
+//
+// Image-URL handling follows how established tools (gallery-dl, imgbrd-grabber)
+// resolve Zerochan originals:
+//   - Thumbnails come from s1..s4.zerochan.net in the 240 (small) / 600 (sample)
+//     buckets, extension .jpg/.png/.webp.
+//   - Full images come from static.zerochan.net in the `full` bucket, either
+//     name-embedded (static.zerochan.net/<Name>.full.<id>.<ext>) or hash-path
+//     (static.zerochan.net/full/<xx>/<yy>/<id>.<ext>).
+//   - A thumbnail URL can be rewritten to its full URL by swapping the host and
+//     the size bucket (imgbrd-grabber's approach).
 
 import '../../styles/input.css';
 import { createDownloadFAB } from '../common/download-button.js';
@@ -8,31 +18,101 @@ import { initPreview } from '../common/preview.js';
 import { debounceLeading, debounceTrailing } from '../common/debounce.js';
 import { getSettings, sanitizeSubfolder } from '../common/settings.js';
 
-// ─── Utilities ──────────────────────────────────────────────────
+// ─── URL Helpers ────────────────────────────────────────────────
+
+/** Strip characters illegal in filenames/folders. */
+function sanitizeName(str) {
+  return String(str || '').trim().replace(/[/\\:*?"<>|]/g, '_');
+}
 
 /**
- * Extract the character name from the page DOM.
- * Zerochan pages typically have breadcrumbs or header with the character name.
+ * Rewrite a Zerochan thumbnail URL to its full-resolution original, matching
+ * imgbrd-grabber's transform: s{n}.zerochan → static.zerochan, and the
+ * 240/600 size bucket → full (both the name-embedded `.240.` and the
+ * hash-path `/240/` layouts).
+ * @param {string} thumbUrl
+ * @returns {string|null}
+ */
+function thumbToFullUrl(thumbUrl) {
+  if (!thumbUrl) return null;
+  return thumbUrl
+    .replace(/\/s\d+\.zerochan\.net/, '/static.zerochan.net')
+    .replace('.240.', '.full.')
+    .replace('.600.', '.full.')
+    .replace('/240/', '/full/')
+    .replace('/600/', '/full/');
+}
+
+/**
+ * Rewrite a Zerochan thumbnail URL to the 600px "sample" bucket, used for a
+ * fast hover preview that upgrades to the full image asynchronously.
+ * @param {string} thumbUrl
+ * @returns {string|null}
+ */
+function thumbToSampleUrl(thumbUrl) {
+  if (!thumbUrl) return null;
+  return thumbUrl.replace('.240.', '.600.').replace('/240/', '/600/');
+}
+
+/** Read the thumbnail image URL from a listing element (handles lazy-load). */
+function getThumbnailSrc(el) {
+  const img = el.querySelector('img');
+  if (!img) return null;
+  return (img.dataset && img.dataset.src) || img.src || null;
+}
+
+/**
+ * Resolve the full-resolution image URL for a listing thumbnail element.
+ * Prefers an explicit static.zerochan.net anchor when the markup exposes one,
+ * otherwise reconstructs it from the thumbnail image (the reliable path — a
+ * static anchor is not always present in listing markup).
+ * @param {HTMLElement} el
+ * @returns {string|null}
+ */
+function getListingImageUrl(el) {
+  const staticLink = el.querySelector('a[href*="static.zerochan.net"]');
+  if (
+    staticLink &&
+    staticLink.href &&
+    !/[/.](240|600)[/.]/.test(staticLink.href)
+  ) {
+    return staticLink.href;
+  }
+  return thumbToFullUrl(getThumbnailSrc(el));
+}
+
+// ─── Page Metadata ──────────────────────────────────────────────
+
+/**
+ * Extract the primary tag/character name for folder organization.
+ * The last breadcrumb crumb is the most specific tag; the container is
+ * <nav class="breadcrumbs">. Reading all crumbs and taking the last avoids the
+ * `:last-of-type` pitfall when crumbs are wrapped per-item.
  * @returns {string}
  */
 function extractCharacterName() {
-  // Try the breadcrumb navigation first
-  const breadcrumb = document.querySelector('#breadcrumbs a:last-of-type');
-  if (breadcrumb && breadcrumb.textContent) {
-    return breadcrumb.textContent.trim().replace(/[/\\:*?"<>|]/g, '_');
+  const crumbs = document.querySelectorAll(
+    'nav.breadcrumbs a, .breadcrumbs a, #breadcrumbs a'
+  );
+  if (crumbs.length) {
+    const last = crumbs[crumbs.length - 1];
+    if (last && last.textContent && last.textContent.trim()) {
+      return sanitizeName(last.textContent);
+    }
   }
 
-  // Try the main tag/title
-  const title = document.querySelector('h1, #header h1, .tag-name');
-  if (title && title.textContent) {
-    return title.textContent.trim().replace(/[/\\:*?"<>|]/g, '_');
+  const title = document.querySelector('#content h1, h1, .tag-name');
+  if (title && title.textContent && title.textContent.trim()) {
+    return sanitizeName(title.textContent);
   }
 
   return 'Unknown';
 }
 
 /**
- * Extract the original filename from a URL.
+ * Extract a filesystem-safe filename from an image URL. Zerochan full URLs
+ * percent-encode special characters (e.g. Perth.%28Kantai.Collection%29...),
+ * so decode before use.
  * @param {string} url
  * @returns {string}
  */
@@ -40,7 +120,8 @@ function extractFilename(url) {
   try {
     const urlObj = new URL(url);
     const pathParts = urlObj.pathname.split('/');
-    return pathParts[pathParts.length - 1] || 'image.jpg';
+    const last = pathParts[pathParts.length - 1] || 'image.jpg';
+    return sanitizeName(decodeURIComponent(last)) || 'image.jpg';
   } catch {
     return 'image.jpg';
   }
@@ -48,25 +129,43 @@ function extractFilename(url) {
 
 /**
  * Get the full-resolution image URL from a Zerochan detail page.
+ * The full URL lives in the anchor inside <div id="large"> (also exposed as
+ * a.download-button and as JSON-LD contentUrl).
  * @returns {string|null}
  */
 function getFullImageUrl() {
-  // Prefer an explicit full-resolution link
-  // (static.zerochan.net/<Name>.full.<id>.<ext>) over the on-page <img>,
-  // which may be a scaled version.
-  const downloadLink = document.querySelector('a[href*="static.zerochan.net"], a[download]');
-  if (downloadLink && downloadLink.href) {
-    return downloadLink.href;
+  // 1) Anchor inside <div id="large"> / the download button → full static URL.
+  const largeLink = document.querySelector('#large a[href], a.download-button[href]');
+  if (largeLink && largeLink.href) return largeLink.href;
+
+  // 2) JSON-LD contentUrl (the path maintained tools prefer).
+  const ld = document.querySelector('script[type="application/ld+json"]');
+  if (ld && ld.textContent) {
+    try {
+      const data = JSON.parse(ld.textContent);
+      let contentUrl = data && data.contentUrl;
+      if (!contentUrl && data && Array.isArray(data['@graph'])) {
+        const node = data['@graph'].find((g) => g && g.contentUrl);
+        if (node) contentUrl = node.contentUrl;
+      }
+      if (contentUrl) return contentUrl;
+    } catch {
+      /* malformed JSON-LD — fall through */
+    }
   }
 
-  // Fall back to the large detail image.
+  // 3) Any explicit static.zerochan.net link.
+  const staticLink = document.querySelector('a[href*="static.zerochan.net"], a[download]');
+  if (staticLink && staticLink.href) return staticLink.href;
+
+  // 4) Last resort: the large <img> src (may be a scaled version).
   const largeImg = document.querySelector('#large img, .preview img');
-  if (largeImg && largeImg.src) {
-    return largeImg.src;
-  }
+  if (largeImg && largeImg.src) return largeImg.src;
 
   return null;
 }
+
+// ─── Download ───────────────────────────────────────────────────
 
 /**
  * Download a Zerochan image into the configured subfolder, organized by
@@ -90,31 +189,56 @@ function downloadZerochanImage(url) {
 
 // ─── Download Button Injection ──────────────────────────────────
 
+const THUMB_INJECTED_ATTR = 'data-aether-injected';
+
 /**
- * Inject download buttons on the top-left corner of each thumbnail.
- * Does NOT modify Zerochan's native download links.
+ * Collect the thumbnail list items on the current page. Prefers the precise
+ * `#thumbs > li` container (Zerochan's listing grid) and falls back to
+ * `li[data-id]` so we don't arm previews/buttons on unrelated list items.
+ * @returns {HTMLElement[]}
+ */
+function getThumbnailItems() {
+  const scoped = document.querySelectorAll('#thumbs > li');
+  if (scoped.length) return Array.from(scoped);
+  return Array.from(document.querySelectorAll('li[data-id]'));
+}
+
+/** Does this listing item link to a numeric detail page and hold a thumbnail? */
+function isThumbnailItem(li) {
+  const img = li.querySelector('img');
+  if (!img) return false;
+  const link = li.querySelector('a[href]');
+  if (!link) return false;
+  try {
+    return /^\/\d+/.test(new URL(link.href, window.location.href).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Inject a download button on each thumbnail. Derives the full-resolution URL
+ * from the thumbnail image, so it works even when the listing markup has no
+ * explicit static.zerochan.net anchor.
  */
 function injectDownloadButtons() {
-  // Each thumbnail is an <li> with data-id, containing a <div style="position: relative">
-  const items = document.querySelectorAll('li[data-id]');
+  for (const li of getThumbnailItems()) {
+    if (li.getAttribute(THUMB_INJECTED_ATTR)) continue;
+    if (!isThumbnailItem(li)) continue;
 
-  for (const li of items) {
-    // Skip if already injected
-    if (li.dataset.aetherInjected) continue;
-    li.dataset.aetherInjected = 'true';
+    const url = getListingImageUrl(li);
+    if (!url) continue;
 
-    const container = li.querySelector('div[style*="position"]') || li.querySelector('div');
-    if (!container) continue;
+    li.setAttribute(THUMB_INJECTED_ATTR, 'true');
 
-    // Find the download URL from the existing download link
-    const downloadLink = li.querySelector('a[href*="static.zerochan.net"], a[href*="s1.zerochan.net"], a[href*="s2.zerochan.net"], a[href*="s3.zerochan.net"], a[href*="s4.zerochan.net"]');
-    if (!downloadLink) continue;
+    // Position the button over the thumbnail's link (or the item itself).
+    const container = li.querySelector('a[href]') || li;
+    const cs = window.getComputedStyle(container);
+    if (cs.position === 'static') container.style.position = 'relative';
 
-    const url = downloadLink.href;
-
-    // Create overlay button
     const btn = document.createElement('button');
     btn.setAttribute('type', 'button');
+    btn.setAttribute('title', 'Download with Aether');
     btn.textContent = '⬇';
     btn.style.cssText = [
       'position:absolute',
@@ -137,16 +261,14 @@ function injectDownloadButtons() {
       'transition:opacity 0.15s ease',
     ].join(';');
 
-    // Show on hover
-    container.addEventListener('mouseenter', () => {
+    li.addEventListener('mouseenter', () => {
       btn.style.opacity = '1';
     });
-    container.addEventListener('mouseleave', () => {
+    li.addEventListener('mouseleave', () => {
       btn.style.opacity = '0';
     });
 
     const handleDownload = debounceLeading(() => downloadZerochanImage(url));
-
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -160,13 +282,13 @@ function injectDownloadButtons() {
 // ─── Detail Page FAB ────────────────────────────────────────────
 
 /**
- * Check if we're on a detail page (has a large image).
- * Zerochan detail pages live at /<numericId>; listing/tag/search pages do not,
- * so gate on the URL to avoid matching the first thumbnail in a grid.
+ * Check if we're on a detail page. Zerochan detail pages live at /<numericId>
+ * and render the image inside <div id="large">; gating on the URL avoids
+ * matching the first thumbnail on a listing grid.
  */
 function isDetailPage() {
   if (!/^\/\d+$/.test(window.location.pathname)) return false;
-  return !!document.querySelector('#large img, .preview img');
+  return !!document.querySelector('#large');
 }
 
 function setupDetailPageFAB() {
@@ -186,61 +308,53 @@ function setupDetailPageFAB() {
 /** @type {import('../common/preview.js').PreviewAdapter} */
 const zerochanAdapter = {
   getImageUrl(el) {
-    // The full-size URL lives in the download link inside the same <li>
-    // e.g. <a href="https://static.zerochan.net/Burnice.White.full.4692746.jpg">
-    const downloadLink = el.querySelector(
-      'a[href*="static.zerochan.net"], a[href*="s1.zerochan.net"], a[href*="s2.zerochan.net"], a[href*="s3.zerochan.net"], a[href*="s4.zerochan.net"]'
-    );
-    if (downloadLink && downloadLink.href && !downloadLink.href.includes('/240/')) {
-      return downloadLink.href;
-    }
-
-    // Fallback: try to construct from the thumbnail img
-    const img = el.querySelector('img');
-    if (img) {
-      const src = img.src || img.dataset.src;
-      if (src) {
-        // Thumbnail: s3.zerochan.net/240/{xx}/{xx}/{id}.avif
-        // Try to build full URL (won't have the name, but worth trying)
-        return src.replace(/\.avif$/, '.jpg');
-      }
-    }
-    return null;
+    // Medium (600px) sample for a fast hover preview.
+    return thumbToSampleUrl(getThumbnailSrc(el));
   },
 
   getAllImageUrls(el) {
-    // Zerochan is single-image, so return array with one URL
+    // Zerochan is single-image, so return an array with one URL.
     const url = this.getImageUrl(el);
     return url ? [url] : [];
   },
 
+  async getOriginalImageUrls(el) {
+    // Upgrade the preview to the full-resolution original.
+    const full = getListingImageUrl(el);
+    return full ? [full] : [];
+  },
+
   getWorkId(el) {
-    // <li data-id="4692746"> or link href
-    if (el.dataset && el.dataset.id) return el.dataset.id;
-    const link = el.querySelector('a[href*="zerochan.net/"]') || el.closest('a[href*="zerochan.net/"]');
+    // Prefer the numeric id from the detail-page link; fall back to data-id.
+    const link = el.querySelector('a[href]');
     if (link) {
-      const match = link.href.match(/zerochan\.net\/(\d+)/);
-      return match ? match[1] : null;
+      try {
+        const m = new URL(link.href, window.location.href).pathname.match(/^\/(\d+)/);
+        if (m) return m[1];
+      } catch {
+        /* ignore */
+      }
     }
+    if (el.dataset && el.dataset.id) return el.dataset.id;
     return null;
   },
 
   download(el) {
-    const url = this.getImageUrl(el);
+    const url = getListingImageUrl(el);
     if (url) downloadZerochanImage(url);
   },
 
   getWorkMeta(el) {
-    // The img title contains dimensions, e.g. "2649✕3808 3301kb jpg\nOuichi\nUploaded by ..."
+    // The img title holds dimensions + size + type, e.g. "2649x3808 3301 KB jpg".
     const img = el.querySelector('img');
     if (img) {
       const title = img.getAttribute('title') || '';
-      const match = title.match(/(\d+)\s*[×✕x]\s*(\d+)\s+(\d+)kb\s+(\w+)/i);
+      const match = title.match(/(\d+)\s*[×✕x]\s*(\d+)\s+([\d.]+\s*[kmg]?b)\s+(\w+)/i);
       if (match) {
         return {
           width: parseInt(match[1], 10),
           height: parseInt(match[2], 10),
-          fileSize: match[3] + 'kb',
+          fileSize: match[3].replace(/\s+/g, ''),
           format: match[4],
         };
       }
@@ -258,9 +372,8 @@ function init() {
   // Set up FAB on detail pages
   setupDetailPageFAB();
 
-  // Initialize preview on thumbnail listings
-  // Common thumbnail selectors on Zerochan
-  initPreview(zerochanAdapter, 'li, .thumbnail, [data-id]');
+  // Initialize preview on thumbnail listings (scoped to the grid items).
+  initPreview(zerochanAdapter, '#thumbs > li, li[data-id]');
 
   // Re-inject after dynamic content loads. Debounced so infinite-scroll
   // listings don't re-scan the whole document on every mutation batch.
