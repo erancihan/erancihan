@@ -3,6 +3,12 @@
   "name": "AetherDownloader",
   "version": "1.0.0",
   "description": "Download images from Pixiv and Zerochan with hover previews and a premium UI.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "aether-downloader@erancihan",
+      "strict_min_version": "109.0"
+    }
+  },
   "icons": {
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
@@ -10,7 +16,6 @@
   "permissions": [
     "downloads",
     "storage",
-    "activeTab",
     "webRequest",
     "webRequestBlocking"
   ],

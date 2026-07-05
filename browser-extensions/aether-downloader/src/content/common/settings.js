@@ -1,0 +1,82 @@
+// AetherDownloader — Shared settings cache for content scripts
+// Reads aetherSettings from storage once, keeps a live copy in sync via
+// storage.onChanged, and exposes it synchronously to callers.
+
+const DEFAULTS = {
+  pixivSubfolder: 'pixiv',
+  zerochanSubfolder: 'zerochan',
+  previewEnabled: true,
+  previewDelay: 400,
+  previewMaxHeight: 85,
+  previewMaxWidth: 50,
+};
+
+let cache = { ...DEFAULTS };
+const listeners = new Set();
+
+/** Reload settings from storage into the cache and notify subscribers. */
+async function refresh() {
+  try {
+    const data = await browser.storage.local.get('aetherSettings');
+    cache = { ...DEFAULTS, ...(data.aetherSettings || {}) };
+  } catch {
+    cache = { ...DEFAULTS };
+  }
+  for (const cb of listeners) {
+    try {
+      cb(cache);
+    } catch {
+      /* ignore listener errors */
+    }
+  }
+}
+
+// Keep the cache fresh when the popup saves new settings (so already-open
+// tabs pick up changes without a reload).
+try {
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.aetherSettings) refresh();
+  });
+} catch {
+  /* storage.onChanged unavailable — fall back to load-once */
+}
+
+// Kick off the initial load immediately.
+const ready = refresh();
+
+/** Synchronous access to the current settings (defaults until first load). */
+export function getSettings() {
+  return cache;
+}
+
+/** Await the first settings load. */
+export function settingsReady() {
+  return ready;
+}
+
+/**
+ * Subscribe to settings changes.
+ * @param {(settings: object) => void} cb
+ * @returns {() => void} Unsubscribe function
+ */
+export function onSettingsChange(cb) {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+
+/**
+ * Sanitize a user-provided subfolder value into a safe relative path.
+ * Strips characters illegal in filenames, collapses '..', and trims
+ * leading/trailing slashes. Falls back to `fallback` when empty.
+ * @param {string} value
+ * @param {string} fallback
+ * @returns {string}
+ */
+export function sanitizeSubfolder(value, fallback) {
+  const cleaned = String(value == null ? '' : value)
+    .replace(/[:*?"<>|\\]/g, '_')
+    .replace(/\.\.+/g, '_')
+    .replace(/^[/\s]+|[/\s]+$/g, '')
+    .trim();
+  return cleaned || fallback;
+}

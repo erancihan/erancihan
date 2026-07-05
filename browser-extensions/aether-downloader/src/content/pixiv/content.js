@@ -5,7 +5,8 @@ import '../../styles/input.css';
 import { createDownloadFAB } from '../common/download-button.js';
 import { showToast } from '../common/toast.js';
 import { initPreview } from '../common/preview.js';
-import { debounceLeading } from '../common/debounce.js';
+import { debounceLeading, debounceTrailing } from '../common/debounce.js';
+import { getSettings, sanitizeSubfolder } from '../common/settings.js';
 
 // ─── Pixiv Data Extraction ──────────────────────────────────────
 
@@ -102,6 +103,61 @@ async function fetchPageUrls(artworkId) {
 }
 
 /**
+ * Fetch ugoira (animated work) metadata: the frames zip URL + per-frame delays.
+ * @param {string} artworkId
+ * @returns {Promise<object|null>} { src, originalSrc, mime_type, frames:[{file,delay}] }
+ */
+async function fetchUgoiraMeta(artworkId) {
+  try {
+    const response = await fetch(`https://www.pixiv.net/ajax/illust/${artworkId}/ugoira_meta`, {
+      credentials: 'include',
+    });
+    if (!response.ok) return null;
+    const json = await response.json();
+    if (json.error || !json.body) return null;
+    return json.body;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Download an ugoira (animated work). Ugoira are served as a ZIP of frame
+ * images plus per-frame delays — not a normal image — so we download the
+ * full-resolution frames ZIP and save the frame timings alongside it, from
+ * which the animation (GIF/APNG/WebM) can later be reconstructed.
+ * @param {string} artworkId
+ * @param {object} artwork - Artwork data (for metadata sidecar)
+ * @param {string} folder - Download folder path
+ */
+async function downloadUgoira(artworkId, artwork, folder) {
+  const meta = await fetchUgoiraMeta(artworkId);
+  const zipUrl = meta && (meta.originalSrc || meta.src);
+  if (!zipUrl) {
+    showToast('Could not load ugoira data', 'error');
+    return;
+  }
+
+  const ext = zipUrl.split('.').pop() || 'zip';
+  showToast('Downloading ugoira (animation frames)...', 'info');
+
+  browser.runtime.sendMessage({
+    action: 'download',
+    url: zipUrl,
+    filename: `${folder}/${artworkId}_ugoira.${ext}`,
+  });
+
+  // Persist the frame timings so the animation can be reconstructed.
+  browser.runtime.sendMessage({
+    action: 'saveText',
+    content: JSON.stringify({ mime_type: meta.mime_type, frames: meta.frames }, null, 2),
+    filename: `${folder}/${artworkId}_ugoira_frames.json`,
+  });
+
+  saveArtworkMeta(artwork, folder);
+}
+
+/**
  * Download all pages of an artwork by ID.
  * @param {string} artworkId
  */
@@ -121,7 +177,16 @@ async function downloadArtworkById(artworkId) {
   const userName = sanitizeForFilename(artwork.userName || 'Unknown');
   const userId = artwork.userId || '0';
   const title = sanitizeForFilename(artwork.title || artworkId);
-  const folder = `pixiv/${userName}-${userId}/${artworkId}-${title}`;
+  const subfolder = sanitizeSubfolder(getSettings().pixivSubfolder, 'pixiv');
+  const folder = `${subfolder}/${userName}-${userId}/${artworkId}-${title}`;
+
+  // Ugoira (animated works) are a ZIP of frames + per-frame delays, not a
+  // normal image — handle them separately so we don't silently download a
+  // single still frame.
+  if (artwork.illustType === 2) {
+    await downloadUgoira(artworkId, artwork, folder);
+    return;
+  }
 
   // For multi-page works, fetch all page URLs from the pages API
   let pageUrls;
@@ -374,10 +439,13 @@ function injectOverlayButton(container) {
     btn.style.transform = 'scale(1)';
   });
 
+  // Create the debounced handler ONCE and reuse it, so its cooldown state
+  // persists across clicks (building a fresh one per click never debounces).
+  const debouncedDownload = debounceLeading(() => downloadCurrentArtwork());
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    debounceLeading(() => downloadCurrentArtwork())();
+    debouncedDownload();
   });
 
   container.appendChild(btn);
@@ -460,10 +528,11 @@ function injectThumbnailDownloadButtons() {
       btn.style.transform = 'scale(1)';
     });
 
+    const debouncedDownload = debounceLeading(() => downloadArtworkById(artworkId));
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      debounceLeading(() => downloadArtworkById(artworkId))();
+      debouncedDownload();
     });
 
     link.appendChild(btn);
@@ -625,6 +694,11 @@ const pixivAdapter = {
     return findArtworkIdFromElement(el);
   },
 
+  download(el) {
+    const artworkId = findArtworkIdFromElement(el);
+    if (artworkId) downloadArtworkById(artworkId);
+  },
+
   async getWorkMeta(el) {
     // Try to get metadata from cached API data
     const artworkId = findArtworkIdFromElement(el);
@@ -690,11 +764,14 @@ function init() {
 
   initPreview(pixivAdapter, thumbSelectors);
 
-  // Watch for SPA navigation and new thumbnails via MutationObserver
-  const observer = new MutationObserver(() => {
+  // Watch for SPA navigation and new thumbnails via MutationObserver.
+  // Debounced so infinite-scroll feeds don't trigger a full-document rescan
+  // on every mutation batch.
+  const onMutations = debounceTrailing(() => {
     handleNavigation();
     injectThumbnailDownloadButtons();
-  });
+  }, 200);
+  const observer = new MutationObserver(onMutations);
   observer.observe(document.body, { childList: true, subtree: true });
 
   // Listen to popstate for back/forward navigation

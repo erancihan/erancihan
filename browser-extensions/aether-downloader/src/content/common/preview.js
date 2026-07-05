@@ -1,25 +1,10 @@
 // AetherDownloader — Shared Preview Engine
 // Hover preview + 1:1 right-click viewer for both Pixiv and Zerochan
 
+import { getSettings } from './settings.js';
 
 const PREVIEW_ID = 'aether-preview-wrap';
-const PREVIEW_DELAY = 400; // ms before preview appears
 const ZOOM_LEVELS = [0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 5.0];
-
-// Configurable preview size (defaults, overridden by settings)
-let previewMaxHeight = 85; // vh
-let previewMaxWidth = 50;  // vw
-
-/** Load preview settings from storage */
-async function loadPreviewSettings() {
-  try {
-    const data = await browser.storage.local.get('aetherSettings');
-    const s = data.aetherSettings || {};
-    if (s.previewMaxHeight) previewMaxHeight = s.previewMaxHeight;
-    if (s.previewMaxWidth) previewMaxWidth = s.previewMaxWidth;
-  } catch { /* use defaults */ }
-}
-loadPreviewSettings();
 
 /**
  * @typedef {object} PreviewAdapter
@@ -58,7 +43,8 @@ function createPreviewElement() {
   wrap.style.display = 'none';
 
   const img = document.createElement('img');
-  img.style.cssText = `display:block;max-height:${previewMaxHeight}vh;max-width:${previewMaxWidth}vw;object-fit:contain;`;
+  const s = getSettings();
+  img.style.cssText = `display:block;max-height:${s.previewMaxHeight}vh;max-width:${s.previewMaxWidth}vw;object-fit:contain;`;
   img.setAttribute('alt', '');
   wrap.appendChild(img);
 
@@ -137,9 +123,10 @@ function showPreview(thumbEl, adapter) {
   // Get metadata (dimensions, file size, format) if available
   const meta = adapter.getWorkMeta ? adapter.getWorkMeta(thumbEl) : null;
 
-  // Update max size from settings (may have changed)
-  img.style.maxHeight = `${previewMaxHeight}vh`;
-  img.style.maxWidth = `${previewMaxWidth}vw`;
+  // Update max size from settings (re-read each time so popup changes apply live)
+  const settings = getSettings();
+  img.style.maxHeight = `${settings.previewMaxHeight}vh`;
+  img.style.maxWidth = `${settings.previewMaxWidth}vw`;
 
   // If we have metadata dimensions, show them immediately (before image loads)
   if (meta && meta.width && meta.height) {
@@ -194,9 +181,12 @@ function showPreview(thumbEl, adapter) {
       if (!currentPreview || currentPreview.workId !== workId) return;
       if (!originalUrls || originalUrls.length === 0) return;
 
-      // Update the stored URLs
+      // Update the stored URLs. Use the LIVE index — the user may have
+      // navigated to another page while this request was in flight, so the
+      // captured `currentIndex` is stale.
       currentPreview.urls = originalUrls;
-      const idx = Math.min(currentIndex, originalUrls.length - 1);
+      const idx = Math.min(currentPreview.currentIndex, originalUrls.length - 1);
+      currentPreview.currentIndex = idx;
       const originalUrl = originalUrls[idx];
 
       // Don't reload if the URL is the same
@@ -280,10 +270,16 @@ export function initPreview(adapter, thumbSelector) {
   document.body.addEventListener('mouseenter', (e) => {
     const thumb = e.target.closest(thumbSelector);
     if (!thumb) return;
+    if (!getSettings().previewEnabled) return;
 
+    // mouseenter is dispatched to every nested element the cursor enters
+    // (li > a > div > img), so this capture listener fires several times per
+    // hover. Clear any pending timer before re-arming so we don't stack
+    // orphaned timers that fire after the cursor has already left.
+    if (previewTimeout) clearTimeout(previewTimeout);
     previewTimeout = setTimeout(() => {
       showPreview(thumb, adapter);
-    }, PREVIEW_DELAY);
+    }, getSettings().previewDelay || 400);
   }, true);
 
   document.body.addEventListener('mouseleave', (e) => {
@@ -331,14 +327,22 @@ export function initPreview(adapter, thumbSelector) {
       hidePreview();
     }
     if (e.key === 'd' || e.key === 'D') {
-      // Download the currently visible image
+      // Download via the site adapter's real path (original resolution,
+      // proper subfolder, metadata) rather than dumping the preview-res
+      // image into the Downloads root.
       if (currentPreview) {
-        const url = currentPreview.urls[currentPreview.currentIndex];
-        browser.runtime.sendMessage({
-          action: 'download',
-          url: url,
-          filename: url.split('/').pop() || 'image.jpg',
-        });
+        e.preventDefault();
+        const { adapter, thumbEl, currentIndex, urls } = currentPreview;
+        if (adapter && typeof adapter.download === 'function') {
+          adapter.download(thumbEl, currentIndex);
+        } else {
+          const url = urls[currentIndex];
+          browser.runtime.sendMessage({
+            action: 'download',
+            url: url,
+            filename: url.split('/').pop() || 'image.jpg',
+          });
+        }
       }
     }
   });

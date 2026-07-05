@@ -68,7 +68,6 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     downloadFile({
       url: message.url,
       filename: message.filename,
-      referer: message.referer || null,
     })
       .then((downloadId) => {
         // Notify the content script of success
@@ -109,17 +108,17 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'saveText') {
-    const blob = new Blob([message.content], { type: 'text/plain' });
-    const blobUrl = URL.createObjectURL(blob);
+    // Use a data: URL rather than a Blob object URL. This avoids the
+    // revoke-before-read race (revoking on the download() promise, which
+    // resolves when the download *starts*, could truncate the file) and works
+    // in a Chrome MV3 service worker, which has no URL.createObjectURL.
+    const dataUrl = 'data:text/plain;charset=utf-8,' + encodeURIComponent(message.content);
     browser.downloads.download({
-      url: blobUrl,
+      url: dataUrl,
       filename: message.filename,
       saveAs: false,
       conflictAction: 'overwrite',
-    }).then(() => {
-      URL.revokeObjectURL(blobUrl);
     }).catch((err) => {
-      URL.revokeObjectURL(blobUrl);
       console.error('AetherDownloader: saveText failed', err.message);
     });
     return true;

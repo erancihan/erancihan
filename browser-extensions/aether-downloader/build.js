@@ -1,7 +1,7 @@
 import { defineConfig, build } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
-import { cpSync, mkdirSync, existsSync, rmSync } from 'fs';
+import { cpSync, mkdirSync, existsSync, rmSync, watch as watchFs } from 'fs';
 
 const __dirname = import.meta.dirname;
 
@@ -45,16 +45,15 @@ function copyStaticAssets() {
 
 /**
  * Build a single entry point as an IIFE bundle.
+ * Tailwind CSS imported by an entry is inlined into that JS bundle and
+ * injected into the page at runtime (there is no separate .css asset).
  * @param {string} entryName - Output path (without .js)
  * @param {string} entryPath - Source file path
- * @param {boolean} emitCss - Whether to emit CSS from this entry
  */
-async function buildEntry(entryName, entryPath, emitCss = false) {
-  const plugins = emitCss ? [tailwindcss()] : [tailwindcss()];
-
+async function buildEntry(entryName, entryPath) {
   await build({
     configFile: false,
-    plugins,
+    plugins: [tailwindcss()],
     build: {
       outDir: resolve(__dirname, 'dist'),
       emptyOutDir: false, // Don't clear between builds
@@ -65,12 +64,7 @@ async function buildEntry(entryName, entryPath, emitCss = false) {
           format: 'iife',
           entryFileNames: '[name].js',
           inlineDynamicImports: true,
-          assetFileNames: (assetInfo) => {
-            if (assetInfo.name && assetInfo.name.endsWith('.css')) {
-              return 'content/content.css';
-            }
-            return 'assets/[name][extname]';
-          },
+          assetFileNames: 'assets/[name][extname]',
         },
       },
     },
@@ -88,36 +82,32 @@ async function main() {
 
   console.log('Building AetherDownloader...');
 
-  // 1. Build Zerochan content script (also emits CSS)
-  console.log('  → content/zerochan.js + content.css');
+  // 1. Build Zerochan content script (Tailwind CSS inlined + runtime-injected)
+  console.log('  → content/zerochan.js');
   await buildEntry(
     'content/zerochan',
-    resolve(__dirname, 'src/content/zerochan/content.js'),
-    true
+    resolve(__dirname, 'src/content/zerochan/content.js')
   );
 
   // 2. Build Pixiv content script
   console.log('  → content/pixiv.js');
   await buildEntry(
     'content/pixiv',
-    resolve(__dirname, 'src/content/pixiv/content.js'),
-    false
+    resolve(__dirname, 'src/content/pixiv/content.js')
   );
 
   // 3. Build background service worker
   console.log('  → background/service-worker.js');
   await buildEntry(
     'background/service-worker',
-    resolve(__dirname, 'src/background/service-worker.js'),
-    false
+    resolve(__dirname, 'src/background/service-worker.js')
   );
 
   // 4. Build popup
   console.log('  → popup/popup.js');
   await buildEntry(
     'popup/popup',
-    resolve(__dirname, 'src/popup/popup.js'),
-    false
+    resolve(__dirname, 'src/popup/popup.js')
   );
 
   // 5. Copy static assets
@@ -127,7 +117,43 @@ async function main() {
   console.log('✓ Build complete!');
 }
 
-main().catch((err) => {
+const isWatch = process.argv.includes('--watch');
+
+async function run() {
+  await main();
+  if (!isWatch) return;
+
+  console.log('\nWatching src/ for changes (Ctrl+C to stop)...');
+  let rebuilding = false;
+  let queued = false;
+  let debounceTimer = null;
+
+  const rebuild = async () => {
+    if (rebuilding) {
+      queued = true;
+      return;
+    }
+    rebuilding = true;
+    try {
+      await main();
+      console.log('  (waiting for changes...)');
+    } catch (err) {
+      console.error('Rebuild failed:', err);
+    }
+    rebuilding = false;
+    if (queued) {
+      queued = false;
+      rebuild();
+    }
+  };
+
+  watchFs(resolve(__dirname, 'src'), { recursive: true }, () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(rebuild, 150);
+  });
+}
+
+run().catch((err) => {
   console.error('Build failed:', err);
   process.exit(1);
 });

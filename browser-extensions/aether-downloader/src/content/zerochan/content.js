@@ -5,7 +5,8 @@ import '../../styles/input.css';
 import { createDownloadFAB } from '../common/download-button.js';
 import { showToast } from '../common/toast.js';
 import { initPreview } from '../common/preview.js';
-import { debounceLeading } from '../common/debounce.js';
+import { debounceLeading, debounceTrailing } from '../common/debounce.js';
+import { getSettings, sanitizeSubfolder } from '../common/settings.js';
 
 // ─── Utilities ──────────────────────────────────────────────────
 
@@ -50,19 +51,41 @@ function extractFilename(url) {
  * @returns {string|null}
  */
 function getFullImageUrl() {
-  // Look for the main image on the detail page
-  const largeImg = document.querySelector('#large img, .preview img, #content img');
+  // Prefer an explicit full-resolution link
+  // (static.zerochan.net/<Name>.full.<id>.<ext>) over the on-page <img>,
+  // which may be a scaled version.
+  const downloadLink = document.querySelector('a[href*="static.zerochan.net"], a[download]');
+  if (downloadLink && downloadLink.href) {
+    return downloadLink.href;
+  }
+
+  // Fall back to the large detail image.
+  const largeImg = document.querySelector('#large img, .preview img');
   if (largeImg && largeImg.src) {
     return largeImg.src;
   }
 
-  // Try the download link itself
-  const downloadLink = document.querySelector('a[href*="static.zerochan.net"], a[download]');
-  if (downloadLink) {
-    return downloadLink.href;
-  }
-
   return null;
+}
+
+/**
+ * Download a Zerochan image into the configured subfolder, organized by
+ * character/tag name.
+ * @param {string} url - Full-resolution image URL
+ */
+function downloadZerochanImage(url) {
+  const character = extractCharacterName();
+  const originalFilename = extractFilename(url);
+  const subfolder = sanitizeSubfolder(getSettings().zerochanSubfolder, 'zerochan');
+  const filename = `${subfolder}/${character}/${originalFilename}`;
+
+  showToast('Downloading...', 'info');
+
+  browser.runtime.sendMessage({
+    action: 'download',
+    url: url,
+    filename: filename,
+  });
 }
 
 // ─── Download Button Injection ──────────────────────────────────
@@ -122,19 +145,7 @@ function injectDownloadButtons() {
       btn.style.opacity = '0';
     });
 
-    const handleDownload = debounceLeading(() => {
-      const character = extractCharacterName();
-      const originalFilename = extractFilename(url);
-      const filename = `zerochan/${character}/${originalFilename}`;
-
-      showToast('Downloading...', 'info');
-
-      browser.runtime.sendMessage({
-        action: 'download',
-        url: url,
-        filename: filename,
-      });
-    });
+    const handleDownload = debounceLeading(() => downloadZerochanImage(url));
 
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -150,9 +161,12 @@ function injectDownloadButtons() {
 
 /**
  * Check if we're on a detail page (has a large image).
+ * Zerochan detail pages live at /<numericId>; listing/tag/search pages do not,
+ * so gate on the URL to avoid matching the first thumbnail in a grid.
  */
 function isDetailPage() {
-  return !!document.querySelector('#large img, .preview img, #content img');
+  if (!/^\/\d+$/.test(window.location.pathname)) return false;
+  return !!document.querySelector('#large img, .preview img');
 }
 
 function setupDetailPageFAB() {
@@ -163,19 +177,7 @@ function setupDetailPageFAB() {
 
   createDownloadFAB({
     tooltip: 'Download Full Image',
-    onClick: debounceLeading(() => {
-      const character = extractCharacterName();
-      const originalFilename = extractFilename(imageUrl);
-      const filename = `zerochan/${character}/${originalFilename}`;
-
-      showToast('Downloading full image...', 'info');
-
-      browser.runtime.sendMessage({
-        action: 'download',
-        url: imageUrl,
-        filename: filename,
-      });
-    }),
+    onClick: debounceLeading(() => downloadZerochanImage(imageUrl)),
   });
 }
 
@@ -223,6 +225,11 @@ const zerochanAdapter = {
     return null;
   },
 
+  download(el) {
+    const url = this.getImageUrl(el);
+    if (url) downloadZerochanImage(url);
+  },
+
   getWorkMeta(el) {
     // The img title contains dimensions, e.g. "2649✕3808 3301kb jpg\nOuichi\nUploaded by ..."
     const img = el.querySelector('img');
@@ -255,10 +262,11 @@ function init() {
   // Common thumbnail selectors on Zerochan
   initPreview(zerochanAdapter, 'li, .thumbnail, [data-id]');
 
-  // Re-inject after dynamic content loads
-  const observer = new MutationObserver(() => {
+  // Re-inject after dynamic content loads. Debounced so infinite-scroll
+  // listings don't re-scan the whole document on every mutation batch.
+  const observer = new MutationObserver(debounceTrailing(() => {
     injectDownloadButtons();
-  });
+  }, 200));
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
