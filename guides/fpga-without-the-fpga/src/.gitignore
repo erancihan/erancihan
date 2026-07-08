@@ -1,0 +1,11 @@
+# simulation build products
+*.vvp
+*.vcd
+*.ghw
+*.fst
+sim.log
+work-obj*.cf
+08-vhdl-counter/tb_counter
+# synthesis experiments (chapter 11)
+*.json
+*.asc
