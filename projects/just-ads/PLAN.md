@@ -91,6 +91,7 @@ authoritative view of the profile behind these ads — complementary, not replac
 | Consent | Google **UMP SDK** (User Messaging Platform) both platforms + **ATT** prompt on iOS | Required for EEA/UK GDPR and Apple tracking rules; UMP is AdMob's canonical path |
 | DI | **Koin** (KMP-friendly) — or manual wiring, the app is tiny | Keep it light; manual constructor injection is acceptable for v1 |
 | Async/state | Coroutines + `StateFlow`, shared `ViewModel` in `commonMain` (androidx lifecycle-viewmodel KMP artifact) | Standard KMP practice |
+| Persistence | **SQLDelight** (KMP SQLite) for the ad-history log + aggregate queries; `multiplatform-settings` for small prefs (source toggle, counters) | A longitudinal log needs real queries/aggregation; a key-value store is too weak for "top advertisers over time" |
 | Build | Gradle (Kotlin DSL) + version catalog; Xcode project for the iOS shell | Standard KMP template layout |
 | iOS ads interop | **Swift-side implementation injected into shared code** (see §5.3), Google Mobile Ads via **Swift Package Manager** | Avoids the CocoaPods–cinterop maintenance tax; SPM is the SDK's modern path |
 
@@ -124,8 +125,13 @@ just-ads/
 │   └── src/
 │       ├── commonMain/kotlin/dev/erancihan/justads/
 │       │   ├── App.kt                    # root composable, navigation
-│       │   ├── ui/FeedScreen.kt          # native-ad feed + banner slot
+│       │   ├── ui/GalleryScreen.kt       # native-ad feed + banner + inspect drawer
+│       │   ├── ui/AdDetailScreen.kt       # full metadata, waterfall, raw dump
+│       │   ├── ui/HistoryScreen.kt        # persisted log of every AdRecord
+│       │   ├── ui/StatsScreen.kt          # aggregates: top advertisers/networks, %
 │       │   ├── ui/SettingsScreen.kt
+│       │   ├── data/AdFeedRepository.kt   # capture → AdRecord → session list + DB
+│       │   ├── data/AdHistoryDao.kt       # SQLDelight-backed queries/aggregates
 │       │   ├── ads/AdsController.kt      # platform-agnostic ads API (see §5.1)
 │       │   ├── ads/AdsState.kt           # sealed load states, ad models
 │       │   ├── ads/BannerAd.kt           # expect composable
@@ -253,11 +259,41 @@ Source APIs (verify names against the SDK version at build):
   NPA flag you set + iOS ATT status, captured at request time.
 
 `AdFeedRepository` (commonMain) owns capture: on every successful load it builds an
-`AdRecord`, appends it to the in-memory session list, and (if history is enabled —
-see open decision) persists it. This decouples "render the ad" (platform UI) from
-"inspect the ad" (shared data), which is the whole architectural point.
+`AdRecord`, appends it to the in-memory session list, and persists it via
+`AdHistoryDao` (SQLDelight). This decouples "render the ad" (platform UI) from
+"inspect the ad" (shared data), which is the whole architectural point — and means
+the live viewer and the persistent history read from the same capture path.
 
 ---
+
+### 5.6 UI screens & navigation (the design)
+
+Four top-level destinations (bottom nav bar) + one pushed detail screen. Compose
+Multiplatform Navigation, or a small sealed `Screen` route state (the app is tiny).
+
+1. **Gallery** (home) — vertical scroll of native-ad cards. Each card renders the
+   creative *as the advertiser built it*, tagged with a small "Ad" label, and carries
+   a collapsible **inspect drawer** (filled-by, personalized y/n, latency, load time).
+   Pull-to-refresh loads a fresh batch; anchored adaptive **banner** pinned at the
+   bottom. A slim header shows this session's stats (ads seen · advertisers · networks).
+   A FAB or header actions trigger the two full-screen formats.
+2. **Ad detail** (pushed from a card) — the full `AdRecord`: every native asset,
+   the complete **mediation waterfall** (each adapter tried, latency, error),
+   AdChoices/advertiser link, and the raw `ResponseInfo` dump with copy-to-clipboard.
+3. **History** — the persisted log of every `AdRecord`, newest first, with filters
+   (format · network · personalized). Tapping a row opens Ad detail. Swipe/delete +
+   "wipe all" (also in Settings).
+4. **Stats** — aggregates over the whole history: totals, distinct advertisers &
+   networks, personalized-vs-not ratio, top advertisers and top ad sources (simple
+   bar list), and ads-per-day. This is the "what's the *pattern* of what I'm served"
+   view — the real payoff of persisting.
+5. **Settings / About** — the **test↔real ad-source toggle** (guarded with a
+   confirmation explaining the AdMob account risk, §2), consent re-prompt (real path,
+   §6), SDK versions, a link out to Google **My Ad Center**, and wipe-history.
+
+Full-screen interstitial/rewarded are **actions, not destinations**: user taps →
+format presents → on dismissal an `AdRecord` is captured and its Ad-detail card is
+offered. Never auto-looped.
 
 ## 6. Consent & privacy flow (real-ads path only)
 
@@ -302,16 +338,24 @@ Swift iOS impl; SDK init; anchored adaptive **banner** renders Google test ads o
 both platforms.
 *Done when: test banner visibly renders on device/simulator on both platforms.*
 
-**M3 — Full-screen + native formats.** Interstitial and rewarded (buttons on feed
-screen), native-ad feed with paging, handle lifecycle (destroy on eviction),
-no-fill/backoff handling, "ads watched" counter persisted.
-*Done when: all four formats show test ads; rotating & backgrounding don't leak or crash.*
+**M3 — Formats + capture + inspect UI.** Interstitial and rewarded (user-initiated),
+native-ad Gallery with paging, handle lifecycle (destroy on eviction),
+no-fill/backoff handling. Build the `AdRecord` on every load (§5.5), render the
+per-card inspect drawer and the Ad-detail screen (waterfall + raw dump). Session
+stats in-memory.
+*Done when: all four formats show test ads and each produces an inspectable `AdRecord` with correct filled-by/latency/waterfall; rotate & background don't leak or crash.*
 
-**M4 — Consent.** UMP flow + ATT + privacy-options entry point in settings; ads
-gated behind `canRequestAds`; verified with UMP debug geography (`EEA` test mode).
+**M4 — History & stats (SQLDelight).** Persist every `AdRecord` via `AdHistoryDao`;
+History screen (list + filters + delete/wipe); Stats screen (totals, distinct
+advertisers/networks, personalized ratio, top-N, ads-per-day). Migrations set up.
+*Done when: ads survive restart; History and Stats reflect them; wipe clears both.*
+
+**M5 — Consent (real-ads path only, optional).** UMP flow + ATT + privacy-options
+entry point in Settings; ads gated behind `canRequestAds`; verified with UMP debug
+geography (`EEA` test mode). **Skip entirely for a test-ads-only build.**
 *Done when: forced-EEA run shows consent form before any ad request; decline path still yields (non-personalized) ads.*
 
-**M5 — Personal deployment (no store).** Package for your own devices:
+**M6 — Personal deployment (no store).** Package for your own devices:
 - **Android:** `assembleRelease` → signed APK; `adb install` or copy to device. Done.
 - **iOS:** run from Xcode onto your device with your Apple ID (free = re-sign weekly;
   paid = yearly). No TestFlight/App Review needed for personal use.
@@ -319,9 +363,10 @@ gated behind `canRequestAds`; verified with UMP debug geography (`EEA` test mode
   want real targeted ads rather than test placeholders.
 *Done when: the app runs from your home screen on your own Android phone and iPhone.*
 
-Suggested effort split for the implementing agent: M1–M3 are pure code and fully
-automatable with test IDs; M4 (consent) is **only needed on the real-ads path** and
-can be skipped for a test-ads-only build; M5 is just packaging + your signing identity.
+Suggested effort split for the implementing agent: **M1–M4 are pure code**, fully
+automatable with test IDs and independently verifiable (this is the whole app for a
+test-ads build). **M5 (consent) is optional** — only for the real-ads path. **M6** is
+just packaging + your signing identity.
 
 ---
 
