@@ -2,8 +2,9 @@
 
 > **Status:** Planning document. Implementation to be done by a follow-up agent.
 > **Targets:** Android + iOS from a single Kotlin Multiplatform codebase.
-> **Product in one sentence:** An app whose entire purpose is to show the user the ads
-> that would be shown to them. No other features in v1 (features may come later).
+> **Distribution:** Personal / sideload. **Not** going to the App Store or Play Store.
+> **Product in one sentence:** A personal instrument for seeing the ads that ad networks
+> serve to *you* — each ad shown as an inspectable specimen, not as monetization.
 
 ---
 
@@ -33,42 +34,50 @@
 
 ---
 
-## 2. ⚠️ Policy reality check (read this first)
+## 2. Distribution & policy reality (personal app, no store)
 
-This is the load-bearing section. "An app that only shows ads" runs into three
-separate policy walls, and the design below is shaped by them:
+Because this app is **not** being submitted to any store, two of the three policy
+walls simply don't apply:
 
-1. **AdMob ad-placement policy** prohibits ads on screens with *no content or
-   low-value content*, and apps whose primary purpose is ad consumption can get
-   the AdMob account limited or suspended.
-2. **Apple App Review Guideline 4.2 (Minimum Functionality)** rejects apps that are
-   "primarily marketing materials or advertisements."
-3. **Google Play policy** similarly rejects apps with no user value and disallows
-   incentivizing users to view ads as the core mechanic.
+- **Apple Guideline 4.2 (Minimum Functionality)** — a *review-time* gate. No store
+  submission → no review → not a factor. (Distribution on iOS instead: run from Xcode
+  onto your own device. Free Apple ID = 7-day provisioning; paid dev account
+  ($99/yr) = 1-year. See §7 deployment.)
+- **Google Play minimum-functionality / spam policy** — also review-time. Not a
+  factor for a sideloaded APK.
 
-### Mitigation: ads presented *as* content ("Ad Gallery" framing)
+The one wall that remains is **AdMob's ad-serving policy, which is account-level, not
+store-level** — and it only bites *if you request real ads from a real ad unit*:
 
-The app keeps the spirit of "you just see ads," but is framed and built as an
-**ad transparency / discovery gallery**:
+- AdMob is built for publishers monetizing content. An app that only shows ads, where
+  the account owner is the one viewing them, is **invalid traffic** by definition.
+  Rendering your own real ads is a soft violation; **clicking them is the fast path to
+  suspension.** A suspension can taint the whole Google account.
+- Therefore the ad-source strategy is a deliberate toggle (already modeled in §5.4):
+  - **Test ad units (default, safe):** always fill, zero account risk. But they render
+    **generic placeholders** ("Test Ad — Sample…"), *not* ads targeted at you.
+  - **Real ad units (fulfills the actual goal):** shows the ads AdMob's network fills
+    for your ad profile. Do this only on a **dedicated/throwaway AdMob account**, keep
+    volume low, and **never click**. Treat any suspension as expected cost.
 
-- The main feed uses **native ads** rendered as cards in a real, designed feed UI —
-  each card clearly labeled "Ad", with the app chrome around it (pull-to-refresh,
-  a card counter, a "why am I seeing this?" info affordance pointing at the
-  consent/settings screen).
-- The app's store-listing story is: *"See the ads targeted at you, in one place,
-  with your consent choices in your control."* Consent management, transparency
-  info, and an "ads watched" stat give it a thin-but-genuine utility layer.
-- Interstitial and rewarded ads are **user-initiated** (button press), never
-  auto-fired in a loop — this avoids the "app built to farm impressions" pattern
-  that gets AdMob accounts banned.
+### The "gallery / transparency" framing is now a *product* choice, not a compliance one
 
-**Residual risk to accept:** even with this framing, Apple review outcome is not
-guaranteed; be prepared to add one small genuine feature (e.g., a daily
-wallpaper/quote alongside the feed) if the first submission is rejected under 4.2.
-The architecture below keeps that cheap to add. Do **not** run high volumes of real
-ads on a personal AdMob account during development — use test ad units everywhere
-until release (real ad units clicked/viewed by the developer = invalid traffic =
-account suspension).
+We keep it because it's literally the goal ("what do advertisers deem fit to show
+me"), not to pass review:
+
+- The feed uses **native ads** rendered as inspectable cards — each labeled "Ad", each
+  showing the transparency metadata the SDK exposes (§5.5): which ad source/network
+  filled it, personalized vs. non-personalized, load timestamp, the native asset
+  fields (advertiser, headline, store, price).
+- Interstitial/rewarded stay **user-initiated** (never auto-looped) — partly good
+  manners toward the ad network, mostly because auto-spamming impressions isn't the
+  point; you want to *look at* each ad.
+
+**Honest scope limit (unchanged from prior discussion):** this only ever shows what
+*Google's network* fills for *this app* given your device ad ID / IDFA + consent. It
+is a real slice of your Google ad profile, not your whole ad shadow (Instagram,
+YouTube, etc. serve from closed networks). Google's **My Ad Center** is the
+authoritative view of the profile behind these ads — complementary, not replaced.
 
 ---
 
@@ -207,9 +216,55 @@ and survives SDK major-version renames (v12 dropped the `GAD` prefix in Swift).
   iOS `Info.plist` needs `GADApplicationIdentifier` — missing either crashes the
   SDK on init. Use the sample app IDs until the AdMob account exists.
 
+### 5.5 Transparency data model (this IS the product)
+
+Every loaded ad — banner, native, interstitial, rewarded — is captured into a
+platform-agnostic `AdRecord` built from what the SDK already exposes. This is the
+data the UI inspects.
+
+```kotlin
+data class AdRecord(
+    val id: String,                 // ResponseInfo.responseId
+    val format: AdFormat,           // Banner / Native / Interstitial / Rewarded
+    val filledBy: String,           // loaded adapter's adSourceName ("Google AdMob Network", or a mediated net)
+    val personalized: Boolean,      // derived from consent/ATT state at request time
+    val loadedAtEpochMs: Long,      // app-stamped (SDK gives no timestamp)
+    val latencyMs: Long?,           // loaded adapter latency
+    val waterfall: List<AdapterAttempt>,   // every adapter tried: name, latency, error — the mediation story
+    val creative: NativeCreative?,  // present for native ads
+    val rawResponseDump: String,    // ResponseInfo.toString() — the nerd view
+)
+
+data class NativeCreative(         // from NativeAd / GADNativeAd assets
+    val advertiser: String?, val headline: String?, val body: String?,
+    val callToAction: String?, val store: String?, val price: String?,
+    val starRating: Double?, val adChoicesUrl: String?,   // AdChoices "i" → advertiser info
+    // icon/images/mediaContent stay as platform handles for rendering, not in the record
+)
+```
+
+Source APIs (verify names against the SDK version at build):
+- **`ResponseInfo`** (on every loaded ad, both platforms): `responseId`,
+  `loadedAdapterResponseInfo`, `adapterResponses` (the waterfall),
+  `mediationAdapterClassName`.
+- **`AdapterResponseInfo`**: `adSourceName`, `adSourceId`, `latencyMillis`, `adError`.
+- **Native assets**: headline/body/advertiser/price/store/starRating/`adChoicesInfo`.
+- **Personalization** is not a per-ad field — derive it from UMP `canRequestAds` + the
+  NPA flag you set + iOS ATT status, captured at request time.
+
+`AdFeedRepository` (commonMain) owns capture: on every successful load it builds an
+`AdRecord`, appends it to the in-memory session list, and (if history is enabled —
+see open decision) persists it. This decouples "render the ad" (platform UI) from
+"inspect the ad" (shared data), which is the whole architectural point.
+
 ---
 
-## 6. Consent & privacy flow (blocking, in order)
+## 6. Consent & privacy flow (real-ads path only)
+
+> Skip this entire section for a test-ads-only build — test ads don't need consent.
+> It's required only when you flip to **real** ad units and want **personalized** ads
+> (which is the whole point of the real path: personalization is what makes them
+> "targeted at you"). Denying consent just yields non-personalized ads.
 
 On every cold start, **before any ad request**:
 
@@ -256,14 +311,17 @@ no-fill/backoff handling, "ads watched" counter persisted.
 gated behind `canRequestAds`; verified with UMP debug geography (`EEA` test mode).
 *Done when: forced-EEA run shows consent form before any ad request; decline path still yields (non-personalized) ads.*
 
-**M5 — Release readiness.** Real ad units wired to release builds only; §6 paperwork
-checklist executed; store listings drafted with the transparency/gallery framing
-(§2); icons/splash; versioning + signed release pipelines.
-*Done when: internal-track AAB on Play + TestFlight build submitted.*
+**M5 — Personal deployment (no store).** Package for your own devices:
+- **Android:** `assembleRelease` → signed APK; `adb install` or copy to device. Done.
+- **iOS:** run from Xcode onto your device with your Apple ID (free = re-sign weekly;
+  paid = yearly). No TestFlight/App Review needed for personal use.
+- Optional: flip to real ad units here (dedicated AdMob account, §2 caveats) if you
+  want real targeted ads rather than test placeholders.
+*Done when: the app runs from your home screen on your own Android phone and iPhone.*
 
 Suggested effort split for the implementing agent: M1–M3 are pure code and fully
-automatable with test IDs; M4 needs an AdMob console consent message (human);
-M5 is mostly human/account work.
+automatable with test IDs; M4 (consent) is **only needed on the real-ads path** and
+can be skipped for a test-ads-only build; M5 is just packaging + your signing identity.
 
 ---
 
@@ -271,8 +329,8 @@ M5 is mostly human/account work.
 
 | # | Item | Default if not overridden |
 |---|---|---|
-| 1 | Store rejection under "minimum functionality" (§2) | Ship the gallery framing; if rejected, add one micro-feature (daily wallpaper/quote) — architecture already isolates the feed so this is additive |
-| 2 | AdMob account risk from self-testing | Test ad units everywhere until release; register test devices; never click real ads |
+| 1 | ~~Store rejection~~ | N/A — not shipping to a store (§2) |
+| 2 | AdMob account suspension (real-ads path only) | Dedicated/throwaway AdMob account; low volume; **never click** your own ads; accept suspension as expected cost. Test-ads build carries zero risk |
 | 3 | Network choice | AdMob solo in v1; revisit mediation only if fill/eCPM disappoints |
 | 4 | New repo vs. building inside the monorepo | New repo `erancihan/just-ads` + submodule here (matches existing convention) |
 | 5 | App/bundle identity (§1 table) | `dev.erancihan.justads`, name "JustAds" |
