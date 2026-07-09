@@ -12,6 +12,8 @@ kotlin {
     // The `core` package is deliberately free of Compose / Android / expect-actual,
     // so it compiles as plain Kotlin/JVM here.
     sourceSets["main"].kotlin.srcDir("../composeApp/src/commonMain/kotlin/dev/erancihan/justads/core")
+    // The date/number formatting util is also pure (no Compose) — verify its math here too.
+    sourceSets["main"].kotlin.srcDir("../composeApp/src/commonMain/kotlin/dev/erancihan/justads/ui/format")
 }
 
 dependencies {
