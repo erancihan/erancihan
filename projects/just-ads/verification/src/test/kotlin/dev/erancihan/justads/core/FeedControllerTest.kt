@@ -4,6 +4,9 @@ import dev.erancihan.justads.core.ads.AdOutcome
 import dev.erancihan.justads.core.ads.BackoffPolicy
 import dev.erancihan.justads.core.data.InMemoryAdHistoryDao
 import dev.erancihan.justads.core.feed.FeedController
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -82,6 +85,45 @@ class FeedControllerTest {
         assertTrue(h1.destroyed)
         assertEquals(listOf("b"), c.state.value.items.map { it.record.id })
         assertEquals(1, c.state.value.adsWatched)
+    }
+
+    @Test
+    fun refresh_discards_in_flight_load_and_releases_it() = runTest {
+        val ads = FakeAdsController()
+        val g1 = CompletableDeferred<Unit>()
+        val g2 = CompletableDeferred<Unit>()
+        ads.nativeGates.addLast(g1)
+        ads.nativeGates.addLast(g2)
+        // The fake pops an outcome only AFTER its gate resolves, so the load whose gate
+        // completes first claims the first-queued outcome. We complete g2 (refresh's
+        // current-generation load) first, so queue "fresh" first and "stale" second.
+        val staleHandle = FakeNativeAdHandle(adRecord(id = "stale"))
+        ads.queueNative(FakeNativeAdHandle(adRecord(id = "fresh"))) // claimed by refresh's load (g2)
+        ads.queueNative(staleHandle)                               // claimed by the stale load (g1)
+        val c = controller(ads)
+
+        val a = launch { c.loadMore() } // takes g1, suspends in flight
+        runCurrent()
+        val r = launch { c.refresh() }  // bumps generation; its loadMore takes g2, suspends
+        runCurrent()
+
+        g2.complete(Unit); runCurrent() // fresh load (current generation) is applied
+        g1.complete(Unit); runCurrent() // stale load (old generation) is discarded
+
+        a.join(); r.join()
+        assertEquals(listOf("fresh"), c.state.value.items.map { it.record.id })
+        assertTrue(staleHandle.destroyed, "superseded ad must be released")
+    }
+
+    @Test
+    fun feed_cards_have_unique_keys_even_with_blank_ids() = runTest {
+        val ads = FakeAdsController()
+        ads.queueNative(FakeNativeAdHandle(adRecord(id = "")))
+        ads.queueNative(FakeNativeAdHandle(adRecord(id = "")))
+        val c = controller(ads)
+        c.loadMore(); c.loadMore()
+        val keys = c.state.value.items.map { it.key }
+        assertEquals(keys.size, keys.toSet().size)
     }
 
     @Test

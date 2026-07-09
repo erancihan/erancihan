@@ -19,8 +19,11 @@ data class SessionStats(
     val networks: Int = 0,
 )
 
-/** One native-ad card in the feed. The record is read straight off the render handle. */
-data class FeedCard(val handle: NativeAdHandle) {
+/**
+ * One native-ad card in the feed. [key] is a stable, unique identity for LazyColumn keys
+ * (ad response IDs can be blank/duplicate). The record is read straight off the handle.
+ */
+data class FeedCard(val handle: NativeAdHandle, val key: Long) {
     val record: AdRecord get() = handle.record
 }
 
@@ -49,20 +52,31 @@ class FeedController(
     val state: StateFlow<FeedUiState> = _state.asStateFlow()
 
     private var consecutiveFailures = 0
+
+    // Bumped by refresh() so a load that was already in flight is discarded on completion
+    // instead of corrupting the freshly-reset feed (guards the refresh/in-flight-load race).
+    private var generation = 0
+    private var cardKeyCounter = 0L
     private val sessionRecords = mutableListOf<AdRecord>()
 
     /** Load one more native ad and append it, or record a backoff-scheduled failure. */
     suspend fun loadMore() {
         if (_state.value.loading) return
         _state.update { it.copy(loading = true, error = null, nextRetryDelayMs = null) }
+        val gen = generation
 
         when (val outcome = ads.loadNativeAd()) {
             is NativeAdOutcome.Loaded -> {
+                if (gen != generation) {
+                    // A refresh() superseded this load; drop and release the stale ad.
+                    outcome.handle.destroy()
+                    return
+                }
                 consecutiveFailures = 0
                 capture(outcome.handle.record)
                 _state.update {
                     it.copy(
-                        items = it.items + FeedCard(outcome.handle),
+                        items = it.items + FeedCard(outcome.handle, cardKeyCounter++),
                         loading = false,
                         session = sessionStats(),
                     )
@@ -70,6 +84,7 @@ class FeedController(
             }
 
             is NativeAdOutcome.Failed -> {
+                if (gen != generation) return
                 consecutiveFailures++
                 _state.update {
                     it.copy(
@@ -84,6 +99,7 @@ class FeedController(
 
     /** Destroy current cards, reset the session, and load a fresh first ad. */
     suspend fun refresh() {
+        generation++
         _state.value.items.forEach { it.handle.destroy() }
         consecutiveFailures = 0
         sessionRecords.clear()
