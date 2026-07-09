@@ -131,17 +131,18 @@ async function fetchUgoiraMeta(artworkId) {
  * @param {string} artworkId
  * @param {object} artwork - Artwork data (for metadata sidecar)
  * @param {string} folder - Download folder path
+ * @param {boolean} [quiet] - suppress toasts (batch)
  */
-async function downloadUgoira(artworkId, artwork, folder) {
+async function downloadUgoira(artworkId, artwork, folder, quiet = false) {
   const meta = await fetchUgoiraMeta(artworkId);
   const zipUrl = meta && (meta.originalSrc || meta.src);
   if (!zipUrl) {
-    showToast('Could not load ugoira data', 'error');
+    if (!quiet) showToast('Could not load ugoira data', 'error');
     return;
   }
 
   const ext = zipUrl.split('.').pop() || 'zip';
-  showToast('Downloading ugoira (animation frames)...', 'info');
+  if (!quiet) showToast('Downloading ugoira (animation frames)...', 'info');
 
   browser.runtime.sendMessage({
     action: 'download',
@@ -162,17 +163,20 @@ async function downloadUgoira(artworkId, artwork, folder) {
 /**
  * Download all pages of an artwork by ID.
  * @param {string} artworkId
+ * @param {{ quiet?: boolean }} [opts] - quiet suppresses per-work toasts (batch)
+ * @returns {Promise<boolean>} whether the work was successfully queued
  */
-async function downloadArtworkById(artworkId) {
+async function downloadArtworkById(artworkId, opts = {}) {
+  const quiet = !!opts.quiet;
   if (!artworkId) {
-    showToast('Could not find artwork ID', 'error');
-    return;
+    if (!quiet) showToast('Could not find artwork ID', 'error');
+    return false;
   }
 
   const artwork = await getArtworkData(artworkId);
   if (!artwork) {
-    showToast('Could not load artwork data', 'error');
-    return;
+    if (!quiet) showToast('Could not load artwork data', 'error');
+    return false;
   }
 
   const pageCount = artwork.pageCount || 1;
@@ -194,8 +198,8 @@ async function downloadArtworkById(artworkId) {
   // normal image — handle them separately so we don't silently download a
   // single still frame.
   if (artwork.illustType === 2) {
-    await downloadUgoira(artworkId, artwork, folder);
-    return;
+    await downloadUgoira(artworkId, artwork, folder, quiet);
+    return true;
   }
 
   // For multi-page works, fetch all page URLs from the pages API
@@ -208,13 +212,15 @@ async function downloadArtworkById(artworkId) {
   if (!pageUrls || pageUrls.length === 0) {
     const originalUrl = artwork.urls && artwork.urls.original;
     if (!originalUrl) {
-      showToast('Could not find original image URL', 'error');
-      return;
+      if (!quiet) showToast('Could not find original image URL', 'error');
+      return false;
     }
     pageUrls = Array.from({ length: pageCount }, (_, i) => getPageUrl(originalUrl, i));
   }
 
-  showToast(`Downloading ${pageUrls.length} image${pageUrls.length > 1 ? 's' : ''}...`, 'info');
+  if (!quiet) {
+    showToast(`Downloading ${pageUrls.length} image${pageUrls.length > 1 ? 's' : ''}...`, 'info');
+  }
 
   for (let i = 0; i < pageUrls.length; i++) {
     const pageUrl = pageUrls[i];
@@ -234,6 +240,7 @@ async function downloadArtworkById(artworkId) {
 
   // Save metadata alongside the images
   saveArtworkMeta(artwork, folder);
+  return true;
 }
 
 /**
@@ -584,6 +591,180 @@ function setupArtworkPageFAB() {
   }
 }
 
+// ─── Batch Download (user / bookmarks / search pages) ───────────
+
+const PIXIV_BATCH_DELAY_MS = 500; // between works (each may be multi-page)
+const PIXIV_MAX_PAGES_CAP = 20;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Classify the current Pixiv page as a batch source, or null if it isn't one.
+ * @returns {{type:'user',userId:string,tab:string}|{type:'bookmarks',userId:string}|{type:'search',word:string,mode:string}|null}
+ */
+function getBatchSource() {
+  const path = window.location.pathname;
+
+  let m = path.match(/^\/users\/(\d+)(?:\/(\w+))?/);
+  if (m) {
+    const userId = m[1];
+    const tab = m[2] || 'artworks';
+    if (tab === 'bookmarks') return { type: 'bookmarks', userId };
+    if (tab === 'illustrations' || tab === 'manga' || tab === 'artworks') {
+      return { type: 'user', userId, tab };
+    }
+    return { type: 'user', userId, tab: 'artworks' };
+  }
+
+  m = path.match(/^\/tags\/([^/]+)\/(artworks|illustrations|manga)/);
+  if (m) return { type: 'search', word: decodeURIComponent(m[1]), mode: m[2] };
+
+  return null;
+}
+
+/** Collect artwork ids currently rendered in the DOM (fallback for listings). */
+function collectVisibleArtworkIds() {
+  const ids = new Set();
+  for (const a of document.querySelectorAll('a[href*="/artworks/"]')) {
+    const mm = (a.getAttribute('href') || '').match(/\/artworks\/(\d+)/);
+    if (mm) ids.add(mm[1]);
+  }
+  return [...ids];
+}
+
+/** All illust/manga ids for a user, from the stable profile/all endpoint. */
+async function fetchUserAllIds(userId, tab) {
+  const res = await fetch(`https://www.pixiv.net/ajax/user/${userId}/profile/all`, {
+    credentials: 'include',
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  if (json.error || !json.body) return [];
+
+  const ids = [];
+  const wantIllust = tab === 'illustrations' || tab === 'artworks';
+  const wantManga = tab === 'manga' || tab === 'artworks';
+  if (wantIllust && json.body.illusts && typeof json.body.illusts === 'object') {
+    ids.push(...Object.keys(json.body.illusts));
+  }
+  if (wantManga && json.body.manga && typeof json.body.manga === 'object') {
+    ids.push(...Object.keys(json.body.manga));
+  }
+  // Newest first (ids are numeric strings).
+  return ids.sort((a, b) => Number(b) - Number(a));
+}
+
+/** A user's bookmarked work ids, paginated up to `maxPages` (48/page). */
+async function fetchBookmarkIds(userId, maxPages) {
+  const ids = [];
+  const limit = 48;
+  for (let p = 0; p < maxPages; p++) {
+    const offset = p * limit;
+    const url = `https://www.pixiv.net/ajax/user/${userId}/illusts/bookmarks?tag=&offset=${offset}&limit=${limit}&rest=show`;
+    let json;
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) break;
+      json = await res.json();
+    } catch {
+      break;
+    }
+    if (json.error || !json.body || !Array.isArray(json.body.works)) break;
+    const works = json.body.works;
+    if (works.length === 0) break;
+    for (const w of works) if (w && w.id) ids.push(String(w.id));
+    if (offset + limit >= (json.body.total || 0)) break;
+    await sleep(PIXIV_BATCH_DELAY_MS);
+  }
+  return ids;
+}
+
+/** Search-result work ids, paginated up to `maxPages`. */
+async function fetchSearchIds(word, mode, maxPages) {
+  const apiMode = mode === 'illustrations' ? 'illustrations' : mode === 'manga' ? 'manga' : 'artworks';
+  const ids = [];
+  for (let p = 1; p <= maxPages; p++) {
+    const url = `https://www.pixiv.net/ajax/search/${apiMode}/${encodeURIComponent(word)}?word=${encodeURIComponent(word)}&order=date_d&mode=all&p=${p}&s_mode=s_tag_full`;
+    let json;
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) break;
+      json = await res.json();
+    } catch {
+      break;
+    }
+    if (json.error || !json.body) break;
+    const container = json.body.illustManga || json.body.illust || json.body.manga;
+    const data = container && Array.isArray(container.data) ? container.data : [];
+    if (data.length === 0) break;
+    for (const w of data) if (w && w.id) ids.push(String(w.id));
+    await sleep(PIXIV_BATCH_DELAY_MS);
+  }
+  return ids;
+}
+
+/** Resolve the list of artwork ids to download for a given batch source. */
+async function collectIdsForSource(source, maxPages) {
+  try {
+    if (source.type === 'user') return await fetchUserAllIds(source.userId, source.tab);
+    if (source.type === 'bookmarks') return await fetchBookmarkIds(source.userId, maxPages);
+    if (source.type === 'search') {
+      const apiIds = await fetchSearchIds(source.word, source.mode, maxPages);
+      if (apiIds.length) return apiIds;
+      return collectVisibleArtworkIds(); // fall back to what's rendered
+    }
+  } catch {
+    /* fall through to DOM */
+  }
+  return collectVisibleArtworkIds();
+}
+
+/** Crawl and download every work for the current batch source. */
+async function batchDownloadPixiv(source) {
+  const maxPages = Math.min(PIXIV_MAX_PAGES_CAP, Math.max(1, parseInt(getSettings().pixivMaxPages, 10) || 1));
+
+  showToast('Collecting works…', 'info');
+  const ids = [...new Set(await collectIdsForSource(source, maxPages))];
+
+  if (ids.length === 0) {
+    showToast('No works found to download', 'error');
+    return;
+  }
+
+  // Bulk downloads are hard to undo — confirm the count first.
+  if (!window.confirm(`Download ${ids.length} work${ids.length === 1 ? '' : 's'}? Each may contain multiple images.`)) {
+    return;
+  }
+
+  showToast(`Downloading ${ids.length} works…`, 'info');
+  let done = 0;
+  for (const id of ids) {
+    await downloadArtworkById(id, { quiet: true });
+    done++;
+    if (done % 10 === 0 && done < ids.length) {
+      showToast(`Queued ${done}/${ids.length} works…`, 'info');
+    }
+    await sleep(PIXIV_BATCH_DELAY_MS);
+  }
+  showToast(`Batch done: ${ids.length} works queued`, 'success');
+}
+
+/** On user/bookmarks/search pages, add a "download all" FAB. */
+function setupBatchFAB() {
+  const source = getBatchSource();
+  if (!source) return;
+
+  const tooltip =
+    source.type === 'bookmarks' ? 'Download bookmarks'
+      : source.type === 'search' ? 'Download search results'
+        : 'Download all works';
+
+  createDownloadFAB({
+    tooltip,
+    onClick: debounceLeading(() => batchDownloadPixiv(source), 3000),
+  });
+}
+
 // ─── Preview Adapter ────────────────────────────────────────────
 
 /**
@@ -741,11 +922,13 @@ function handleNavigation() {
   if (currentUrl.includes('/artworks/')) {
     setupArtworkPageFAB();
   } else {
-    // Remove download buttons when leaving artwork pages
+    // Remove the artwork FAB/overlay when leaving artwork pages, then add the
+    // batch "download all" FAB on user/bookmarks/search pages.
     const fab = document.getElementById('aether-download-fab');
     if (fab) fab.remove();
     const overlay = document.getElementById(OVERLAY_ID);
     if (overlay) overlay.remove();
+    setupBatchFAB();
   }
 
   // Inject thumbnail download buttons on all pages

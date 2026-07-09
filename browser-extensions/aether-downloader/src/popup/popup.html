@@ -43,6 +43,16 @@
         placeholder="{userName}-{userId}/{workId}-{title}"
       >
       <p class="text-xs text-gray-600 mt-1">Tokens: {userName} {userId} {workId} {title} {type} {date}</p>
+      <label class="block text-xs text-gray-500 mt-2 mb-1" for="pixiv-max-pages">Batch — API pages (bookmarks / search)</label>
+      <input
+        id="pixiv-max-pages"
+        type="number"
+        min="1"
+        max="20"
+        step="1"
+        class="w-full px-3 py-1.5 bg-gray-900 border border-gray-800 rounded-lg text-gray-100 text-xs focus:border-aether-500 focus:ring-1 focus:ring-aether-500/50 outline-none transition-colors"
+        value="1"
+      >
     </div>
 
     <div class="mb-5">

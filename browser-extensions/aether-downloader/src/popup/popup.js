@@ -12,6 +12,7 @@ const DEFAULTS = {
   previewMaxHeight: 85,
   previewMaxWidth: 50,
   zerochanMaxPages: 1,
+  pixivMaxPages: 1,
   pixivFolderTemplate: '{userName}-{userId}/{workId}-{title}',
   zerochanFolderTemplate: '{character}',
 };
@@ -26,6 +27,7 @@ async function loadSettings() {
 
     document.getElementById('pixiv-path').value = settings.pixivSubfolder;
     document.getElementById('pixiv-template').value = settings.pixivFolderTemplate;
+    document.getElementById('pixiv-max-pages').value = settings.pixivMaxPages;
     document.getElementById('zerochan-path').value = settings.zerochanSubfolder;
     document.getElementById('zerochan-template').value = settings.zerochanFolderTemplate;
     document.getElementById('zerochan-max-pages').value = settings.zerochanMaxPages;
@@ -45,6 +47,7 @@ async function saveSettings() {
   const settings = {
     pixivSubfolder: document.getElementById('pixiv-path').value.trim() || DEFAULTS.pixivSubfolder,
     pixivFolderTemplate: document.getElementById('pixiv-template').value.trim() || DEFAULTS.pixivFolderTemplate,
+    pixivMaxPages: parseInt(document.getElementById('pixiv-max-pages').value, 10) || DEFAULTS.pixivMaxPages,
     zerochanSubfolder: document.getElementById('zerochan-path').value.trim() || DEFAULTS.zerochanSubfolder,
     zerochanFolderTemplate: document.getElementById('zerochan-template').value.trim() || DEFAULTS.zerochanFolderTemplate,
     zerochanMaxPages: parseInt(document.getElementById('zerochan-max-pages').value, 10) || DEFAULTS.zerochanMaxPages,
