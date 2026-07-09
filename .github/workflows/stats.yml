@@ -12,6 +12,19 @@ jobs:
     env:
       METRICS_IMAGE_OVERRIDE: 'ghcr.io/erancihan/lowlighter-github-metrics:devel'
     steps:
+      # Keep metrics-renders from drifting: recreate it as master + a single
+      # fresh "chore: update metrics" commit every run. Resetting the branch to
+      # master here drops all prior metrics commits; the action below then adds
+      # exactly one new commit on top. The README embeds github-metrics.svg from
+      # this branch, so it must continue to exist with that file.
+      - name: Checkout master
+        uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Reset metrics-renders branch to master
+        run: git push --force origin HEAD:refs/heads/metrics-renders
+
       - uses: erancihan/lowlighter-github-metrics@devel
         with:
           user: erancihan
