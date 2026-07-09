@@ -15,4 +15,12 @@ interface AppDependencies {
     val ads: AdsController
     val consent: ConsentManager
     val history: AdHistoryDao
+
+    /** e.g. "Android 34" / "iOS 17.2" — shown on the About screen. */
+    val platformLabel: String
+}
+
+/** Static build metadata shared by both platforms. */
+object BuildInfo {
+    const val VERSION = "0.1.0"
 }
