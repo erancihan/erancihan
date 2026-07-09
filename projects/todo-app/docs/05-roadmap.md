@@ -10,7 +10,7 @@ This roadmap turns the locked decisions in [../README.md](../README.md) and [02-
 
 1. **Prove the terrifying bets first.** Tauri v2 on iOS and the offline-first hybrid-CRDT sync engine are the two things that can invalidate the whole architecture. They come before capture UX, before design polish, before the EOD report.
 2. **Desktop-first, mobile-scoped.** Per the brief, desktop is first-class end to end; mobile MVP is scoped to fast capture + read/browse + report view. Full mobile hardening is its own late phase.
-3. **Deterministic before delightful.** The EOD report ships as a deterministic template generator (offline, private). AI narrative is a later, optional layer delivered via the **Model Context Protocol (MCP)** — never a dependency.
+3. **Deterministic, offline, private — full stop.** The EOD report is a deterministic template generator (offline, private), and that is the whole feature. **AI narrative and any MCP integration are out of scope — not planned.** No bundled LLM, no MCP server; the report engine never depends on a network or a model.
 4. **Managed pieces first.** Cloudflare R2 + managed Postgres + a small VPS for the Axum relay. Self-hosted distribution (MinIO + bundled relay) is a later deliverable, not an MVP tax.
 5. **Every hard requirement has an exit criterion.** A phase is not "done" because code exists; it is done when its exit criteria are demonstrably met on real devices.
 
@@ -129,7 +129,7 @@ The point: **the most expensive-to-reverse decisions are tested when reversing t
 ### Deliverables
 - **EOD report engine** deriving reports from the **immutable EVENT log** over a **timezone-aware local-day range** (default: today; custom range supported).
 - Event bucketing into **CREATED / UPDATED / COMPLETED / CARRIED_OVER**, resolved to current node snapshots.
-- **Pivotable groupings** (by **Collection** for MVP — with a chosen primary collection when an item is in several, see open questions; tag/project pivots noted for later) rendered to clean markdown: checkbox bullets, nested sub-item rollups, tag chips, timestamps, optional inline thumbnails.
+- **Pivotable groupings** (by **Collection** for MVP — an item in several Collections is listed **under each** by default, with dedup-under-primary as an opt-in mode; tag/project pivots noted for later) rendered to clean markdown: checkbox bullets, nested sub-item rollups, tag chips, timestamps, optional inline thumbnails.
 - **Carry-over**: unfinished in-scope items roll forward with a **slipped-days** count.
 - **Report derived from status changes, sub-item checks, and promotions** — not only explicit completions — so report quality survives imperfect capture discipline.
 - **Copy-as-markdown** as the primary export (universal paste target for Slack/Jira/email).
@@ -170,13 +170,14 @@ The point: **the most expensive-to-reverse decisions are tested when reversing t
 
 ## Later (post-v1)
 
-Post-v1 work. Three items are structured as phases with a one-line deliverable + exit criterion; the rest is scoped backlog.
+Post-v1 work. Two items are structured as phases with a one-line deliverable + exit criterion; the rest is scoped backlog.
 
 ### Post-v1 phases
 
-- **Phase 5 — Sharing.** *Deliverable:* a **Collection** can be shared with other accounts as **owner / editor / viewer**, over a **per-collection sync channel** layered on the Phase 2 op-log. *Exit criterion:* two accounts edit a shared Collection offline and converge, with roles enforced server-side and non-members denied.
-- **Phase 6 — Multi-host.** *Deliverable:* a **host/account switcher UI** and simultaneous connections to **multiple servers**, built on the per-account store partitioning from Phase 1. *Exit criterion:* a user adds a second **Account** (different host URL), switches between them, and each account's data stays partitioned and syncs only to its own host.
-- **Phase 7 — AI narrative via MCP.** *Deliverable:* Daybook runs as an **MCP server** exposing todos/events as resources/tools, so any MCP-capable LLM client can author narrative EOD prose. *Exit criterion:* an external MCP client reads a day's events and returns a narrative report, with the deterministic engine and offline path unchanged.
+- **Phase 5 — Sharing.** *Deliverable:* a **Collection** can be shared with other accounts as **Owner / Collaborator / Viewer**, over a **per-collection sync channel** layered on the Phase 2 op-log. *Exit criterion:* two accounts edit a shared Collection offline and converge, with roles enforced server-side and non-members denied.
+- **Phase 6 — Multi-host.** *Deliverable:* a **host/account switcher UI** and simultaneous connections to **multiple servers**, built on the per-account store partitioning from Phase 1, presenting both an **aggregate cross-host view** and a **per-host detail view**. *Exit criterion:* a user adds a second **Account** (different host URL), sees their combined data in the aggregate view and each host's data in its per-host detail view, switches between them, and each account's data stays partitioned and syncs only to its own host.
+
+> **Not planned: AI narrative / MCP.** Report generation stays deterministic and offline; no MCP server, no bundled LLM on the roadmap.
 
 ### Scoped backlog
 
@@ -217,12 +218,9 @@ Post-v1 work. Three items are structured as phases with a one-line deliverable +
 
 ## Open questions (residual — the launch-blocking calls are locked)
 
-**Decided:** codename is **Daybook**; **no client-side E2EE** (**TLS** + at-rest is the shipped posture); AI narrative arrives **later via MCP**; hosting is **self-host + multi-host** (server-agnostic, multi-account); sharing scope is the **Collection** — personal-first but **designed for sharing**. What remains is narrower:
+**Decided:** codename is **Daybook**; **no client-side E2EE** (**TLS** + at-rest is the shipped posture); the report engine is **deterministic** — **AI narrative / MCP are out of scope (not planned)**; hosting is **self-host + multi-host** (server-agnostic, multi-account) with both an **aggregate cross-host view and a per-host detail view**; sharing roles are **Owner / Collaborator / Viewer**; sharing scope is the **Collection** — personal-first but **designed for sharing**; and reports list an item **under each** of its Collections by default (dedup-under-primary is opt-in). What remains is narrower:
 
-1. **Sharing / ACL role set.** Is **owner / editor / viewer** the final set, or do we need finer grains (comment-only, per-item overrides) before Phase 5 locks the schema?
-2. **Multi-host view model.** With multiple Accounts connected, does the UI show an **aggregate cross-host view** or **one active account at a time**? This bounds the switcher UX and the query layer.
-3. **MCP surface.** What exact **resources and tools** does the Daybook MCP server expose (read-only todos/events vs. write-back), and with what auth scoping to the LLM client?
-4. **EOD grouping primary.** With Collections now many-to-many, which Collection is the **primary** for EOD report grouping when an item belongs to several?
+1. **Finer-grained sharing.** The base role set is decided (**Owner / Collaborator / Viewer**). Open only at the margin: do we need finer grains (comment-only, per-item overrides) before Phase 5 locks the schema?
 
 ---
 

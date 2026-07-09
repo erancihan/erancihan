@@ -80,7 +80,7 @@ erDiagram
     COLLECTION_MEMBER {
         string collection_id FK
         string user_id
-        string role "owner|editor|viewer"
+        string role "owner|collaborator|viewer"
         bool   tombstone
     }
     TAG {
@@ -190,7 +190,7 @@ A **Collection** is a named, optionally nestable container and the **unit of sha
 | --- | --- | --- | --- |
 | `collection_id` | string → COLLECTION.id | — | Composite key `(collection_id, user_id)`. |
 | `user_id` | string | — | |
-| `role` | enum `{owner, editor, viewer}` | LWW | Permission on the shared Collection. |
+| `role` | enum `{owner, collaborator, viewer}` | LWW | Permission on the shared Collection. |
 | `tombstone` | bool | tombstone | Revoke = tombstone the membership. |
 
 Deleting a Collection tombstones it and its membership rows; a node's other memberships are untouched, and a node with no live membership renders as "Uncollected."
@@ -266,7 +266,7 @@ Because events are immutable and HLC-stamped, a fixed date range **always reprod
 | Visual role | Accent / structural color + icon | 8-hue muted chip set |
 | Report role | Default **group-by** headings (an item may appear under several) | Filter + inline chips; alternate pivot |
 
-Because an item can belong to several Collections, the default report **dedups** it under a single primary (first) Collection; see §8.3.
+Because an item can belong to several Collections, the default report lists it **under each** Collection it belongs to; see §8.3.
 
 ---
 
@@ -446,7 +446,7 @@ flowchart TD
     Q["1 Query EVENT log:<br/>occurred_at in [start,end)"]
     R["2 Resolve events → current NODE snapshots<br/>(join for title, tags, collections)"]
     B["3 Bucket:<br/>CREATED · UPDATED · COMPLETED · CARRIED_OVER"]
-    G["4 Group (pivotable):<br/>by Collection (default, dedup) · by Tag · by project-root"]
+    G["4 Group (pivotable):<br/>by Collection (default: list under each) · by Tag · by project-root"]
     M["5 Render deterministic markdown<br/>checkbox bullets · sub-item rollups · tag chips · timestamps"]
     CO["6 Carry-over: emit carried_over events<br/>for open in-scope items → next day"]
     EX["7 Export: copy-as-markdown (primary)"]
@@ -468,8 +468,8 @@ Default grouping is **by Collection** (nestable H2 headings) with **Tag chips** 
 
 **Multi-Collection items.** Because a node can belong to *several* Collections, grouping by Collection is not a clean partition. Two modes, stated explicitly:
 
-- **Dedup (default).** Each item is listed **once**, under a single **primary** Collection — its first (lowest `order_key`) live membership. Totals count each item once.
-- **List-under-each (optional).** The same item appears under **every** Collection it belongs to. Useful for per-client digests; totals then count memberships, not distinct items, and the footer notes the duplication.
+- **List-under-each (default).** The same item appears under **every** Collection it belongs to — e.g. a task in both `Work › ClientX` and `Home › Renovation` shows under both headings. Totals count memberships, not distinct items, and the footer notes the duplication.
+- **Dedup (optional).** Each item is listed **once**, under a single **primary** Collection — its first (lowest `order_key`) live membership. Totals count each item once.
 
 Uncollected items (no live `NODE_COLLECTION` row) group under an **"Uncollected"** heading.
 
@@ -506,7 +506,7 @@ Incomplete in-scope items roll into the next day's report; each roll appends a `
 | JSON | Later | Machine-readable. |
 | PDF / rich clipboard | Later | Formal sharing. |
 
-A saved **EOD template** (pinned grouping + filters + range) is a later enhancement; standup format toggle (Yesterday / Today / Blockers), scheduled auto-generation, and AI narrative prose are explicitly later (see [Roadmap](05-roadmap.md)). MVP ships the **deterministic** generator only — fully offline, private by default.
+A saved **EOD template** (pinned grouping + filters + range) is a later enhancement; standup format toggle (Yesterday / Today / Blockers) and scheduled auto-generation are later enhancements (see [Roadmap](05-roadmap.md)); AI narrative prose is **out of scope (not planned)**. MVP ships the **deterministic** generator only — fully offline, private by default.
 
 ---
 

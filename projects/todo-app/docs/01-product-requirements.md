@@ -14,11 +14,11 @@ Knowledge workers who also run a busy personal life absorb tasks from everywhere
 1. **Capture is too slow.** Every existing app adds ceremony at the moment of capture: pick a project, set a date, tag it, open a form. Friction at capture means tasks never get written down, and what isn't written down can't be reported.
 2. **The end-of-day report is manual, lossy, and painful.** The user has to *write an EOD report* — for a manager, a standup, a client, or their own record. Reconstructing "what did I actually do today" from a scattered task list is guesswork. The tools that *can* produce a daily wrap (Sunsama, Akiflow) demand a 5–10 minute shutdown ritual; the tool that auto-generates one (TickTick) buries it in Notes and dumps a flat done/undone list with no narrative.
 
-### The EOD-report motivation (the killer feature)
+### The EOD-report motivation (the standout feature)
 
-**The report is the product; the capture is invisible.** A daybook is a journal of the day's events — and Daybook inverts the usual model: you type todos at notepad speed all day, and Daybook *silently* records every meaningful state change in an append-only event log. At end of day — or any range you pick — it derives a clean, grouped, shareable **markdown** report of what was created, updated, completed, and carried over. No ritual. No manual "completed at" field. No DQL queries. You did the work; the report writes itself.
+**Daybook is a general todo tracker first; the auto-report is what makes it worth switching.** A daybook is a journal of the day's events — and Daybook adds a twist to the usual model: you type todos at notepad speed all day for work and life, and Daybook *silently* records every meaningful state change in an append-only event log. At end of day — or any range you pick — it derives a clean, grouped, shareable **markdown** report of what was created, updated, completed, and carried over. No ritual. No manual "completed at" field. No DQL queries. You did the work; the report writes itself. The report is a *derived view* you pull when you need it — not a mode you must live in.
 
-This is the single differentiator everything else in the product serves.
+This auto-report is the single most differentiating feature layered on top of a fast, general-purpose task app.
 
 ---
 
@@ -72,8 +72,8 @@ Primary user: someone drowning in **work-and-life** tasks who is **on the hook t
 
 ### Non-Goals (MVP)
 - **Real-time collaboration / multi-user editing.** Daybook is personal-first; a **Collection** is the designed-in unit of future sharing, but MVP ships **personal-only** (hooks now — see 5.10 Sharing).
-- **AI-generated narrative prose as the default.** MVP ships a deterministic, offline template generator; AI narrative is a **Later** enhancement delivered **via the Model Context Protocol** (Daybook exposes its todos/events as an MCP server so any MCP-capable LLM client writes the prose) — never required.
-- **End-to-end encryption.** MVP uses **transport (TLS) encryption only**; at-rest is the self-hosted server's responsibility. E2EE is an **explicitly-deferred non-goal** (keeping the door open for server-side search + AI/MCP).
+- **AI-generated narrative prose / LLM integration.** The report engine is **deterministic/offline**; **AI narrative and any MCP integration are OUT OF SCOPE (not planned)** — not a phase, not a "Later." The template generator is the whole story.
+- **End-to-end encryption.** MVP uses **transport (TLS) encryption only**; at-rest is the self-hosted server's responsibility. E2EE is an **explicitly-deferred non-goal** (keeping the door open for server-side search).
 - **Board/kanban, calendar time-blocking, Pomodoro/time-tracking.** Not the core loop.
 - **Full mobile feature parity with desktop.** Mobile MVP = fast capture + read/browse + report view; heavy editing is desktop-first.
 - **Non-markdown export formats** (HTML/JSON/PDF) — markdown is the universal paste target for MVP.
@@ -157,12 +157,13 @@ Priorities: **Must** (MVP-blocking) · **Should** (MVP if time allows) · **Coul
 | FR-HOST-2 | Daybook is **server-agnostic**: connect to any self-hosted (or other) Daybook server via an **add/select-server** flow. | Must |
 | FR-HOST-3 | The client can hold **multiple accounts/hosts** with a host/account **switcher** in the UI. | Should |
 | FR-HOST-4 | MVP **may ship single-account**, but the multi-account model + switcher are **designed in** from day one. | Should |
+| FR-HOST-5 | With multiple hosts connected, the UI offers **both an aggregate cross-host view** (all accounts merged) **and a per-host detail view** (one account in isolation). | Should |
 
 ### 5.10 Sharing (Later)
 | ID | Requirement | Priority |
 | --- | --- | --- |
 | FR-SHARE-1 | A **Collection** is the **unit of sharing** and can **later** be shared with other users. | Could (designed-for) |
-| FR-SHARE-2 | Share roles: **owner / editor / viewer**. | Could (designed-for) |
+| FR-SHARE-2 | Share roles: **Owner / Collaborator / Viewer**. | Could (designed-for) |
 | FR-SHARE-3 | MVP builds the **hooks** (data model + sync leave room) but ships **personal-only**. | Won't (MVP) / designed-in |
 
 ### 5.11 EOD report engine (killer feature)
@@ -177,7 +178,7 @@ Priorities: **Must** (MVP-blocking) · **Should** (MVP if time allows) · **Coul
 | FR-EOD-7 | Custom date range (yesterday / this week / arbitrary). | Should |
 | FR-EOD-8 | "**What changed**" diff — sub-items checked, promotions, status flips — not just completions. | Should |
 | FR-EOD-9 | Optional inline thumbnails embedded in the export. | Could |
-| FR-EOD-10 | Standup format toggle (Yesterday / Today / Blockers); scheduled auto-generation; **AI narrative prose (Later, via MCP)** — MVP report engine stays deterministic/offline. | Won't (MVP) |
+| FR-EOD-10 | Standup format toggle (Yesterday / Today / Blockers); scheduled auto-generation — MVP report engine stays deterministic/offline. *(AI narrative / MCP are out of scope — not planned.)* | Won't (MVP) |
 
 ### 5.12 Keyboard control
 | ID | Requirement | Priority |
@@ -198,7 +199,7 @@ Priorities: **Must** (MVP-blocking) · **Should** (MVP if time allows) · **Coul
 | **Performance** | Capture-to-persist feels instant (local write, no network in the hot path). List renders large trees smoothly; images render from blurhash first. Keep the DOM light on Linux WebKitGTK (no heavy blur/filter elevation). |
 | **Offline** | Full create/edit/complete/promote/tag/assign-to-Collection while offline; changes queue and sync on reconnect. SQLite is a deterministic projection of the CRDT/op-log source of truth. |
 | **Sync correctness** | No lost concurrent body edits (Y.Text CRDT). No lost/duplicated tags or Collection membership (m2m tombstoned joins). No resurrected deletes (causal-watermark GC only). Two channels (op log + blobs) may lag; UI degrades gracefully, never errors. |
-| **Security / Privacy** | **Transport (TLS) encryption only**; encryption at rest is the self-hosted server's responsibility. Email magic-link + JWT auth. Deterministic report generation keeps EOD data **offline and private by default** — no data leaves the device unless the user syncs/exports. **E2EE is a deferred non-goal** (keeps server-side search + AI/MCP open); AI narrative is Later, via MCP. |
+| **Security / Privacy** | **Transport (TLS) encryption only**; encryption at rest is the self-hosted server's responsibility. Email magic-link + JWT auth. Deterministic report generation keeps report data **offline and private by default** — no data leaves the device unless the user syncs/exports. **E2EE is a deferred non-goal** (keeps server-side search open). AI narrative / MCP integration are **out of scope (not planned)**. |
 | **Accessibility** | Honor `prefers-reduced-motion`; first-class light theme alongside dark default; keyboard-operable everywhere (a keyboard-first app must also be screen-reader and focus-visible correct); mobile touch targets ≥ 40–44px via auto comfortable density. |
 | **Platform coverage** | All five targets from one Tauri v2 codebase. Validate an iOS/Android build spike (image attach, background sync, capture) before committing; budget hand-rolled mobile signing/release pipelines. |
 | **Design quality** | Daybook design system: Tailwind v4 + Basecoat (shadcn-theme-compatible, no React; daisyUI as styling fallback), **unchanged** OKLCH semantic tokens — low-chroma "Ink" ladder + single restrained indigo accent, 8px grid, dense 28–32px desktop rows / 40–44px mobile, hairline borders, Lucide icons, fast subtle motion. Details in [UX & Interaction](04-ux-and-interaction.md). |
@@ -238,7 +239,7 @@ Priorities: **Must** (MVP-blocking) · **Should** (MVP if time allows) · **Coul
 Personal multi-device task capture, markdown bodies with images, many-to-many Collections (structural, shareable) + many-to-many Tags (lightweight, personal), promotable sub-items, offline-first sync, a **server-agnostic multi-account model** (single-account in MVP, switcher designed in), and the automatic EOD report — on all five platforms with a keyboard-first, Basecoat-styled UI. Collection sharing hooks are designed in but ship personal-only.
 
 ### Out of scope (now)
-Real-time collaboration / multi-user editing (Collection sharing is designed-in but Later); E2EE (deferred non-goal); AI narrative as default (Later, via MCP); board/kanban; calendar/time-blocking; time tracking; non-markdown export; native mobile integrations (share-sheet, widgets, App Intents); productivity analytics dashboards.
+Real-time collaboration / multi-user editing (Collection sharing is designed-in but Later); E2EE (deferred non-goal); AI narrative / MCP integration (out of scope — not planned); board/kanban; calendar/time-blocking; time tracking; non-markdown export; native mobile integrations (share-sheet, widgets, App Intents); productivity analytics dashboards.
 
 ---
 
@@ -261,7 +262,7 @@ The MVP delivers the full killer loop — notepad-fast capture → structured to
 - Daybook design system: Tailwind v4 + Basecoat over vanilla TypeScript + Alpine.js (v3), CodeMirror 6 + y-codemirror.next editor, dark default + light theme, dense desktop / comfortable mobile density, command palette, quick-capture bar, detailed GitHub-issue todo view.
 - `?` cheat-sheet overlay and command palette for keymap discoverability; mobile gesture equivalents + soft-keyboard accessory Submit button.
 
-**Explicitly later** (see [Roadmap](05-roadmap.md)): AI-generated narrative reports (via MCP), scheduled auto-generation, standup format toggle + extra group-by pivots, board/kanban view, E2EE, Collection sharing/collaboration (owner/editor/viewer), multi-account/multi-host switcher (beyond MVP single-account), extra export formats (HTML/JSON/PDF), native mobile integrations, carry-over analytics, op-log/CRDT compaction tooling, alternate body-CRDT swap, self-hosted backend distribution.
+**Explicitly later** (see [Roadmap](05-roadmap.md)): scheduled auto-generation, standup format toggle + extra group-by pivots, board/kanban view, E2EE, Collection sharing/collaboration (Owner/Collaborator/Viewer), multi-account/multi-host switcher (beyond MVP single-account), extra export formats (HTML/JSON/PDF), native mobile integrations, carry-over analytics, op-log/CRDT compaction tooling, alternate body-CRDT swap, self-hosted backend distribution. *(AI narrative / MCP integration are out of scope — not planned, not Later.)*
 
 ---
 
@@ -269,8 +270,8 @@ The MVP delivers the full killer loop — notepad-fast capture → structured to
 
 These bound the sync protocol, auth, and privacy design and should be resolved before lock-in (tracked in [Roadmap](05-roadmap.md)):
 
-1. **Sharing model** — a Collection is the designed-in unit of future sharing; confirm the **owner/editor/viewer** role model and sync semantics before the data model locks in.
-2. **End-to-end encryption** — decided: **deferred non-goal**; MVP is **TLS-only** transport with at-rest as the server's responsibility (keeps server-side search + AI/MCP open). Revisit only if a privacy posture later demands it.
-3. **AI report narrative** — planned **Later via MCP** (Daybook as an MCP server, provider-agnostic client); confirm the MCP surface and whether any hosted convenience path is offered. MVP stays deterministic/offline.
+1. **Sharing model** — DECIDED: a Collection is the designed-in unit of future sharing with **Owner / Collaborator / Viewer** roles. Residual: whether to add finer grains later (e.g. comment-only, per-item permissions) and the exact sync semantics before the data model locks in.
+2. **End-to-end encryption** — DECIDED: **deferred non-goal**; MVP is **TLS-only** transport with at-rest as the server's responsibility (keeps server-side search open). Revisit only if a privacy posture later demands it.
+3. **AI report narrative** — DECIDED: **out of scope (not planned)**. The report engine is deterministic/offline; there is no MCP surface and no AI-prose path.
 4. **Launch hosting posture** — Daybook is server-agnostic (bring-your-own-host); do we still offer managed pieces for MVP (Cloudflare R2 + managed Postgres + small VPS Axum relay) alongside self-hosting?
 5. **Codename** — "**Daybook**" confirmed (a daybook is a journal of the day's events); lock the design-token namespace to match.

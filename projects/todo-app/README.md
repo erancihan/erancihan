@@ -8,7 +8,7 @@
 
 ## Vision
 
-Daybook is a personal-first, multi-device task app built around one daily loop: **capture fast, report automatically.** It's personal by default but **sharing-ready** and **server-agnostic** — a Collection can later be shared with other users, and the client can connect to multiple hosts. You dump work and life tasks in with zero ceremony, organize them along two many-to-many axes (nestable, shareable **Collections** and free-form **Tags**), and at the end of the day Daybook writes your EOD report *for* you from an immutable event log — not from a manual done/undone dump.
+Daybook is a **general-purpose task tracker for work and life** — a personal-first, multi-device app you live in all day. Fast, notepad-grade capture and rich organization are the core: dump tasks in with zero ceremony (markdown bodies, images, promotable sub-items) and organize them along two many-to-many axes — nestable **Collections** and free-form **Tags**. It's personal by default but **sharing-ready** and **server-agnostic** — a Collection can later be shared with other users, and the client can connect to multiple hosts. Because every change lands in an immutable event log, Daybook also writes your end-of-day report *for* you — a **standout feature derived from that log**, one feature of a general tracker, not the whole app.
 
 The name says what it is: a daybook is a journal of the day's events — you jot tasks through the day and it becomes your end-of-day report.
 
@@ -19,7 +19,7 @@ The user writes end-of-day reports and drowns in tasks across both work and life
 1. **Fast capture** — writing a todo should feel *as simple as writing to a notepad*: markdown body, images, sub-items, zero friction. `Enter`/`Shift+Enter` add newlines, `Ctrl+Enter` submits, arrows navigate, `e` edits.
 2. **The EOD report** — the killer feature. Daybook derives a deterministic, shareable markdown report (created / updated / completed / carried-over) from an append-only event log, so the same day always reproduces the same report and unfinished items roll forward automatically.
 
-Everything else — sync, collections, tags, promotable sub-items — exists to serve those two flows.
+Daybook is a full todo tracker first — collections, tags, promotable sub-items, sync; fast capture and the auto-EOD report are the two things it does markedly better than the alternatives.
 
 ## Decisions at a Glance
 
@@ -34,7 +34,7 @@ Everything else — sync, collections, tags, promotable sub-items — exists to 
 | **Keymap** | Vim-ish two-mode modality — **List mode** (single-key verbs, `j/k`/arrows, `e`/`Enter` to edit, `o`/`O` new, `Tab`/`Shift+Tab` indent, `p` promote, `x` done, `/` search, `Ctrl/Cmd+K` palette, `Ctrl/Cmd+Shift+E` EOD) and **Edit mode** (`Enter`/`Shift+Enter` newline, `Ctrl/Cmd+Enter` submit, `Esc` back). Touch maps every verb to a gesture + soft-keyboard accessory Submit. | The required keys are only unambiguous when navigation and composition are separated by mode. Mobile soft `Return` must stay a newline. |
 | **Design system** | **Basecoat** ([basecoatui.com](https://basecoatui.com) — "shadcn/ui without React": plain-HTML components + tiny Alpine scripts) + Tailwind v4, low-chroma **"Ink"** neutral ladder + one restrained indigo accent (primary action + focus ring only). Basecoat is compatible with shadcn/ui OKLCH themes so the Ink token palette is **unchanged**; daisyUI is the documented styling fallback. Dark default, first-class light, OKLCH semantic tokens. 8px grid, dense desktop / comfortable-touch mobile density, Lucide icons. | The killer flows demand the UI disappear and the keyboard lead — the Linear/Raycast archetype. Collections carry the structural/accent role; tags get a muted 8-hue chip set so the two axes stay visually distinct. |
 | **Sharing** | Personal-first but **sharing-ready**: a **Collection** is the unit of sharing and can later be shared with other users. Hooks designed in now; personal-only in MVP. | Designing the shareable boundary in from day one avoids a painful retrofit; keeping it dormant keeps the MVP simple. |
-| **Hosting / accounts** | **Server-agnostic + multi-account**: an account = { host URL, credentials, identity on that host }; the client can connect to **multiple hosts**, each with its own accounts/collections, via a host/account switcher. Local store partitioned per account. Transport is **TLS only** — no client-side E2EE. | Multi-host keeps users un-locked-in; TLS-only (vs. E2EE) keeps the door open for server-side search + AI/MCP. MVP may ship single-account, but the model + switcher UI are designed in. |
+| **Hosting / accounts** | **Server-agnostic + multi-account**: an account = { host URL, credentials, identity on that host }; the client can connect to **multiple hosts**, each with its own accounts/collections, via a host/account switcher. The client shows **both an aggregate cross-host view** (all connected accounts combined) **and a per-host detail view**. Local store partitioned per account. Transport is **TLS only** — no client-side E2EE. | Multi-host keeps users un-locked-in; TLS-only (vs. E2EE) keeps the door open for server-side search. MVP may ship single-account, but the model + switcher UI are designed in. |
 
 ## Documentation
 
@@ -52,6 +52,6 @@ Tauri v2 on all five platforms with a vanilla-TS + Alpine.js view over a framewo
 
 ## Open Questions
 
-Most of the early unknowns are now **resolved**: the product is **sharing-ready** with the **Collection** as the shareable unit (personal-only in MVP); transport is **TLS-only** with no client-side E2EE; AI report prose is a **later** enhancement delivered **via MCP** — Daybook exposes its todos/events as an MCP server so any MCP-capable LLM client writes the narrative (provider-agnostic, no bundled LLM); hosting is **self-host + multi-host** (server-agnostic, multi-account switcher); and the codename is **Daybook**.
+Most of the early unknowns are now **resolved**: the product is a general-purpose todo tracker that's **sharing-ready** with the **Collection** as the shareable unit (personal-only in MVP), with ACL roles **Owner / Collaborator / Viewer**; transport is **TLS-only** with no client-side E2EE; the EOD report is **deterministic and offline** — AI/MCP narrative is **out of scope, not planned**; hosting is **self-host + multi-host** (server-agnostic, multi-account switcher) with **both an aggregate cross-host view and a per-host detail view**; and the codename is **Daybook**.
 
-Genuinely residual: the exact sharing/ACL roles on a shared Collection; whether the multi-host client shows an aggregate cross-host view or one active account at a time; and the precise shape of the MCP surface (which resources/tools Daybook exposes). See [docs/05-roadmap.md](docs/05-roadmap.md).
+Genuinely residual: the finer sharing semantics on a shared Collection (e.g. a comment-only role, per-item permission overrides). See [docs/05-roadmap.md](docs/05-roadmap.md).
