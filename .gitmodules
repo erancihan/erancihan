@@ -16,3 +16,6 @@
 [submodule "projects/antigravity-usage-monitor"]
 	path = projects/antigravity-usage-monitor
 	url = git@github.com:erancihan/antigravity-usage-monitor.git
+[submodule "projects/aether-downloader"]
+	path = projects/aether-downloader
+	url = git@github.com:erancihan/aether-downloader.git
