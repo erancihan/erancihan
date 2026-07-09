@@ -1,0 +1,31 @@
+-- Persistent ad-history log (PLAN.md §5.5, M4). One row per loaded ad.
+-- Complex fields (waterfall, creative) are stored as JSON and (de)serialized in the DAO,
+-- keeping the schema flat and migration-friendly. `personalized` is 0/1.
+
+CREATE TABLE StoredAd (
+    rowId            INTEGER PRIMARY KEY AUTOINCREMENT,
+    responseId       TEXT    NOT NULL,
+    format           TEXT    NOT NULL,
+    filledBy         TEXT    NOT NULL,
+    personalized     INTEGER NOT NULL,
+    loadedAtEpochMs  INTEGER NOT NULL,
+    latencyMs        INTEGER,
+    waterfallJson    TEXT    NOT NULL,
+    creativeJson     TEXT,
+    rawResponseDump  TEXT    NOT NULL
+);
+
+CREATE INDEX StoredAd_loadedAt ON StoredAd(loadedAtEpochMs);
+
+insert:
+INSERT INTO StoredAd(responseId, format, filledBy, personalized, loadedAtEpochMs, latencyMs, waterfallJson, creativeJson, rawResponseDump)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAll:
+SELECT * FROM StoredAd ORDER BY loadedAtEpochMs DESC, rowId DESC;
+
+count:
+SELECT count(*) FROM StoredAd;
+
+clear:
+DELETE FROM StoredAd;
