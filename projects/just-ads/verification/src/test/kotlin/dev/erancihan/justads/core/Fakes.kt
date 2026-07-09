@@ -9,6 +9,7 @@ import dev.erancihan.justads.core.model.AdFormat
 import dev.erancihan.justads.core.model.AdRecord
 import dev.erancihan.justads.core.model.AdapterAttempt
 import dev.erancihan.justads.core.model.NativeCreative
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** Convenience builder so tests read as data, not boilerplate. */
@@ -53,6 +54,10 @@ class FakeAdsController : AdsController {
     val interstitialOutcomes = ArrayDeque<AdOutcome>()
     val rewardedOutcomes = ArrayDeque<AdOutcome>()
 
+    // Optional per-load gates: if present, loadNativeAd awaits the next gate before returning,
+    // letting a test hold a load "in flight" while it triggers refresh().
+    val nativeGates = ArrayDeque<CompletableDeferred<Unit>>()
+
     var initializedPersonalized: Boolean? = null
     var interstitialShown = 0
     var rewardedShown = 0
@@ -66,8 +71,10 @@ class FakeAdsController : AdsController {
         initState.value = AdsInitState.Ready
     }
 
-    override suspend fun loadNativeAd(): NativeAdOutcome =
-        nativeOutcomes.removeFirstOrNull() ?: NativeAdOutcome.Failed("queue empty")
+    override suspend fun loadNativeAd(): NativeAdOutcome {
+        nativeGates.removeFirstOrNull()?.await()
+        return nativeOutcomes.removeFirstOrNull() ?: NativeAdOutcome.Failed("queue empty")
+    }
 
     override suspend fun loadInterstitial(): AdOutcome =
         interstitialOutcomes.removeFirstOrNull() ?: AdOutcome.Failed("queue empty")

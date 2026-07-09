@@ -4,6 +4,7 @@ import dev.erancihan.justads.core.model.AdRecord
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 
 /**
  * Persistence for the ad-history log. Real impl is SQLDelight-backed (PLAN.md §5.5, M4);
@@ -24,7 +25,8 @@ class InMemoryAdHistoryDao : AdHistoryDao {
     private val backing = MutableStateFlow<List<AdRecord>>(emptyList())
 
     override suspend fun insert(record: AdRecord) {
-        backing.value = listOf(record) + backing.value
+        // Atomic CAS so concurrent inserts can't lose an update (read-modify-write hazard).
+        backing.update { listOf(record) + it }
     }
 
     override fun observeAll(): Flow<List<AdRecord>> = backing.map { it }
