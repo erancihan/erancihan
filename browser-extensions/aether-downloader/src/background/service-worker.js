@@ -1,6 +1,8 @@
 // AetherDownloader — Background Service Worker
 // Handles download requests from content scripts with Referer injection
 
+import '../browser-polyfill.js';
+
 const DEFAULT_SETTINGS = {
   pixivSubfolder: 'pixiv',
   zerochanSubfolder: 'zerochan',
@@ -39,28 +41,34 @@ async function downloadFile({ url, filename }) {
   return downloadId;
 }
 
-// ─── Referer Injection via webRequest ───────────────────────────
-// Pixiv's CDN (pximg.net) requires Referer: https://www.pixiv.net/
-// Firefox ignores Referer set in fetch() headers (it's a forbidden header),
-// so we inject it at the network layer instead.
+// ─── Referer Injection ──────────────────────────────────────────
+// Pixiv's CDN (pximg.net) requires Referer: https://www.pixiv.net/, and
+// browsers ignore a Referer set in fetch() headers (it's a forbidden header),
+// so it must be injected at the network layer.
+//   - Firefox (MV3): blocking webRequest, registered below.
+//   - Chrome  (MV3): declarativeNetRequest static rule (rules.json), declared
+//     in the Chrome manifest — blocking webRequest is unavailable there.
+// The guard lets one service-worker build run on both: Chrome omits the
+// webRequest permission, so browser.webRequest is undefined and we skip this.
+if (browser.webRequest && browser.webRequest.onBeforeSendHeaders) {
+  browser.webRequest.onBeforeSendHeaders.addListener(
+    (details) => {
+      const headers = details.requestHeaders || [];
 
-browser.webRequest.onBeforeSendHeaders.addListener(
-  (details) => {
-    const headers = details.requestHeaders || [];
+      // Remove any existing Referer
+      const filtered = headers.filter(
+        (h) => h.name.toLowerCase() !== 'referer'
+      );
 
-    // Remove any existing Referer
-    const filtered = headers.filter(
-      (h) => h.name.toLowerCase() !== 'referer'
-    );
+      // Add the correct Referer for Pixiv
+      filtered.push({ name: 'Referer', value: 'https://www.pixiv.net/' });
 
-    // Add the correct Referer for Pixiv
-    filtered.push({ name: 'Referer', value: 'https://www.pixiv.net/' });
-
-    return { requestHeaders: filtered };
-  },
-  { urls: ['*://*.pximg.net/*'] },
-  ['blocking', 'requestHeaders']
-);
+      return { requestHeaders: filtered };
+    },
+    { urls: ['*://*.pximg.net/*'] },
+    ['blocking', 'requestHeaders']
+  );
+}
 
 // Listen for messages from content scripts
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {

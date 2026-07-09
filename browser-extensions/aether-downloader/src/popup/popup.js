@@ -1,6 +1,7 @@
 // AetherDownloader — Popup Settings Logic
 // Loads and saves extension settings to browser.storage.local
 
+import '../browser-polyfill.js';
 import '../styles/input.css';
 
 const DEFAULTS = {

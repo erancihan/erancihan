@@ -1,13 +1,15 @@
 {
   "name": "aether-downloader",
   "version": "1.0.0",
-  "description": "Unified Pixiv & Zerochan image downloader Firefox extension",
+  "description": "Unified Pixiv & Zerochan image downloader extension for Firefox and Chrome",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node build.js --watch",
     "build": "node build.js",
-    "package": "npm run build && web-ext build -s dist -a artifacts --overwrite-dest"
+    "package": "npm run build && npm run package:firefox && npm run package:chrome",
+    "package:firefox": "web-ext build -s dist/firefox -a artifacts --overwrite-dest --filename aether-downloader.xpi",
+    "package:chrome": "web-ext build -s dist/chrome -a artifacts --overwrite-dest --filename aether-downloader-chrome.zip"
   },
   "devDependencies": {
     "vite": "^6.3.5",

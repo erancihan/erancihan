@@ -11,6 +11,7 @@
 //   - A thumbnail URL can be rewritten to its full URL by swapping the host and
 //     the size bucket (imgbrd-grabber's approach).
 
+import '../../browser-polyfill.js';
 import '../../styles/input.css';
 import { createDownloadFAB } from '../common/download-button.js';
 import { showToast } from '../common/toast.js';

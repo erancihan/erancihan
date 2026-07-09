@@ -1,6 +1,7 @@
 // AetherDownloader — Pixiv Content Script
 // Parses preload metadata for artwork data, multi-page support, and hover preview
 
+import '../../browser-polyfill.js';
 import '../../styles/input.css';
 import { createDownloadFAB } from '../common/download-button.js';
 import { showToast } from '../common/toast.js';
