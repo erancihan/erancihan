@@ -1,0 +1,224 @@
+# Cadence — Roadmap
+
+> Phased build plan from proof-of-stack to v1, sequenced to kill the two hardest bets — **iOS via Tauri v2** and the **sync engine** — before any polish is spent.
+
+This roadmap turns the locked decisions in [../README.md](../README.md) and [02-architecture.md](02-architecture.md) into an ordered plan. It is deliberately **de-risk-first**: the earliest phases prove the scariest assumptions, not the easiest features. Everything here honors the MVP scope in [01-product-requirements.md](01-product-requirements.md) and the data model in [03-data-model.md](03-data-model.md).
+
+---
+
+## Guiding principles
+
+1. **Prove the terrifying bets first.** Tauri v2 on iOS and the offline-first hybrid-CRDT sync engine are the two things that can invalidate the whole architecture. They come before capture UX, before design polish, before the EOD report.
+2. **Desktop-first, mobile-scoped.** Per the brief, desktop is first-class end to end; mobile MVP is scoped to fast capture + read/browse + report view. Full mobile hardening is its own late phase.
+3. **Deterministic before delightful.** The EOD report ships as a deterministic template generator (offline, private). AI narrative is a later, optional, additive layer — never a dependency.
+4. **Managed pieces first.** Cloudflare R2 + managed Postgres + a small VPS for the Axum relay. Self-hosted distribution (MinIO + bundled relay) is a later deliverable, not an MVP tax.
+5. **Every hard requirement has an exit criterion.** A phase is not "done" because code exists; it is done when its exit criteria are demonstrably met on real devices.
+
+---
+
+## Phase map at a glance
+
+| Phase | Theme | Primary risk retired | Rough shape |
+| --- | --- | --- | --- |
+| **Phase 0** | Proof-of-stack spike | Tauri v2 iOS/Android viability; yrs round-trip | Throwaway spikes, go/no-go gate |
+| **Phase 1** | MVP core (desktop-first, local-only) | Capture loop + data model + keymap | The app you'd use offline on one machine |
+| **Phase 2** | Sync + images | Op-log sync + hybrid conflict model + blobs | Multi-device, offline-first, image attach |
+| **Phase 3** | EOD report engine + polish | The killer differentiator | Deterministic report, carry-over, design system |
+| **Phase 4** | Mobile hardening + v1 | WebView divergence, mobile capture, release pipelines | Shippable v1 on all five platforms |
+
+```mermaid
+flowchart LR
+    P0["Phase 0\nProof-of-stack\n(go/no-go gate)"] --> P1["Phase 1\nMVP core\ndesktop, local-only"]
+    P1 --> P2["Phase 2\nSync + images"]
+    P2 --> P3["Phase 3\nEOD report + polish"]
+    P3 --> P4["Phase 4\nMobile hardening\n+ v1 release"]
+    P0 -. "no-go: fall back to\negui or reassess shell" .-> FB[["Re-evaluate\nUI shell"]]
+```
+
+---
+
+## Build order — why this sequence de-risks the hardest bets
+
+The two bets that can sink the architecture are validated **before** feature work, in this order:
+
+| Order | Bet under test | Where it's proven | If it fails |
+| --- | --- | --- | --- |
+| 1 | **Tauri v2 runs our UI on iOS + Android** (image attach, keyboard/IME, background sync hooks, signing) | Phase 0 spike | Reassess shell before any MVP code is written; egui fallback or Capacitor/native reconsideration. Cheapest possible failure. |
+| 2 | **yrs (Rust Yjs) round-trips Y.Text snapshots/updates** cleanly behind our trait | Phase 0 spike | Swap body-CRDT candidate (Loro/automerge) while the surface area is a spike, not a shipped feature. |
+| 3 | **Hybrid op-log sync merges without loss** (per-field LWW + Y.Text) across two devices offline | Phase 2 (built on a real, but still small, data model) | Contained: local-only MVP (Phase 1) still works; sync is additive. |
+| 4 | **WebView divergence across four engines** doesn't break the heavy keyboard UX | Phase 4 (continuous QA from Phase 1, hardened here) | Per-platform patches; Linux WebKitGTK gets the most attention. |
+
+The point: **the most expensive-to-reverse decisions are tested when reversing them is cheapest.**
+
+---
+
+## Phase 0 — Proof-of-stack spike
+
+**Goal:** answer one question — *can Tauri v2 carry this product to all five platforms, and does the body-CRDT round-trip?* This is throwaway code. Ship nothing. Learn everything.
+
+### Deliverables
+- A minimal Tauri v2 app (React + Vite + Tailwind v4 + one shadcn component) that **builds and launches on all five targets**: macOS, Windows, Linux (WebKitGTK), iOS (real device or provisioned simulator), Android.
+- **iOS/Android build spike** exercising the three native-gap risks from the brief: **image attach** (paste/pick → bytes into Rust), **background sync** hook feasibility, and **fast capture** (soft keyboard + accessory toolbar with a Submit button; confirm soft `Return` can stay a newline).
+- A **CodeMirror 6** instance in the webview proving `Enter`/`Shift+Enter` newline vs `Ctrl/Cmd+Enter` submit works identically across WKWebView / Android WebView / WebView2 / WebKitGTK.
+- A **Rust yrs spike**: create a `Y.Text`, apply concurrent updates from two docs, encode/decode state vectors and updates, assert convergence — behind the intended `BodyCrdt` trait. Pin versions.
+- A hand-rolled **signing/release smoke test** for iOS and Android (validating the brief's warning that `tauri-action` mobile CI was still in progress).
+
+### Exit criteria (go/no-go gate)
+- [ ] App visibly runs on **all five** platforms from **one** codebase.
+- [ ] On iOS **and** Android: an image can be attached, the markdown editor accepts input, and the soft `Return` inserts a newline while an on-screen Submit button submits.
+- [ ] `Ctrl/Cmd+Enter` submit and `Enter`/`Shift+Enter` newline behave identically on all four WebView engines.
+- [ ] yrs round-trips a concurrent `Y.Text` edit to convergence; snapshot + update encode/decode verified in a unit test.
+- [ ] We can produce a signed iOS `.ipa` and Android build locally, even if manually.
+
+**No-go outcome:** stop and re-evaluate the UI shell (egui fallback per the architecture ADR, or a webview alternative) **before** writing MVP code. A no-go here is a success — it's the cheapest place to learn it.
+
+---
+
+## Phase 1 — MVP core (desktop-first, local-only)
+
+**Goal:** the app becomes genuinely usable **offline on a single desktop machine**. No backend yet. This is where the capture loop, data model, and keymap become real.
+
+### Deliverables
+- **Single-table NODE model** (todos + sub-items) in local **SQLite**, with `parent_id`, base62 fractional `order_key` (+ per-client jitter suffix), `kind`, `promoted` flag, UUIDv7/ULID IDs. See [03-data-model.md](03-data-model.md).
+- **Append-only EVENT log** written on every state change (this is the future report source — build it now, not later).
+- **Frictionless capture** with the **vim-ish List/Edit modality** and the exact keymap: `Enter`/`Shift+Enter` = newline, `Ctrl/Cmd+Enter` = submit, arrows/`j`/`k` navigate, `e`/`Enter` edit, `o`/`O` new sibling, `Tab`/`Shift+Tab` indent/outdent, `x` toggle done, `p` promote, `/` search, `Ctrl/Cmd+K` palette. Full table in [04-ux-and-interaction.md](04-ux-and-interaction.md).
+- **Insert-by-default capture** + a `?` cheat-sheet overlay + command palette so non-power-users never need to learn modes.
+- **CodeMirror 6** markdown editor with Obsidian-style inline live preview (literal markdown stored per body).
+- **Promotable sub-items**: in-place promotion (`promoted=true`, emit event, `parent_id` unchanged) — GitHub sub-issue model.
+- **Two axes**: one hierarchical **Category** FK per node (single-select) + many-to-many **Tags** (tombstoned join).
+- **Cadence design system v1**: shadcn/Tailwind v4, Ink neutral ladder + single indigo accent, dark default + light theme, dense desktop rows. Mode pill + caret-color modality legibility.
+
+### Exit criteria
+- [ ] A user can capture a todo with a markdown body faster than opening a notepad — measured, not asserted.
+- [ ] Every required key behaves exactly as specified, on desktop.
+- [ ] A sub-item can be promoted to a full todo without a row copy or losing position.
+- [ ] Category and Tags are independently assignable and visually distinct.
+- [ ] Killing and relaunching the app loses nothing (SQLite durable).
+- [ ] The EVENT log records create/update/complete/promote for every node.
+
+---
+
+## Phase 2 — Sync + images
+
+**Goal:** retire the second big bet. Cadence becomes **multi-device and offline-first**, and images sync. This is the hardest engineering phase.
+
+### Deliverables
+- **Thin Rust (Axum) relay** persisting a per-user **op log to Postgres**; **email magic-link + JWT** auth. Deployed to a small VPS (managed Postgres).
+- **Client op-log channel**: each device queues mutations offline and syncs one op-log channel when online.
+- **Hybrid conflict model, end to end**: per-field **LWW (HLC/Lamport-stamped)** for scalars/enums/FKs/`order_key`; **Y.Text sequence CRDT** (yrs) for markdown bodies, behind the `BodyCrdt` trait. **Tombstone soft-deletes**.
+- **Content-addressed image storage**: SHA-256 blobs to **Cloudflare R2** on a **separate sync channel**; op log carries only hash + metadata + **blurhash**/thumbnail. On-device thumbnails via the Rust `image` crate; offline upload/download queue; **LRU size-capped local blob cache**.
+- **Graceful blob degradation**: a todo referencing an attachment whose bytes haven't arrived renders from blurhash/thumbnail, never breaks.
+- SQLite treated as a **deterministic projection** of the CRDT/op-log source of truth (rebuildable).
+
+### Exit criteria
+- [ ] Two devices, both edited **offline**, converge with **no lost characters** in a concurrently edited markdown body.
+- [ ] Concurrent scalar/structure edits resolve by HLC LWW deterministically; reorders don't collide (jitter suffix works).
+- [ ] A deleted todo stays deleted across sync (tombstone honored; no resurrection).
+- [ ] An image attached offline on device A appears on device B after both come online; list renders instantly from blurhash before bytes land.
+- [ ] Dropping and rebuilding the local SQLite projection from the op log yields identical state.
+
+---
+
+## Phase 3 — EOD report engine + polish
+
+**Goal:** ship the **killer differentiator**. Everything before this served these flows.
+
+### Deliverables
+- **EOD report engine** deriving reports from the **immutable EVENT log** over a **timezone-aware local-day range** (default: today; custom range supported).
+- Event bucketing into **CREATED / UPDATED / COMPLETED / CARRIED_OVER**, resolved to current node snapshots.
+- **Pivotable groupings** (by Category tree for MVP; tag/project pivots noted for later) rendered to clean markdown: checkbox bullets, nested sub-item rollups, tag chips, timestamps, optional inline thumbnails.
+- **Carry-over**: unfinished in-scope items roll forward with a **slipped-days** count.
+- **Report derived from status changes, sub-item checks, and promotions** — not only explicit completions — so report quality survives imperfect capture discipline.
+- **Copy-as-markdown** as the primary export (universal paste target for Slack/Jira/email).
+- `Ctrl/Cmd+Shift+E` generates the report; command-palette entry too.
+- **Design system hardening**: density modes, motion honoring `prefers-reduced-motion`, GitHub-issue detailed todo view, quick-capture bar.
+
+### Exit criteria
+- [ ] The **same day + range always reproduces the same report** (deterministic, auditable).
+- [ ] The report surfaces the **what-changed diff** (sub-items checked, promotions, status flips) that competitors miss.
+- [ ] Report generation works **fully offline**.
+- [ ] Unfinished items carry over correctly with an accurate slipped-days count.
+- [ ] Copy-as-markdown pastes cleanly into Slack, Jira, and email.
+
+---
+
+## Phase 4 — Mobile hardening + v1
+
+**Goal:** turn the desktop-first app into a **shippable v1 on all five platforms**, with mobile capture that honors the exact requirements.
+
+### Deliverables
+- **Mobile capture UX**: every List verb mapped to a gesture (tap=edit, swipe-right=done, swipe-left=actions, long-press-drag=reorder/indent, FAB=quick-add) + an **accessory toolbar above the soft keyboard with a dedicated Submit button** (soft `Return` stays a newline).
+- Mobile scope per MVP: **fast capture + read/browse + report view** (not full desktop parity).
+- **Per-platform WebView QA** across WKWebView / Android WebView / WebView2 / WebKitGTK — keyboard/IME, CSS, editor behavior. Avoid heavy blur/filters (Linux WebKitGTK is weakest).
+- **Release pipelines**: hand-rolled signing + release for iOS and Android (budgeted per the Tauri mobile-CI risk), plus desktop packaging for the three OSes.
+- **Comfortable/touch density** (40–44px targets) auto-enabled on mobile.
+- Background sync validation on iOS/Android; blob queue behavior on flaky mobile networks.
+
+### Exit criteria
+- [ ] Capture on a phone honors the requirement: soft `Return` = newline, on-screen Submit submits.
+- [ ] All four WebView engines pass the heavy-keyboard + editor QA suite.
+- [ ] Signed builds exist for **all five platforms** via a repeatable (even if partly manual) pipeline.
+- [ ] Touch targets meet 44px on mobile; no blur-driven jank on Linux.
+- [ ] A full day's loop — capture on phone, edit on desktop, sync, generate EOD — works across devices.
+
+**v1 = Phase 4 exit criteria met.** Everything in the "Later" list below is post-v1.
+
+---
+
+## Later (post-v1)
+
+Straight from the locked scope — **not** in v1:
+
+- AI-generated **narrative** EOD reports (optional, cloud-backed).
+- **Scheduled auto-generation** of the report at a set EOD time.
+- **Standup format** toggle (Yesterday / Today / Blockers) + additional group-by pivots (tag, project).
+- **Board/kanban** alternate view.
+- **End-to-end encryption** of docs and blobs.
+- **Sharing / collaboration / multi-user.**
+- Additional **export formats** (HTML, JSON, PDF).
+- **Native mobile integrations**: share-sheet capture, home-screen widgets, iOS App Intents / Live Activities.
+- Carry-over **slipped-days analytics** and productivity stats.
+- **Op-log/CRDT compaction**, tombstone GC tooling, periodic fractional-index rebalancing.
+- **Swap-in** of an alternate body CRDT behind the Rust trait if yrs parity gaps bite.
+- **Self-hosted backend distribution** (MinIO + bundled relay) as a first-class deployment option.
+
+---
+
+## Top risks & mitigations
+
+| # | Risk | Mitigation | Retired in |
+| --- | --- | --- | --- |
+| 1 | **Tauri v2 mobile isn't feature-complete**; some desktop plugins lack iOS/Android impls; `tauri-action` mobile CI in progress into 2026. | Validate an iOS/Android build spike (image attach, background sync, capture) **before committing**; budget hand-rolled signing/release pipelines and native-gap code. | Phase 0 / Phase 4 |
+| 2 | **WebView divergence** (WKWebView / Android WebView / WebView2 / WebKitGTK) breaks CSS + keyboard/IME; WebKitGTK is weakest. | Per-platform QA on the heavy keyboard UX + editor from Phase 1; avoid heavy blur/filters; Linux gets the most attention. | Phase 4 (ongoing) |
+| 3 | **Mobile soft `Return` must stay a newline**; submit relies entirely on an on-screen accessory button. | Design the accessory toolbar + Submit button explicitly; verify in Phase 0 spike and re-verify in Phase 4. Getting this wrong breaks the core capture loop on phones. | Phase 0 / Phase 4 |
+| 4 | **yrs (Rust Yjs) parity** was still closing mid-2026. | Isolate the body CRDT behind a Rust `BodyCrdt` trait; pin versions; test snapshot/update round-trips so it can be swapped for Loro/automerge. | Phase 0 / Phase 2 |
+| 5 | **Custom relay + Postgres + object store + auth = real ops load** for a small team. | Start on managed pieces (R2, managed Postgres); keep only the thin Axum relay self-hosted. Self-host distribution is a later deliverable. | Phase 2 |
+| 6 | **SQLite index / op log drift** from CRDT truth and bloat over years. | Treat SQLite as a **deterministic projection** (rebuildable); schedule compaction + tombstone GC **only behind a causal watermark** — premature GC resurrects deleted todos. | Phase 2 (GC tooling: Later) |
+| 7 | **Two sync channels desync** — a todo references bytes that haven't downloaded. | UI degrades gracefully to **blurhash/thumbnail**; never block on blob availability. | Phase 2 |
+| 8 | **EOD report quality depends on capture discipline.** | Derive the report from **status changes, sub-item checks, and promotions** in the event log — not only explicit completions. | Phase 3 |
+| 9 | **Vim-ish modality surprises non-power users.** | Ship **insert-by-default capture**, the `?` cheat-sheet, and the command palette so users can just type. | Phase 1 |
+| 10 | **Fractional-index keys grow / collide** under concurrent same-position inserts. | Always append the **per-client jitter suffix**; schedule occasional background rebalancing (Later). | Phase 1 / (rebalance: Later) |
+| 11 | **No E2EE in the base design** — server-stored docs + R2 objects are plaintext until encryption ships. | Transport + at-rest encryption on the (self-hostable) backend for now; E2EE is an open question and a Later item. | Open question |
+| 12 | **Positioning risk** — Sunsama owns "daily shutdown"; TickTick ships a summary. | Differentiate hard: the report is **automatic** and capture is **notepad-fast**, sourced from an event-log diff competitors don't have. Or it reads as a clone. | Cross-cutting |
+
+---
+
+## Open questions (decide before locking repos & namespaces)
+
+These bound the sync protocol, auth, hosting, and branding. Resolving them early prevents rework.
+
+1. **Sync scope.** Is Cadence strictly **personal multi-device** (no sharing/collaboration ever), or should the data model and auth **leave room for shared lists/teams** later? This significantly bounds the sync protocol and auth design.
+2. **End-to-end encryption.** EOD reports mix sensitive work and life data. Do you want **per-user E2EE** of docs and blobs before they touch the server (adds complexity, blocks server-side AI + search), or is **transport + at-rest** encryption on a self-hosted backend acceptable for now?
+3. **AI-assisted report narrative.** Is it acceptable to send task data to a **cloud LLM** for optional prose generation, or must the app stay **deterministic/offline forever**? If cloud AI is allowed — which provider and privacy posture?
+4. **Launch hosting posture.** **Managed pieces for MVP** (Cloudflare R2 + managed Postgres + a small VPS running the Axum relay) versus **fully self-hosted from day one** — which matches your ops appetite as a solo/small team?
+5. **Codename approval.** Confirm **"Cadence,"** or prefer one of **Ledger / Tally / EOD** before repos and the design-token namespace lock in.
+
+---
+
+## How to start
+
+**Do the Phase 0 proof-of-stack spike first — nothing else.** Before writing a line of MVP code, build the throwaway Tauri v2 app that launches on all five platforms and, on iOS **and** Android, proves: image attach, the markdown editor's `Ctrl/Cmd+Enter` submit vs `Enter` newline, the soft-keyboard accessory Submit button, and a signed mobile build. In parallel, run the yrs `Y.Text` round-trip spike behind the `BodyCrdt` trait.
+
+That spike is a **go/no-go gate**. If Tauri v2 can't carry the app to iOS with the required keyboard behavior, we learn it now — when the fix is "re-evaluate the shell," not "rewrite the product." Only after the gate is green do we start Phase 1.
+
+Related reading: [02-architecture.md](02-architecture.md) (the stack ADR and fallback posture), [03-data-model.md](03-data-model.md) (NODE model + event log the report depends on), [04-ux-and-interaction.md](04-ux-and-interaction.md) (the exact keymap Phase 0 must validate).
