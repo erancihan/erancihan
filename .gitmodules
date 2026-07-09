@@ -19,3 +19,6 @@
 [submodule "projects/aether-downloader"]
 	path = projects/aether-downloader
 	url = git@github.com:erancihan/aether-downloader.git
+[submodule "projects/expense-analysis"]
+	path = projects/expense-analysis
+	url = git@github.com:erancihan/expense-analysis.git
