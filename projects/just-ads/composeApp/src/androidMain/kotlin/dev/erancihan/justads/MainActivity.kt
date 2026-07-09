@@ -10,6 +10,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val app = application as JustAdsApplication
+        app.currentActivity = this // attach before the consent flow runs during setContent
         setContent { App(app.dependencies) }
     }
 }

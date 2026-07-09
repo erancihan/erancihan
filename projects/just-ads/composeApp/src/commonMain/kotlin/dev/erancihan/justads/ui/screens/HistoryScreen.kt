@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -76,7 +76,10 @@ fun HistoryScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
         ) {
-            items(filtered, key = { it.id + it.loadedAtEpochMs.toString() }) { record ->
+            itemsIndexed(
+                filtered,
+                key = { index, r -> "$index#${r.loadedAtEpochMs}#${r.id}" },
+            ) { _, record ->
                 HistoryRow(record, onClick = { onOpenDetail(record) })
             }
         }

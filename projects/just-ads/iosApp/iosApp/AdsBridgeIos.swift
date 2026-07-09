@@ -19,8 +19,11 @@ private let testUnits = (
 
 final class AdsBridgeIos: NSObject, IosAdLoader {
 
-    private var adLoader: GADAdLoader?
-    private var nativeDelegate: NativeDelegate?
+    // Each in-flight native load is retained here (delegate strongly holds its own GADAdLoader);
+    // removed on completion. A single shared slot would let a second load dealloc the first
+    // loader mid-flight (its delegate is weak) and strand the first Kotlin continuation forever.
+    private var activeNativeLoads = Set<NativeDelegate>()
+
     private var interstitial: GADInterstitialAd?
     private var rewarded: GADRewardedAd?
 
@@ -39,7 +42,9 @@ final class AdsBridgeIos: NSObject, IosAdLoader {
 
     func loadNative(onLoaded: @escaping (IosNativeAd) -> Void, onFailed: @escaping (String) -> Void) {
         let delegate = NativeDelegate(onLoaded: onLoaded, onFailed: onFailed)
-        self.nativeDelegate = delegate
+        delegate.onFinish = { [weak self, weak delegate] in
+            if let d = delegate { self?.activeNativeLoads.remove(d) }
+        }
         let loader = GADAdLoader(
             adUnitID: testUnits.native,
             rootViewController: Self.topViewController(),
@@ -47,7 +52,8 @@ final class AdsBridgeIos: NSObject, IosAdLoader {
             options: nil
         )
         loader.delegate = delegate
-        self.adLoader = loader
+        delegate.loader = loader          // delegate strongly retains its loader
+        activeNativeLoads.insert(delegate) // bridge strongly retains the delegate until done
         loader.load(request())
     }
 
@@ -116,14 +122,24 @@ final class AdsBridgeIos: NSObject, IosAdLoader {
 private final class NativeDelegate: NSObject, GADNativeAdLoaderDelegate {
     let onLoaded: (IosNativeAd) -> Void
     let onFailed: (String) -> Void
+    var loader: GADAdLoader?       // strong ref keeps the loader alive for the whole load
+    var onFinish: (() -> Void)?
+
     init(onLoaded: @escaping (IosNativeAd) -> Void, onFailed: @escaping (String) -> Void) {
         self.onLoaded = onLoaded; self.onFailed = onFailed
     }
+
     func adLoader(_ adLoader: GADAdLoader, didReceive nativeAd: GADNativeAd) {
-        onLoaded(NativeAdImpl(ad: nativeAd))
+        onLoaded(NativeAdImpl(ad: nativeAd)); finish()
     }
+
     func adLoader(_ adLoader: GADAdLoader, didFailToReceiveAdWithError error: Error) {
-        onFailed(error.localizedDescription)
+        onFailed(error.localizedDescription); finish()
+    }
+
+    private func finish() {
+        loader = nil
+        onFinish?()
     }
 }
 
@@ -134,18 +150,26 @@ private final class FullScreenDelegate: NSObject, GADFullScreenContentDelegate {
     func ad(_ ad: GADFullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) { onDismiss() }
 }
 
-// MARK: - Bridge value types (conform to the Kotlin protocols)
+// MARK: - Metadata helpers
+
+/// Loaded adapter latency in ms, or -1 (unknown) if there is no loaded adapter info.
+private func latencyMs(_ info: GADAdNetworkResponseInfo?) -> Int64 {
+    guard let info = info else { return -1 }
+    return Int64(info.latency * 1000)
+}
 
 private func attempts(from responseInfo: GADResponseInfo?) -> [IosAdapterAttempt] {
     (responseInfo?.adNetworkInfoArray ?? []).map { info in
         AdapterAttemptImpl(
             adSourceName: info.adSourceName ?? info.adNetworkClassName ?? "unknown",
             adSourceId: info.adSourceID,
-            latencyMs: Int64((info.latency) * 1000),
+            latencyMs: Int64(info.latency * 1000),
             error: info.error?.localizedDescription
         )
     }
 }
+
+// MARK: - Bridge value types (conform to the Kotlin protocols)
 
 private final class AdapterAttemptImpl: IosAdapterAttempt {
     let adSourceName: String
@@ -168,14 +192,14 @@ private final class LoadedAdMeta: NSObject, IosLoadedAd {
         self.responseId = responseInfo?.responseIdentifier ?? ""
         let loaded = responseInfo?.loadedAdNetworkResponseInfo
         self.filledBy = loaded?.adSourceName ?? loaded?.adNetworkClassName ?? "Google AdMob Network"
-        self.latencyMs = Int64((loaded?.latency ?? -0.001) * 1000)
+        self.latencyMs = latencyMs(loaded)
         self.rawDump = responseInfo?.description ?? ""
         self.waterfall = attempts(from: responseInfo)
     }
 }
 
 private final class NativeAdImpl: NSObject, IosNativeAd {
-    private let ad: GADNativeAd
+    private var ad: GADNativeAd?   // nil'd in destroy() so the ad + media are released promptly
 
     let responseId: String
     let filledBy: String
@@ -189,21 +213,22 @@ private final class NativeAdImpl: NSObject, IosNativeAd {
         self.responseId = ri?.responseIdentifier ?? ""
         let loaded = ri?.loadedAdNetworkResponseInfo
         self.filledBy = loaded?.adSourceName ?? loaded?.adNetworkClassName ?? "Google AdMob Network"
-        self.latencyMs = Int64((loaded?.latency ?? -0.001) * 1000)
+        self.latencyMs = latencyMs(loaded)
         self.rawDump = ri?.description ?? ""
         self.waterfall = attempts(from: ri)
     }
 
-    var advertiser: String? { ad.advertiser }
-    var headline: String? { ad.headline }
-    var body: String? { ad.body }
-    var callToAction: String? { ad.callToAction }
-    var store: String? { ad.store }
-    var price: String? { ad.price }
-    var starRating: Double { ad.starRating?.doubleValue ?? Double.nan }
+    var advertiser: String? { ad?.advertiser }
+    var headline: String? { ad?.headline }
+    var body: String? { ad?.body }
+    var callToAction: String? { ad?.callToAction }
+    var store: String? { ad?.store }
+    var price: String? { ad?.price }
+    var starRating: Double { ad?.starRating?.doubleValue ?? Double.nan }
     var adChoicesUrl: String? { nil } // AdChoices rendered as overlay by GADNativeAdView
 
     func makeView() -> UIView {
+        guard let ad = ad else { return UIView() }
         let adView = GADNativeAdView()
         let stack = UIStackView()
         stack.axis = .vertical
@@ -236,5 +261,5 @@ private final class NativeAdImpl: NSObject, IosNativeAd {
         return adView
     }
 
-    func destroy() { /* ARC releases the GADNativeAd when this wrapper is freed */ }
+    func destroy() { ad = nil }
 }

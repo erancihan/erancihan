@@ -30,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
 import com.google.android.gms.ads.nativead.NativeAd as GmsNativeAd
 
@@ -55,12 +56,17 @@ class AdMobAdsController(
         this.personalized = personalized
         if (initState.value == AdsInitState.Ready) return
         initState.value = AdsInitState.Initializing
-        withContext(Dispatchers.Main) {
-            suspendCancellableCoroutine { cont ->
-                MobileAds.initialize(appContext) { cont.resume(Unit) }
+        try {
+            withContext(Dispatchers.Main) {
+                suspendCancellableCoroutine { cont ->
+                    MobileAds.initialize(appContext) { cont.resume(Unit) }
+                }
             }
+            initState.value = AdsInitState.Ready
+        } catch (e: CancellationException) {
+            initState.value = AdsInitState.Idle // don't strand at Initializing if cancelled
+            throw e
         }
-        initState.value = AdsInitState.Ready
     }
 
     private fun request(): AdRequest {
@@ -128,18 +134,21 @@ class AdMobAdsController(
 
     override suspend fun loadNativeAd(): NativeAdOutcome = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { cont ->
-            var resumed = false
+            var settled = false
+            // If the coroutine is cancelled (e.g. refresh), a late-delivered native ad would
+            // otherwise leak — mark settled so the forNativeAd callback destroys it.
+            cont.invokeOnCancellation { settled = true }
             val loader = AdLoader.Builder(appContext, config.nativeUnitId)
                 .forNativeAd { nativeAd: GmsNativeAd ->
-                    if (resumed) { nativeAd.destroy(); return@forNativeAd }
-                    resumed = true
+                    if (settled) { nativeAd.destroy(); return@forNativeAd }
+                    settled = true
                     val rec = record(nativeAd.responseInfo, AdFormat.NATIVE, nativeAd.toCreative())
                     cont.resume(NativeAdOutcome.Loaded(AndroidNativeAdHandle(nativeAd, rec)))
                 }
                 .withAdListener(object : AdListener() {
                     override fun onAdFailedToLoad(error: LoadAdError) {
-                        if (resumed) return
-                        resumed = true
+                        if (settled) return
+                        settled = true
                         cont.resume(NativeAdOutcome.Failed(error.message))
                     }
                 })

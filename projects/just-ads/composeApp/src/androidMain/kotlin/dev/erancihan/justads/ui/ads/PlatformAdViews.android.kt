@@ -32,6 +32,9 @@ actual fun BannerAd(unitId: String, modifier: Modifier) {
                 loadAd(AdRequest.Builder().build())
             }
         },
+        // Destroy the AdView (and its WebView) when the banner leaves composition — else it
+        // leaks one WebView-backed AdView per tab switch.
+        onRelease = { it.destroy() },
     )
 }
 

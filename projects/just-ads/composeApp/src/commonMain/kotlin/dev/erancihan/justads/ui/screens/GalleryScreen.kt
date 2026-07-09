@@ -22,11 +22,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +54,7 @@ import dev.erancihan.justads.ui.format.formatLatency
 fun GalleryScreen(
     state: FeedUiState,
     bannerUnitId: String,
+    adsReady: Boolean,
     onLoadMore: () -> Unit,
     onRefresh: () -> Unit,
     onEvict: (FeedCard) -> Unit,
@@ -60,16 +64,21 @@ fun GalleryScreen(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val currentState = rememberUpdatedState(state)
 
-    // Page ahead: when the last item comes into view, ask for one more.
-    val atEnd by remember {
-        derivedStateOf {
-            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            state.items.isNotEmpty() && last >= state.items.size - 1
-        }
-    }
-    androidx.compose.runtime.LaunchedEffect(atEnd, state.loading) {
-        if (atEnd && !state.loading) onLoadMore()
+    // Page ahead: when the last item scrolls into view — and the last load didn't fail —
+    // ask for one more. Driven off snapshotFlow so it re-fires on scroll and on newly
+    // measured items, but NOT on the loading->idle transition after a no-fill (which would
+    // hot-loop past the backoff). The VM's bounded backoff owns retries.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisible ->
+                val s = currentState.value
+                if (!s.loading && s.error == null && s.items.isNotEmpty() && lastVisible >= s.items.size - 1) {
+                    onLoadMore()
+                }
+            }
     }
 
     Column(modifier.fillMaxSize()) {
@@ -81,16 +90,20 @@ fun GalleryScreen(
         ) {
             item { GalleryHeader(state, onRefresh, onShowInterstitial, onShowRewarded) }
 
-            items(state.items, key = { it.record.id + it.hashCode() }) { card ->
+            items(state.items, key = { it.key }) { card ->
                 NativeAdCardView(card = card, onOpenDetail = { onOpenDetail(card.record) })
             }
 
             item { FeedFooter(state, onLoadMore) }
         }
 
-        // A banner is a distinct format worth seeing on its own — pinned, always visible.
-        Divider()
-        BannerAd(unitId = bannerUnitId, modifier = Modifier.fillMaxWidth())
+        // A banner is a distinct format worth seeing on its own — pinned. Only mounted once
+        // the SDK is initialized (and, on the real-ads path, consent obtained) so it never
+        // requests an ad before init/consent.
+        if (adsReady) {
+            Divider()
+            BannerAd(unitId = bannerUnitId, modifier = Modifier.fillMaxWidth())
+        }
     }
 }
 

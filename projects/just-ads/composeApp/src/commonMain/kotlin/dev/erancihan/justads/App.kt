@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.erancihan.justads.core.ads.AdsInitState
 import dev.erancihan.justads.di.AppDependencies
 import dev.erancihan.justads.di.BuildInfo
 import dev.erancihan.justads.ui.PlatformBackHandler
@@ -55,12 +56,8 @@ fun App(deps: AppDependencies) {
         val historyVm: HistoryViewModel = viewModel { HistoryViewModel(deps) }
         val statsVm: StatsViewModel = viewModel { StatsViewModel(deps) }
 
-        val message by feedVm.message.collectAsStateWithLifecycle()
-        LaunchedEffect(message) {
-            message?.let {
-                snackbarHostState.showSnackbar(it)
-                feedVm.consumeMessage()
-            }
+        LaunchedEffect(Unit) {
+            feedVm.messages.collect { snackbarHostState.showSnackbar(it) }
         }
 
         Scaffold(
@@ -94,9 +91,11 @@ fun App(deps: AppDependencies) {
                 when (val screen = navigator.current) {
                     Screen.Gallery -> {
                         val state by feedVm.state.collectAsStateWithLifecycle()
+                        val adsInit by feedVm.initState.collectAsStateWithLifecycle()
                         GalleryScreen(
                             state = state,
                             bannerUnitId = deps.config.bannerUnitId,
+                            adsReady = adsInit is AdsInitState.Ready,
                             onLoadMore = { feedVm.loadMore() },
                             onRefresh = { feedVm.refresh() },
                             onEvict = { feedVm.evict(it) },
