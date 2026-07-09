@@ -1,6 +1,7 @@
 package dev.erancihan.justads.ui.navigation
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.erancihan.justads.core.model.AdRecord
@@ -31,7 +32,9 @@ class Navigator {
     var current: Screen by mutableStateOf(Screen.Gallery)
         private set
 
-    private val backStack = ArrayDeque<Screen>()
+    // Snapshot-backed so `canGoBack` is a tracked read — composables that observe only it
+    // (the TopAppBar back icon, the hardware BackHandler) recompose when the stack changes.
+    private val backStack = mutableStateListOf<Screen>()
 
     val canGoBack: Boolean get() = backStack.isNotEmpty()
 
@@ -43,7 +46,7 @@ class Navigator {
 
     /** Push a detail screen over the current root. */
     fun push(screen: Screen) {
-        backStack.addLast(current)
+        backStack.add(current)
         current = screen
     }
 

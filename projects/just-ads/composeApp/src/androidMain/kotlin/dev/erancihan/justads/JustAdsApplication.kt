@@ -10,8 +10,10 @@ import dev.erancihan.justads.di.AndroidAppDependencies
  * tracks the current Activity, which the ads SDK needs to present full-screen ads.
  */
 class JustAdsApplication : Application() {
+    // Settable so MainActivity can attach itself in onCreate() — before the ViewModel's
+    // consent flow runs, which needs a non-null Activity (the ActivityLifecycleCallbacks'
+    // onActivityResumed fires too late for cold-start consent).
     var currentActivity: Activity? = null
-        private set
 
     lateinit var dependencies: AndroidAppDependencies
         private set

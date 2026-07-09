@@ -11,6 +11,7 @@ import dev.erancihan.justads.core.model.NativeCreative
 import dev.erancihan.justads.core.util.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
 
 /** iOS [AdsController] adapting the Swift [IosAdLoader] into the core contract. */
@@ -26,8 +27,13 @@ class IosAdsController(
         this.personalized = personalized
         if (initState.value == AdsInitState.Ready) return
         initState.value = AdsInitState.Initializing
-        suspendCancellableCoroutine { cont -> loader.initialize(personalized) { cont.resume(Unit) } }
-        initState.value = AdsInitState.Ready
+        try {
+            suspendCancellableCoroutine { cont -> loader.initialize(personalized) { cont.resume(Unit) } }
+            initState.value = AdsInitState.Ready
+        } catch (e: CancellationException) {
+            initState.value = AdsInitState.Idle // don't strand at Initializing if cancelled
+            throw e
+        }
     }
 
     override suspend fun loadInterstitial(): AdOutcome = suspendCancellableCoroutine { cont ->
