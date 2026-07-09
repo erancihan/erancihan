@@ -13,3 +13,6 @@
 [submodule "projects/cloud-viz"]
 	path = projects/cloud-viz
 	url = git@github.com:erancihan/cloud-viz.git
+[submodule "projects/antigravity-usage-monitor"]
+	path = projects/antigravity-usage-monitor
+	url = git@github.com:erancihan/antigravity-usage-monitor.git
