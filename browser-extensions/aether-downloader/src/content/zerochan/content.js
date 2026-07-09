@@ -18,6 +18,7 @@ import { showToast } from '../common/toast.js';
 import { initPreview } from '../common/preview.js';
 import { debounceLeading, debounceTrailing } from '../common/debounce.js';
 import { getSettings, sanitizeSubfolder } from '../common/settings.js';
+import { renderPath } from '../common/template.js';
 
 // ─── URL Helpers ────────────────────────────────────────────────
 
@@ -171,15 +172,32 @@ function getFullImageUrl() {
 // ─── Download ───────────────────────────────────────────────────
 
 /**
+ * Build the download folder for a Zerochan image from the configured subfolder
+ * and folder template.
+ * @param {string} character
+ * @param {string} [id]
+ * @returns {string}
+ */
+function zerochanFolder(character, id) {
+  const subfolder = sanitizeSubfolder(getSettings().zerochanSubfolder, 'zerochan');
+  const rel = renderPath(getSettings().zerochanFolderTemplate || '{character}', {
+    character,
+    id: id || '',
+    tag: character,
+  });
+  return rel ? `${subfolder}/${rel}` : subfolder;
+}
+
+/**
  * Download a Zerochan image into the configured subfolder, organized by
  * character/tag name.
  * @param {string} url - Full-resolution image URL
+ * @param {string} [id] - Work id (for template tokens)
  */
-function downloadZerochanImage(url) {
+function downloadZerochanImage(url, id) {
   const character = extractCharacterName();
   const originalFilename = extractFilename(url);
-  const subfolder = sanitizeSubfolder(getSettings().zerochanSubfolder, 'zerochan');
-  const filename = `${subfolder}/${character}/${originalFilename}`;
+  const filename = `${zerochanFolder(character, id)}/${originalFilename}`;
 
   showToast('Downloading...', 'info');
 
@@ -271,7 +289,7 @@ function injectDownloadButtons() {
       btn.style.opacity = '0';
     });
 
-    const handleDownload = debounceLeading(() => downloadZerochanImage(url));
+    const handleDownload = debounceLeading(() => downloadZerochanImage(url, getItemId(li)));
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -363,7 +381,6 @@ function getCurrentPage() {
  */
 async function crawlAndDownload(maxPages) {
   const character = extractCharacterName();
-  const subfolder = sanitizeSubfolder(getSettings().zerochanSubfolder, 'zerochan');
   const seen = new Set();
   const startPage = getCurrentPage();
   let total = 0;
@@ -389,7 +406,7 @@ async function crawlAndDownload(maxPages) {
       browser.runtime.sendMessage({
         action: 'download',
         url: it.url,
-        filename: `${subfolder}/${character}/${extractFilename(it.url)}`,
+        filename: `${zerochanFolder(character, it.id)}/${extractFilename(it.url)}`,
       });
       total++;
       await sleep(BATCH_DELAY_MS);
@@ -454,7 +471,7 @@ const zerochanAdapter = {
 
   download(el) {
     const url = getListingImageUrl(el);
-    if (url) downloadZerochanImage(url);
+    if (url) downloadZerochanImage(url, this.getWorkId(el));
   },
 
   getWorkMeta(el) {

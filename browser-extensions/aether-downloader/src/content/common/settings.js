@@ -12,6 +12,12 @@ const DEFAULTS = {
   // Batch crawl: how many listing pages the Zerochan "download all" FAB walks,
   // starting from the current page (1 = current page only).
   zerochanMaxPages: 1,
+  // Folder-name templates (relative to the site subfolder). Tokens are
+  // substituted per download; see template.js. Defaults reproduce the built-in
+  // structure. Pixiv tokens: {userName} {userId} {workId} {title} {type} {date}.
+  // Zerochan tokens: {character} {id} {tag}.
+  pixivFolderTemplate: '{userName}-{userId}/{workId}-{title}',
+  zerochanFolderTemplate: '{character}',
 };
 
 let cache = { ...DEFAULTS };

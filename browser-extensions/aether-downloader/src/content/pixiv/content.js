@@ -8,6 +8,7 @@ import { showToast } from '../common/toast.js';
 import { initPreview } from '../common/preview.js';
 import { debounceLeading, debounceTrailing } from '../common/debounce.js';
 import { getSettings, sanitizeSubfolder } from '../common/settings.js';
+import { renderPath } from '../common/template.js';
 
 // ─── Pixiv Data Extraction ──────────────────────────────────────
 
@@ -179,7 +180,15 @@ async function downloadArtworkById(artworkId) {
   const userId = artwork.userId || '0';
   const title = sanitizeForFilename(artwork.title || artworkId);
   const subfolder = sanitizeSubfolder(getSettings().pixivSubfolder, 'pixiv');
-  const folder = `${subfolder}/${userName}-${userId}/${artworkId}-${title}`;
+  const rel = renderPath(getSettings().pixivFolderTemplate || '{userName}-{userId}/{workId}-{title}', {
+    userName,
+    userId,
+    workId: artworkId,
+    title,
+    type: illustTypeLabel(artwork.illustType),
+    date: (artwork.createDate || '').slice(0, 10),
+  });
+  const folder = rel ? `${subfolder}/${rel}` : subfolder;
 
   // Ugoira (animated works) are a ZIP of frames + per-frame delays, not a
   // normal image — handle them separately so we don't silently download a
