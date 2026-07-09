@@ -13,12 +13,12 @@ no browser extension does Zerochan batch/tag crawling. See `RESEARCH.md`.
 | **1 — Firefox correctness** | debounce/duplicate downloads, ugoira frames+delays, dead settings wired up, preview timer leak + stale-index, observer throttling, metadata data-URL, dead-code/permission cleanup | ✅ done |
 | **2 — Zerochan resolution** | research-grounded rewrite: thumbnail→full URL transform, `#large`/JSON-LD detail URL, `nav.breadcrumbs` naming, percent-decoded filenames, 600px→full preview | ✅ done |
 | **0 — Real Chrome support** | `browser` namespace shim, per-browser manifest, `declarativeNetRequest` Referer rule (Chrome) vs `webRequest` (Firefox), dual `dist/firefox` + `dist/chrome` output | ✅ done |
-| **3a — Zerochan batch crawl** | download a whole tag/search page via the `?json` endpoint (descriptive UA + ~60/min throttle) into character folders | ⬜ planned |
-| **3b — Naming templates** | shared filename/folder template engine (id, title, user, tags, date, page, …) across both sites | ⬜ planned |
-| **3c — Pixiv batch crawl** | user works / bookmarks / search-result crawling | ⬜ planned |
-| **3d — Ugoira conversion** | in-browser zip decode + encode to GIF / APNG / WebM / **MP4** (MP4 is the gap vs PBD) | ⬜ planned |
+| **3a — Zerochan batch crawl** | listing/tag page "download all" FAB; crawls up to `zerochanMaxPages` pages (same-origin fetch + parse), throttled + de-duped | ✅ done |
+| **3b — Naming templates** | shared folder-template engine (`renderPath`) with per-site tokens; defaults reproduce prior layout | ✅ done |
+| **3c — Pixiv batch crawl** | user works / bookmarks / search-result crawling (via `/ajax/user/{id}/profile/all` etc.) | ⬜ planned |
+| **3d — Ugoira conversion** | in-browser zip decode + encode to GIF / APNG / WebM / **MP4** (MP4 is the gap vs PBD) — needs bundled encoder libs | ⬜ planned |
 | **3e — QoL** | skip-already-downloaded / dedup, progress UI + pause/resume, 429 backoff/throttle | ⬜ planned |
-| **4 — Cleanup** | ✅ dead code / `activeTab` / `dev --watch` / `emitCss`; ⬜ remove dead `vite.config.js`; ⬜ regenerate `icon-128.png` (currently 1024px) | 🚧 partial |
+| **4 — Cleanup** | ✅ dead code / `activeTab` / `dev --watch` / `emitCss` / `vite.config.js`; ⬜ regenerate `icon-128.png` (currently 1024px) | 🚧 partial |
 
 ## Feature-parity target (vs Powerful Pixiv Downloader)
 
