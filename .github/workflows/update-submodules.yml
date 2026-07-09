@@ -6,23 +6,37 @@ on:
     - cron: '0 6 * * *'
   workflow_dispatch:
 
+# Cron + manual dispatch could otherwise race on the force-push / PR creation
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  BRANCH: chore/update-submodules
+
 jobs:
   update-submodules:
     name: Update submodule references
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
+    env:
+      # gh CLI auth. PR creation also requires the repo setting
+      # "Allow GitHub Actions to create and approve pull requests" to stay enabled.
+      GH_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: true
+          # Full history: the PR branch is rebased onto master, which needs a merge base
           fetch-depth: 0
 
       - name: Update all submodules to latest remote HEAD
         run: |
-          git submodule update --remote --merge
+          git submodule update --remote
 
       - name: Check for changes
         id: changes
@@ -33,21 +47,88 @@ jobs:
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit and push updated submodule references
+      - name: Commit to PR branch (rebase + amend, keep single commit)
         if: steps.changes.outputs.has_changes == 'true'
+        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Build a descriptive commit message listing what changed
-          CHANGED_SUBMODULES=$(git diff --name-only)
-          COMMIT_MSG="chore: update submodule references"
-          COMMIT_BODY=""
-          for sub in $CHANGED_SUBMODULES; do
-            NEW_SHA=$(git diff "$sub" | grep '+Subproject commit' | awk '{print $3}' | cut -c1-7)
-            COMMIT_BODY="${COMMIT_BODY}\n- ${sub} → ${NEW_SHA}"
+          # Build a commit body listing old -> new SHA per changed submodule,
+          # measured against master (the PR base). Submodule worktrees already
+          # sit at the new SHAs; gitlinks in HEAD still hold the old ones.
+          BODY=""
+          for sub in $(git diff --name-only); do
+            OLD=$(git rev-parse --short "HEAD:${sub}")
+            NEW=$(git -C "$sub" rev-parse --short HEAD)
+            BODY="${BODY}- ${sub}: ${OLD} -> ${NEW}"$'\n'
           done
 
+          # Reuse the existing PR branch when present: rebase it onto master first,
+          # then amend, so the branch always reads as exactly master + 1 commit.
+          REMOTE_EXISTS=false
+          if git fetch origin "$BRANCH" 2>/dev/null; then
+            REMOTE_EXISTS=true
+            git checkout -B "$BRANCH" FETCH_HEAD
+            # A gitlink conflict means the old bump is obsolete; restart from master
+            git rebase master || { git rebase --abort; git reset --hard master; }
+          else
+            git checkout -b "$BRANCH" master
+          fi
+
+          # Stage the new gitlinks and overwrite (amend) the bump commit in place;
+          # first run on a fresh branch creates it instead
           git add -A
-          git commit -m "$COMMIT_MSG" -m "$(echo -e "$COMMIT_BODY")"
-          git push
+          MSG="chore: update submodule references"
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse master)" ]; then
+            git commit --amend -m "$MSG" -m "$BODY"
+          else
+            git commit -m "$MSG" -m "$BODY"
+          fi
+
+          # Anti-churn: skip the push when the remote branch already carries
+          # identical content on the same master base
+          PUSH=true
+          if [ "$REMOTE_EXISTS" = true ]; then
+            if [ "$(git rev-parse 'FETCH_HEAD^{tree}')" = "$(git rev-parse 'HEAD^{tree}')" ] &&
+               [ "$(git rev-parse 'FETCH_HEAD^')" = "$(git rev-parse 'HEAD^')" ]; then
+              PUSH=false
+              echo "Remote branch already up to date; skipping push."
+            fi
+          fi
+          if [ "$PUSH" = true ]; then
+            # Plain --force: branch is bot-owned, races excluded via concurrency group
+            git push --force origin "$BRANCH"
+          fi
+
+          {
+            echo "body<<BODY_EOF"
+            printf '%s' "$BODY"
+            echo "BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update pull request
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          PR_BODY: ${{ steps.commit.outputs.body }}
+        run: |
+          PR=$(gh pr list --head "$BRANCH" --base master --state open --json number --jq '.[0].number')
+          if [ -z "$PR" ]; then
+            gh pr create --head "$BRANCH" --base master \
+              --title "chore: update submodule references" \
+              --body "$PR_BODY"
+          else
+            gh pr edit "$PR" --body "$PR_BODY"
+          fi
+
+      - name: Clean up stale PR and branch
+        if: steps.changes.outputs.has_changes == 'false'
+        run: |
+          PR=$(gh pr list --head "$BRANCH" --base master --state open --json number --jq '.[0].number')
+          if [ -n "$PR" ]; then
+            # Master caught up without this PR; it no longer has anything to offer
+            gh pr close "$PR" --comment "Submodule references are already up to date on master." --delete-branch
+          else
+            # Leftover branch from a merged PR (delete-branch-on-merge is off)
+            git push origin --delete "$BRANCH" 2>/dev/null || true
+          fi
