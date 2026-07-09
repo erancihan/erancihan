@@ -1,0 +1,138 @@
+# =============================================================================
+# JustAds — Kotlin Multiplatform (Android + iOS) .gitignore
+# Self-contained: does NOT rely on any parent/monorepo .gitignore.
+# Ordered: Gradle · Kotlin/KMP/Native · Android · iOS/Xcode/SPM/CocoaPods ·
+#          IDEs · OS · Secrets. "Keep" exceptions are called out inline.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Gradle
+# -----------------------------------------------------------------------------
+.gradle/
+build/
+**/build/
+!src/**/build/            # never ignore a source package literally named "build"
+gradle-app.setting
+.gradletasknamecache
+# Keep the wrapper jar + properties committed — required to build the repo:
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Local, machine-specific config (contains sdk.dir / ndk.dir / signing paths)
+local.properties
+local.properties.*
+
+# -----------------------------------------------------------------------------
+# Kotlin / Kotlin Multiplatform / Kotlin Native
+# -----------------------------------------------------------------------------
+.kotlin/
+**/.kotlin/
+*.klib
+konan/
+.konan/
+kotlin-js-store/
+
+# -----------------------------------------------------------------------------
+# Android
+# -----------------------------------------------------------------------------
+*.apk
+*.aab
+*.ap_
+*.aar
+*.dex
+*.class
+bin/
+gen/
+out/
+release/
+captures/
+.navigation/
+.cxx/
+# Google services config often carries keys — keep out of a public repo:
+google-services.json
+# Lint / build outputs
+lint-results*.html
+lint-results*.xml
+# Signing: ignore real keystores/secrets, but keep the shared debug keystore
+*.jks
+*.keystore
+!debug.keystore
+keystore.properties
+signing.properties
+
+# -----------------------------------------------------------------------------
+# iOS / Xcode
+# -----------------------------------------------------------------------------
+# Per-user Xcode state
+xcuserdata/
+**/xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+project.xcworkspace/xcuserdata/
+# Build products
+DerivedData/
+**/DerivedData/
+build/                    # (also caught above; harmless)
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+# Keep Package.resolved so SPM dependency versions are reproducible:
+!Package.resolved
+
+# CocoaPods (only if mediation ever pulls it in; ignore the vendored pods)
+Pods/
+*.xcworkspace/xcuserdata/
+# Keep Podfile + Podfile.lock committed if a Podfile exists (do not ignore them)
+
+# Fastlane (if used later for local device deploy)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# -----------------------------------------------------------------------------
+# IDEs & editors
+# -----------------------------------------------------------------------------
+# IntelliJ IDEA / Android Studio
+.idea/
+*.iml
+*.ipr
+*.iws
+# JetBrains Fleet
+.fleet/
+# VS Code (keep shared settings if the team wants them; ignore local noise)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+# Eclipse leftovers
+.classpath
+.project
+.settings/
+
+# -----------------------------------------------------------------------------
+# OS-generated
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# -----------------------------------------------------------------------------
+# Secrets / local env (ad unit IDs, AdMob app IDs, API keys — never commit)
+# -----------------------------------------------------------------------------
+*.env
+.env.*
+secrets.properties
+ads.local.properties

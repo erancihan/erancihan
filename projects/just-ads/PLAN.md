@@ -23,12 +23,12 @@
 - Explicit non-goals for v1: accounts, backend, push, analytics beyond the ad SDK's
   own, offline behavior beyond a graceful "no ads available" state.
 
-### Working identity (confirm before implementation)
+### Working identity (confirmed)
 
-| Item | Proposed value |
+| Item | Value |
 |---|---|
-| Working name | JustAds |
-| Android applicationId / iOS bundle id | `dev.erancihan.justads` |
+| Working name | JustAds ✅ |
+| Android applicationId / iOS bundle id | `dev.erancihan.justads` ✅ |
 | Min Android | API 24 (Google Mobile Ads SDK minimum is 23; 24 keeps things simple) |
 | Min iOS | iOS 15.0 (Compose Multiplatform + Google Mobile Ads SDK 12.x both comfortable here) |
 
@@ -107,16 +107,19 @@ Kotlin 2.2.x, Compose Multiplatform 1.9.x, AGP 8.x, Google Mobile Ads Android SD
 
 ## 4. Repository / module layout
 
-Implement in a **new dedicated repository** (`erancihan/just-ads`), then add it under
-`projects/just-ads` as a submodule — matching how `projects/tradebot` etc. are wired
-into this monorepo. (This PLAN.md lives in the monorepo; move/copy it into the new
-repo's root when scaffolding.)
+**Decision: build in-repo now, extract later.** Develop directly under
+`projects/just-ads/` in this monorepo for now. A dedicated `erancihan/just-ads` repo
+(added back here as a submodule, matching `projects/tradebot` etc.) will come later —
+so keep the project **self-contained**: its own **complete** `.gitignore` (already
+added, §4.1 — do **not** rely on the monorepo root `.gitignore`), its own Gradle
+wrapper, and no path assumptions above `projects/just-ads/`, so `git subtree
+split`/`filter-repo` extraction is clean when the time comes.
 
 Scaffold from the official JetBrains KMP template (`kmp.jetbrains.com` generator or
 `compose-multiplatform-template`):
 
 ```
-just-ads/
+projects/just-ads/
 ├── gradle/libs.versions.toml
 ├── settings.gradle.kts
 ├── build.gradle.kts
@@ -146,6 +149,17 @@ just-ads/
         ├── AdsControllerIos.swift        # implements shared Kotlin interface
         └── Info.plist                    # GADApplicationIdentifier, ATT string, SKAdNetwork ids
 ```
+
+### 4.1 `.gitignore`
+
+A **complete, self-contained** `projects/just-ads/.gitignore` is committed alongside
+this plan. It deliberately does **not** depend on the monorepo root `.gitignore` — it
+covers Gradle, Kotlin/KMP/Native, Android (SDK, Compose, keystores, generated), iOS
+(Xcode user data, DerivedData, SPM `.build`, CocoaPods in case mediation ever needs
+them), IDE (IntelliJ/Android Studio/VS Code/Fleet/Xcode), and OS cruft — while
+**keeping** the things you must commit (`gradle-wrapper.jar`, `gradle-wrapper.properties`,
+SwiftPM `Package.resolved`, `debug.keystore`). When the project is extracted to its
+own repo it works unchanged.
 
 ---
 
@@ -377,7 +391,7 @@ just packaging + your signing identity.
 | 1 | ~~Store rejection~~ | N/A — not shipping to a store (§2) |
 | 2 | AdMob account suspension (real-ads path only) | Dedicated/throwaway AdMob account; low volume; **never click** your own ads; accept suspension as expected cost. Test-ads build carries zero risk |
 | 3 | Network choice | AdMob solo in v1; revisit mediation only if fill/eCPM disappoints |
-| 4 | New repo vs. building inside the monorepo | New repo `erancihan/just-ads` + submodule here (matches existing convention) |
+| 4 | New repo vs. building inside the monorepo | **In-repo now** under `projects/just-ads/`, self-contained (own complete `.gitignore` + wrapper); extract to `erancihan/just-ads` + submodule later ✅ |
 | 5 | App/bundle identity (§1 table) | `dev.erancihan.justads`, name "JustAds" |
 | 6 | Compose Multiplatform on iOS vs. SwiftUI shell | Shared Compose UI everywhere; ad views bridged natively (§5) |
 
