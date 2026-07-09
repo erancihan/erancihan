@@ -1,4 +1,4 @@
-# Cadence — Roadmap
+# Daybook — Roadmap
 
 > Phased build plan from proof-of-stack to v1, sequenced to kill the two hardest bets — **iOS via Tauri v2** and the **sync engine** — before any polish is spent.
 
@@ -10,7 +10,7 @@ This roadmap turns the locked decisions in [../README.md](../README.md) and [02-
 
 1. **Prove the terrifying bets first.** Tauri v2 on iOS and the offline-first hybrid-CRDT sync engine are the two things that can invalidate the whole architecture. They come before capture UX, before design polish, before the EOD report.
 2. **Desktop-first, mobile-scoped.** Per the brief, desktop is first-class end to end; mobile MVP is scoped to fast capture + read/browse + report view. Full mobile hardening is its own late phase.
-3. **Deterministic before delightful.** The EOD report ships as a deterministic template generator (offline, private). AI narrative is a later, optional, additive layer — never a dependency.
+3. **Deterministic before delightful.** The EOD report ships as a deterministic template generator (offline, private). AI narrative is a later, optional layer delivered via the **Model Context Protocol (MCP)** — never a dependency.
 4. **Managed pieces first.** Cloudflare R2 + managed Postgres + a small VPS for the Axum relay. Self-hosted distribution (MinIO + bundled relay) is a later deliverable, not an MVP tax.
 5. **Every hard requirement has an exit criterion.** A phase is not "done" because code exists; it is done when its exit criteria are demonstrably met on real devices.
 
@@ -57,7 +57,7 @@ The point: **the most expensive-to-reverse decisions are tested when reversing t
 **Goal:** answer one question — *can Tauri v2 carry this product to all five platforms, and does the body-CRDT round-trip?* This is throwaway code. Ship nothing. Learn everything.
 
 ### Deliverables
-- A minimal Tauri v2 app (React + Vite + Tailwind v4 + one shadcn component) that **builds and launches on all five targets**: macOS, Windows, Linux (WebKitGTK), iOS (real device or provisioned simulator), Android.
+- A minimal Tauri v2 app (vanilla TS + Alpine.js + Tailwind v4 + one Basecoat component) that **builds and launches on all five targets**: macOS, Windows, Linux (WebKitGTK), iOS (real device or provisioned simulator), Android.
 - **iOS/Android build spike** exercising the three native-gap risks from the brief: **image attach** (paste/pick → bytes into Rust), **background sync** hook feasibility, and **fast capture** (soft keyboard + accessory toolbar with a Submit button; confirm soft `Return` can stay a newline).
 - A **CodeMirror 6** instance in the webview proving `Enter`/`Shift+Enter` newline vs `Ctrl/Cmd+Enter` submit works identically across WKWebView / Android WebView / WebView2 / WebKitGTK.
 - A **Rust yrs spike**: create a `Y.Text`, apply concurrent updates from two docs, encode/decode state vectors and updates, assert convergence — behind the intended `BodyCrdt` trait. Pin versions.
@@ -85,14 +85,17 @@ The point: **the most expensive-to-reverse decisions are tested when reversing t
 - **Insert-by-default capture** + a `?` cheat-sheet overlay + command palette so non-power-users never need to learn modes.
 - **CodeMirror 6** markdown editor with Obsidian-style inline live preview (literal markdown stored per body).
 - **Promotable sub-items**: in-place promotion (`promoted=true`, emit event, `parent_id` unchanged) — GitHub sub-issue model.
-- **Two axes**: one hierarchical **Category** FK per node (single-select) + many-to-many **Tags** (tombstoned join).
-- **Cadence design system v1**: shadcn/Tailwind v4, Ink neutral ladder + single indigo accent, dark default + light theme, dense desktop rows. Mode pill + caret-color modality legibility.
+- **Two axes**: **Collections** (many-to-many — an item can live in multiple collections, optionally nestable; the future shareable unit) + many-to-many **Tags** (tombstoned join).
+- **Account model + local store partitioning designed in**: single-account for MVP, but an **Account = host URL + credentials** and **per-account store partitioning** are foundational — every local store key is account-scoped from day one so multi-host is additive, not a rewrite.
+- **Framework-agnostic core/engine**: all hard state (nodes, events, keymap, ordering) lives in a **plain-TS core**; **Alpine.js is only the view**, keeping it swappable if it strains under the dense UI.
+- **Daybook design system v1**: **Basecoat**/Tailwind v4 (shadcn/ui-compatible, no React; **daisyUI fallback**), Ink neutral ladder + single indigo accent, dark default + light theme, dense desktop rows. Mode pill + caret-color modality legibility.
 
 ### Exit criteria
 - [ ] A user can capture a todo with a markdown body faster than opening a notepad — measured, not asserted.
 - [ ] Every required key behaves exactly as specified, on desktop.
 - [ ] A sub-item can be promoted to a full todo without a row copy or losing position.
-- [ ] Category and Tags are independently assignable and visually distinct.
+- [ ] **Collections** (many-to-many) and **Tags** are independently assignable and visually distinct.
+- [ ] Local storage is **account-partitioned**: store keys are account-scoped so a second account would slot in without migration.
 - [ ] Killing and relaunching the app loses nothing (SQLite durable).
 - [ ] The EVENT log records create/update/complete/promote for every node.
 
@@ -100,7 +103,7 @@ The point: **the most expensive-to-reverse decisions are tested when reversing t
 
 ## Phase 2 — Sync + images
 
-**Goal:** retire the second big bet. Cadence becomes **multi-device and offline-first**, and images sync. This is the hardest engineering phase.
+**Goal:** retire the second big bet. Daybook becomes **multi-device and offline-first**, and images sync. This is the hardest engineering phase.
 
 ### Deliverables
 - **Thin Rust (Axum) relay** persisting a per-user **op log to Postgres**; **email magic-link + JWT** auth. Deployed to a small VPS (managed Postgres).
@@ -126,7 +129,7 @@ The point: **the most expensive-to-reverse decisions are tested when reversing t
 ### Deliverables
 - **EOD report engine** deriving reports from the **immutable EVENT log** over a **timezone-aware local-day range** (default: today; custom range supported).
 - Event bucketing into **CREATED / UPDATED / COMPLETED / CARRIED_OVER**, resolved to current node snapshots.
-- **Pivotable groupings** (by Category tree for MVP; tag/project pivots noted for later) rendered to clean markdown: checkbox bullets, nested sub-item rollups, tag chips, timestamps, optional inline thumbnails.
+- **Pivotable groupings** (by **Collection** for MVP — with a chosen primary collection when an item is in several, see open questions; tag/project pivots noted for later) rendered to clean markdown: checkbox bullets, nested sub-item rollups, tag chips, timestamps, optional inline thumbnails.
 - **Carry-over**: unfinished in-scope items roll forward with a **slipped-days** count.
 - **Report derived from status changes, sub-item checks, and promotions** — not only explicit completions — so report quality survives imperfect capture discipline.
 - **Copy-as-markdown** as the primary export (universal paste target for Slack/Jira/email).
@@ -167,20 +170,27 @@ The point: **the most expensive-to-reverse decisions are tested when reversing t
 
 ## Later (post-v1)
 
-Straight from the locked scope — **not** in v1:
+Post-v1 work. Three items are structured as phases with a one-line deliverable + exit criterion; the rest is scoped backlog.
 
-- AI-generated **narrative** EOD reports (optional, cloud-backed).
+### Post-v1 phases
+
+- **Phase 5 — Sharing.** *Deliverable:* a **Collection** can be shared with other accounts as **owner / editor / viewer**, over a **per-collection sync channel** layered on the Phase 2 op-log. *Exit criterion:* two accounts edit a shared Collection offline and converge, with roles enforced server-side and non-members denied.
+- **Phase 6 — Multi-host.** *Deliverable:* a **host/account switcher UI** and simultaneous connections to **multiple servers**, built on the per-account store partitioning from Phase 1. *Exit criterion:* a user adds a second **Account** (different host URL), switches between them, and each account's data stays partitioned and syncs only to its own host.
+- **Phase 7 — AI narrative via MCP.** *Deliverable:* Daybook runs as an **MCP server** exposing todos/events as resources/tools, so any MCP-capable LLM client can author narrative EOD prose. *Exit criterion:* an external MCP client reads a day's events and returns a narrative report, with the deterministic engine and offline path unchanged.
+
+### Scoped backlog
+
 - **Scheduled auto-generation** of the report at a set EOD time.
 - **Standup format** toggle (Yesterday / Today / Blockers) + additional group-by pivots (tag, project).
 - **Board/kanban** alternate view.
-- **End-to-end encryption** of docs and blobs.
-- **Sharing / collaboration / multi-user.**
 - Additional **export formats** (HTML, JSON, PDF).
 - **Native mobile integrations**: share-sheet capture, home-screen widgets, iOS App Intents / Live Activities.
 - Carry-over **slipped-days analytics** and productivity stats.
 - **Op-log/CRDT compaction**, tombstone GC tooling, periodic fractional-index rebalancing.
 - **Swap-in** of an alternate body CRDT behind the Rust trait if yrs parity gaps bite.
 - **Self-hosted backend distribution** (MinIO + bundled relay) as a first-class deployment option.
+
+**Explicit non-goal (for now):** **client-side end-to-end encryption**. Transport (**TLS**) + at-rest encryption on the self-hostable backend is the shipped posture; self-hosting is the privacy lever for sensitive data.
 
 ---
 
@@ -198,20 +208,21 @@ Straight from the locked scope — **not** in v1:
 | 8 | **EOD report quality depends on capture discipline.** | Derive the report from **status changes, sub-item checks, and promotions** in the event log — not only explicit completions. | Phase 3 |
 | 9 | **Vim-ish modality surprises non-power users.** | Ship **insert-by-default capture**, the `?` cheat-sheet, and the command palette so users can just type. | Phase 1 |
 | 10 | **Fractional-index keys grow / collide** under concurrent same-position inserts. | Always append the **per-client jitter suffix**; schedule occasional background rebalancing (Later). | Phase 1 / (rebalance: Later) |
-| 11 | **No E2EE in the base design** — server-stored docs + R2 objects are plaintext until encryption ships. | Transport + at-rest encryption on the (self-hostable) backend for now; E2EE is an open question and a Later item. | Open question |
+| 11 | **No client-side E2EE** — server-stored docs + R2 objects are readable server-side. | **TLS in transit + at-rest encryption** on the (self-hostable) backend is the **shipped posture**; **E2EE is an explicit non-goal for now**. Self-hosting is the privacy lever for sensitive data. | Decided (TLS-only) |
 | 12 | **Positioning risk** — Sunsama owns "daily shutdown"; TickTick ships a summary. | Differentiate hard: the report is **automatic** and capture is **notepad-fast**, sourced from an event-log diff competitors don't have. Or it reads as a clone. | Cross-cutting |
+| 13 | **Alpine.js may not scale** to the dense, heavy-keyboard capture UI. | Keep all hard state in a **framework-agnostic plain-TS core/engine**; Alpine is only the view, so it can be swapped without touching state. **daisyUI fallback** if Basecoat components gap out. | Phase 0 / Phase 1 |
+| 14 | **Multi-host store partitioning leaks** — one account's data bleeds into another. | Make per-account partitioning **foundational in Phase 1** (every store key account-scoped), not a retrofit; the host/account switcher ships only on top of it. | Phase 1 / (multi-host: post-v1) |
 
 ---
 
-## Open questions (decide before locking repos & namespaces)
+## Open questions (residual — the launch-blocking calls are locked)
 
-These bound the sync protocol, auth, hosting, and branding. Resolving them early prevents rework.
+**Decided:** codename is **Daybook**; **no client-side E2EE** (**TLS** + at-rest is the shipped posture); AI narrative arrives **later via MCP**; hosting is **self-host + multi-host** (server-agnostic, multi-account); sharing scope is the **Collection** — personal-first but **designed for sharing**. What remains is narrower:
 
-1. **Sync scope.** Is Cadence strictly **personal multi-device** (no sharing/collaboration ever), or should the data model and auth **leave room for shared lists/teams** later? This significantly bounds the sync protocol and auth design.
-2. **End-to-end encryption.** EOD reports mix sensitive work and life data. Do you want **per-user E2EE** of docs and blobs before they touch the server (adds complexity, blocks server-side AI + search), or is **transport + at-rest** encryption on a self-hosted backend acceptable for now?
-3. **AI-assisted report narrative.** Is it acceptable to send task data to a **cloud LLM** for optional prose generation, or must the app stay **deterministic/offline forever**? If cloud AI is allowed — which provider and privacy posture?
-4. **Launch hosting posture.** **Managed pieces for MVP** (Cloudflare R2 + managed Postgres + a small VPS running the Axum relay) versus **fully self-hosted from day one** — which matches your ops appetite as a solo/small team?
-5. **Codename approval.** Confirm **"Cadence,"** or prefer one of **Ledger / Tally / EOD** before repos and the design-token namespace lock in.
+1. **Sharing / ACL role set.** Is **owner / editor / viewer** the final set, or do we need finer grains (comment-only, per-item overrides) before Phase 5 locks the schema?
+2. **Multi-host view model.** With multiple Accounts connected, does the UI show an **aggregate cross-host view** or **one active account at a time**? This bounds the switcher UX and the query layer.
+3. **MCP surface.** What exact **resources and tools** does the Daybook MCP server expose (read-only todos/events vs. write-back), and with what auth scoping to the LLM client?
+4. **EOD grouping primary.** With Collections now many-to-many, which Collection is the **primary** for EOD report grouping when an item belongs to several?
 
 ---
 

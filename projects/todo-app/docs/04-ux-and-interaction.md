@@ -1,6 +1,6 @@
-# Cadence — UX, Interaction & Design System
+# Daybook — UX, Interaction & Design System
 
-> How Cadence feels: notepad-fast capture through a vim-ish List/Edit modality, a CodeMirror 6 markdown surface, an unambiguous keymap that makes `Enter` a newline and `Ctrl+Enter` a submit, GitHub-issue-style promotion of sub-items, and the "Ink" shadcn/Tailwind design system (dark-default, one indigo accent, dense desktop / comfortable touch).
+> How Daybook feels: notepad-fast capture through a vim-ish List/Edit modality, a CodeMirror 6 markdown surface, an unambiguous keymap that makes `Enter` a newline and `Ctrl+Enter` a submit, GitHub-issue-style promotion of sub-items, and the "Ink" Basecoat/Tailwind design system (dark-default, one indigo accent, dense desktop / comfortable touch).
 
 Sibling docs: [README](../README.md) · [01 — Product Requirements](01-product-requirements.md) · [02 — Architecture](02-architecture.md) · [03 — Data Model](03-data-model.md) · [05 — Roadmap](05-roadmap.md)
 
@@ -12,11 +12,11 @@ The product lives or dies on two flows: **capture must feel like a notepad**, an
 
 Three principles:
 
-1. **Zero-ceremony capture.** Opening a capture surface is a single keystroke from anywhere, the caret is live on open, and you type prose — not a form. No required title, no mandatory category, no "save" button in your way. `Ctrl+Enter` commits; in streak mode the next empty line opens instantly so you can fire off ten todos without touching the mouse.
+1. **Zero-ceremony capture.** Opening a capture surface is a single keystroke from anywhere, the caret is live on open, and you type prose — not a form. No required title, no mandatory collection, no "save" button in your way. `Ctrl+Enter` commits; in streak mode the next empty line opens instantly so you can fire off ten todos without touching the mouse.
 2. **Plaintext is the substrate.** Bodies are stored as literal markdown. That is what makes the [EOD report a near-free concatenation](03-data-model.md#eod-report-engine), makes bodies human-diffable, and makes the [Y.Text CRDT merge](02-architecture.md#conflict-model) clean. The editor renders *pretty* inline (live preview) without ever leaving the plaintext model.
 3. **The keyboard is the primary input; the mouse and touch are equal-but-different.** On desktop, every verb is a key. On touch — where there is no single-key layer — every verb is a gesture or an on-screen affordance, and the soft `Return` key **stays a newline** (submit moves to an accessory button). Getting this coordination right is the core of the capture loop on phones.
 
-> **The notepad promise, stated precisely:** you should be able to write a multi-line markdown todo — headings, bullets, a pasted screenshot — and never once feel you left a text editor. Structure (tags, category, sub-items, promotion) is added *after* the words exist, never as a gate before them.
+> **The notepad promise, stated precisely:** you should be able to write a multi-line markdown todo — headings, bullets, a pasted screenshot — and never once feel you left a text editor. Structure (tags, collections, sub-items, promotion) is added *after* the words exist, never as a gate before them.
 
 ---
 
@@ -45,9 +45,9 @@ A document-model WYSIWYG fights **all three** constraints at once: it feels like
 - **Inline live preview** (community plugins, e.g. `atomic-editor` / `codemirror-live-markdown`): hide `**`/`#`/`` ` `` tokens when the caret leaves them; expand `#`, `-`, `1.`, `` ``` ``, `>` as-you-type; render inline image widgets from `![](attachment:…)`.
 - **`y-codemirror.next`** binds the editor to the todo's `Y.Text`, giving character-level merge and remote-cursor mapping for free.
 - **Image paste** (`Ctrl/Cmd+V`): custom handler uploads/attaches the blob (content-addressed by SHA-256 — see [02 — Architecture](02-architecture.md#blob-storage)), inserts `![](attachment:<hash>)`, and renders a widget. The blob syncs on its own channel; the body only carries the reference.
-- **`#tag` and `@category` tokens** autocomplete inline so the two axes can be set without leaving the keyboard.
+- **`#tag` and `@collection` tokens** autocomplete inline so the two axes (collections are many-to-many) can be set without leaving the keyboard.
 
-> **Isolation note:** the body CRDT sits behind a [Rust trait](02-architecture.md#conflict-model) and the editor behind a thin React adapter, so a later swap to TipTap (if WYSIWYG wins) is a bounded change, not a rewrite of the whole capture surface. Decide early — migrating the *model* (plaintext ↔ document) is the expensive part.
+> **Isolation note:** the body CRDT sits behind a [Rust trait](02-architecture.md#conflict-model) and the editor behind a thin framework-agnostic (plain-TS) adapter, so a later swap to TipTap (if WYSIWYG wins) is a bounded change, not a rewrite of the whole capture surface. Decide early — migrating the *model* (plaintext ↔ document) is the expensive part.
 
 ---
 
@@ -87,7 +87,7 @@ stateDiagram-v2
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant App as Cadence
+    participant App as Daybook
     U->>App: Global quick-add hotkey (n / Ctrl+N)
     App-->>U: Empty editor, caret live, EDIT mode
     U->>App: Types multi-line markdown (Enter = newline)
@@ -122,7 +122,7 @@ The tables below are **authoritative and unambiguous**. Required bindings are ma
 | `x` / `Space` | Toggle done / undone on focused item |
 | `p` | **Promote** sub-item into a full detailed todo (GitHub-issue style) |
 | `t` | Open **tag** editor (tag axis) |
-| `c` | Open **category** picker (category axis) |
+| `c` | Open **Collections** picker (multi-select, many-to-many — an item can be in several) |
 | `d d` | Delete focused item (with undo) |
 | `y` / `P` | Yank (copy) focused item / paste below |
 | `u` / `Ctrl+Z` | Undo |
@@ -150,7 +150,7 @@ The tables below are **authoritative and unambiguous**. Required bindings are ma
 
 | Key(s) | Action |
 | --- | --- |
-| `Ctrl/Cmd+K` | Command palette (fuzzy: create, jump, tag, category, filter, promote, export EOD) |
+| `Ctrl/Cmd+K` | Command palette (fuzzy: create, jump, tag, collection, filter, promote, export EOD) |
 | `Ctrl/Cmd+Shift+E` | Generate / preview the **EOD report** from today's activity |
 | `Ctrl/Cmd+F` | Search |
 | `?` | Keyboard cheat-sheet overlay |
@@ -159,7 +159,7 @@ The tables below are **authoritative and unambiguous**. Required bindings are ma
 
 ### 4.4 Discoverability
 
-Vim-ish single-key verbs can surprise non-power users, so Cadence ships three escape hatches: **insert-by-default capture** (you can just start typing), the **`?` cheat-sheet overlay**, and the **`Ctrl/Cmd+K` command palette** (every verb is fuzzy-searchable by name). A future toggle can require a modifier for List-mode verbs.
+Vim-ish single-key verbs can surprise non-power users, so Daybook ships three escape hatches: **insert-by-default capture** (you can just start typing), the **`?` cheat-sheet overlay**, and the **`Ctrl/Cmd+K` command palette** (every verb is fuzzy-searchable by name). A future toggle can require a modifier for List-mode verbs.
 
 ---
 
@@ -173,11 +173,11 @@ There is **no List-mode single-key layer** on touch, so every List verb maps to 
 | `Esc` (leave edit) | Tap outside / keyboard "Done" |
 | `Ctrl+Enter` (submit) | **Submit (✓) button** on the keyboard accessory toolbar |
 | `x` (toggle done) | **Swipe right** on a row |
-| delete / promote / tag / category | **Swipe left** reveals action buttons |
+| delete / promote / tag / collections | **Swipe left** reveals action buttons |
 | `Tab` / `Shift+Tab` (indent) | **Long-press + drag**, or horizontal drag at row start |
 | reorder | Long-press + drag |
 | `n` (quick-add) | **`+` FAB** |
-| `p` / `t` / `c` (promote / tag / category) | Row **overflow (…) menu** |
+| `p` / `t` / `c` (promote / tag / collections) | Row **overflow (…) menu** (collections = multi-select) |
 | `Ctrl+K` (palette) | Bottom **command sheet** |
 
 An **accessory toolbar docked above the soft keyboard** carries: Submit, bold/italic, list, image-attach, indent/outdent — solving both the "`Return` must be newline" conflict and thumb access to the structural verbs that live on physical keys on desktop. CodeMirror 6's self-managed input layer is what makes this accessory-bar + soft-keyboard coordination reliable (versus `contenteditable`, where the caret can jump during composition).
@@ -188,16 +188,16 @@ An **accessory toolbar docked above the soft keyboard** carries: Submit, bold/it
 
 ## 6. Promote a sub-item into a full todo
 
-Promotion is Cadence's GitHub-sub-issue move: a checklist line **upgrades in place** into a fully-detailed todo with its own body, sub-items, tags, category, and attachments — **no row copy**, `parent_id` unchanged. In the [data model](03-data-model.md#promotion) this is `promoted = true` plus an emitted `promoted` event; the backlink to the parent is retained.
+Promotion is Daybook's GitHub-sub-issue move: a checklist line **upgrades in place** into a fully-detailed todo with its own body, sub-items, tags, collections, and attachments — **no row copy**, `parent_id` unchanged. In the [data model](03-data-model.md#promotion) this is `promoted = true` plus an emitted `promoted` event; the backlink to the parent is retained.
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant App as Cadence
+    participant App as Daybook
     U->>App: LIST mode, sub-item focused → press p
     App->>App: set promoted=true, emit `promoted` event (parent_id unchanged)
     App-->>U: Row gains a "detail" affordance + backlink chip to parent
-    U->>App: Enter → opens DetailedTodoView (own body/tags/category/sub-items)
+    U->>App: Enter → opens DetailedTodoView (own body/tags/collections/sub-items)
     Note over U,App: u / Ctrl+Z reverses the promotion.
 ```
 
@@ -207,9 +207,9 @@ sequenceDiagram
 
 ## 7. Design system — "Ink"
 
-Cadence's visual language borrows the substrate-dark precision of **Linear**, the Swiss-neutral discipline and free **Geist** type of **Vercel**, and the keyboard-monk restraint of **Raycast**: a low-chroma neutral **"Ink"** ladder, hairline borders, tight 6/8/10px radii, a **single restrained indigo accent** reserved strictly for **primary action + focus ring**, and fast (120–180ms) subtle motion. Density is a first-class goal — this is a power tool, not a consumer calendar.
+Daybook's visual language borrows the substrate-dark precision of **Linear**, the Swiss-neutral discipline and free **Geist** type of **Vercel**, and the keyboard-monk restraint of **Raycast**: a low-chroma neutral **"Ink"** ladder, hairline borders, tight 6/8/10px radii, a **single restrained indigo accent** reserved strictly for **primary action + focus ring**, and fast (120–180ms) subtle motion. Density is a first-class goal — this is a power tool, not a consumer calendar.
 
-Built on **React + Tailwind v4 + shadcn/ui**, all tokens are OKLCH semantic tokens in a Tailwind-v4 `@theme` setup. **Dark is the default/primary theme** (power users live in dark) with a **first-class light theme**. Categories carry the **accent/structural** role; tags get a **muted 8-hue chip set** so the two axes stay visually distinct.
+Built on **Alpine.js + Tailwind v4 + Basecoat** (shadcn/ui-compatible tokens; daisyUI fallback) — Basecoat is "shadcn/ui without React": plain-HTML components + tiny Alpine scripts, so all tokens remain OKLCH semantic tokens in the same Tailwind-v4 `@theme` setup (the "Ink" palette and `@theme` block are unchanged). Alpine is only a thin **view layer** over a **framework-agnostic plain-TS core** — the virtualized tree, command palette, and CodeMirror integration are plain-TS modules Alpine orchestrates. **Dark is the default/primary theme** (power users live in dark) with a **first-class light theme**. **Collections** carry the **accent/structural** role; tags get a **muted 8-hue chip set** so the two axes stay visually distinct.
 
 ### 7.1 Color tokens
 
@@ -249,7 +249,7 @@ Built on **React + Tailwind v4 + shadcn/ui**, all tokens are OKLCH semantic toke
 | `destructive` | `#F26D6D` `oklch(.70 .17 20)` | `#DC4B4B` | Delete / error |
 | `info` / link | = accent indigo | = accent indigo | Links / info |
 
-> **Accent discipline (the Linear rule):** if categories, tags, links, and focus all fight for the accent, it stops signaling "primary action." Reserve indigo strictly for primary action + focus ring. Categories carry the structural/accent role via an active-bar; **tags get their own muted chip hues** below.
+> **Accent discipline (the Linear rule):** if collections, tags, links, and focus all fight for the accent, it stops signaling "primary action." Reserve indigo strictly for primary action + focus ring. Collections carry the structural/accent role via an active-bar; **tags get their own muted chip hues** below.
 
 **Tag chip palette — 8 muted hues, distinct from the accent.** Rendered as **12–14% alpha background + full-strength text/dot** in dark.
 
@@ -301,9 +301,9 @@ Built on **React + Tailwind v4 + shadcn/ui**, all tokens are OKLCH semantic toke
 ### 7.6 Starter Tailwind v4 token block
 
 ```css
-/* app.css — shadcn/ui + Tailwind v4 @theme-inline.
+/* app.css — Basecoat (shadcn/ui-compatible) + Tailwind v4 @theme-inline.
    `:root` holds LIGHT values (shadcn convention); dark lives under `.dark`.
-   Cadence applies `.dark` to <html> at boot, so DARK is the shipped default —
+   Daybook applies `.dark` to <html> at boot, so DARK is the shipped default —
    the app renders dark unless the user explicitly switches to light. */
 :root {
   --background: oklch(0.99 0.002 265);
@@ -369,9 +369,11 @@ Built on **React + Tailwind v4 + shadcn/ui**, all tokens are OKLCH semantic toke
 }
 ```
 
-### 7.7 Component inventory (shadcn/ui)
+### 7.7 Component inventory (Basecoat)
 
-Command palette (cmdk, `Ctrl/Cmd+K`) · QuickCapture bar (single-line → multiline, `Ctrl+Enter` submit) · ListRow (checkbox, title, inline tag chips, category dot, mono meta/time, sub-item count, drag handle) · TagChip (pill, colored dot + 12% alpha bg, removable) · CategorySidebar (collapsible tree, icon + count badge, one active-accent bar) · MarkdownEditor (CodeMirror, live preview, image paste) · SubItemChecklist (nested, promote button) · DetailedTodoView (GitHub-issue layout) · ImageAttachment (thumbnail grid + lightbox, drag-drop/paste) · EODReportView (date-grouped, markdown export/copy) · StatusDot · KbdHint (styled `<kbd>`) · Toast · DensityToggle · ThemeToggle.
+Each entry is a **plain-HTML Basecoat component** (shadcn/ui-compatible classes) wired with a **small Alpine script** over the framework-agnostic plain-TS core — the command palette, virtualized list rows, tag chips, collection picker, editor, attachments, and EOD view are plain-TS modules Alpine only presents:
+
+Command palette (plain-TS module, `Ctrl/Cmd+K`) · AccountSwitcher (host/account picker at sidebar top, workspace-switcher pattern) · QuickCapture bar (single-line → multiline, `Ctrl+Enter` submit) · ListRow (checkbox, title, inline tag chips, collection dots, mono meta/time, sub-item count, drag handle) · TagChip (pill, colored dot + 12% alpha bg, removable) · CollectionPicker (multi-select, many-to-many) · CollectionsSidebar (collapsible tree, icon + count badge, one active-accent bar, future per-collection share affordance) · MarkdownEditor (CodeMirror, live preview, image paste) · SubItemChecklist (nested, promote button) · DetailedTodoView (GitHub-issue layout) · ImageAttachment (thumbnail grid + lightbox, drag-drop/paste) · EODReportView (date-grouped, markdown export/copy) · StatusDot · KbdHint (styled `<kbd>`) · Toast · DensityToggle · ThemeToggle.
 
 ---
 
@@ -380,22 +382,22 @@ Command palette (cmdk, `Ctrl/Cmd+K`) · QuickCapture bar (single-line → multil
 <a id="screen-1--main-list"></a>
 ### Screen 1 — Main list
 
-Left **CategorySidebar** (240px, collapsible to a 56px icon rail): a collapsible category tree, each row an icon + count badge, with a single accent active-bar on the selected category. Center is a **dense list of ListRows** grouped by category or date — checkbox, title, inline tag chips, a category dot, mono timestamp, and sub-item count. Rows use **hairline dividers, no card shadows** — flat + borders keep it calm and fast. A sticky **QuickCapture bar** is pinned top or bottom, always ready. An optional right rail carries filters/tags. The focused row shows a visible focus ring; the `LIST`/`EDIT` mode pill sits bottom-right. A board/kanban view (columns = categories or status) is a later alternate.
+A **host/account switcher** sits at the **top of the sidebar** (workspace-switcher pattern): it names the active account — `{ host URL, credentials }` — switches between servers, and carries an **add/select server** flow; everything below is rendered **per-account**. Below it, the **CollectionsSidebar** (240px, collapsible to a 56px icon rail): a collapsible tree of collections, each row an icon + count badge, with a single accent active-bar on the selected collection (each collection is the shareable unit — a future **share** affordance lives here, MVP owner-only). Center is a **dense list of ListRows** grouped by collection or date — checkbox, title, inline tag chips, **one or more collection dots** (an item can belong to several collections), mono timestamp, and sub-item count. Rows use **hairline dividers, no card shadows** — flat + borders keep it calm and fast. A sticky **QuickCapture bar** is pinned top or bottom, always ready. An optional right rail carries filters/tags. The focused row shows a visible focus ring; the `LIST`/`EDIT` mode pill sits bottom-right. A board/kanban view (columns = collections or status) is a later alternate.
 
 <a id="screen-2--focused-editor"></a>
 ### Screen 2 — Focused editor (capture)
 
-The QuickCapture expands inline, or opens as a **centered Raycast-style card** (`max-w 640px`, radius 12, `e2` elevation, optional backdrop-blur). The surface is markdown-friendly with monospace inside fences; `#tag` and `@category` tokens autocomplete inline. A **KbdHint footer** shows `Ctrl+Enter to save · Esc to cancel`. **Zero chrome, cursor-ready on open** — this screen *is* the notepad promise. On mobile it is the full-width editor with the soft-keyboard accessory toolbar (Submit, bold/italic, list, image, indent) docked above the keyboard.
+The QuickCapture expands inline, or opens as a **centered Raycast-style card** (`max-w 640px`, radius 12, `e2` elevation, optional backdrop-blur). The surface is markdown-friendly with monospace inside fences; `#tag` and `@collection` tokens autocomplete inline. A **KbdHint footer** shows `Ctrl+Enter to save · Esc to cancel`. **Zero chrome, cursor-ready on open** — this screen *is* the notepad promise. On mobile it is the full-width editor with the soft-keyboard accessory toolbar (Submit, bold/italic, list, image, indent) docked above the keyboard.
 
 <a id="screen-3--detailed-todo-github-issue-style"></a>
 ### Screen 3 — Detailed todo (GitHub-issue style)
 
-A **full-width reading column** (`max-w 760px`): a 22px title, a meta row (category pill, tag chips, created/updated in mono), the **rendered markdown body**, a **SubItemChecklist** where each item carries a "promote to todo" action, and an attachment thumbnail grid. A right meta sidebar exposes dates, category, and tags for inline editing. **Promoting a sub-item spawns a child DetailedTodoView that back-links the parent** (see §6). This is the "issue" surface — where a captured line grows into structured work.
+A **full-width reading column** (`max-w 760px`): a 22px title, a meta row (collection chips, tag chips, created/updated in mono), the **rendered markdown body**, a **SubItemChecklist** where each item carries a "promote to todo" action, and an attachment thumbnail grid. A right meta sidebar exposes dates, collections (multi-select), and tags for inline editing. **Promoting a sub-item spawns a child DetailedTodoView that back-links the parent** (see §6). This is the "issue" surface — where a captured line grows into structured work.
 
 <a id="screen-4--eod-report"></a>
 ### Screen 4 — EOD report (hero)
 
-A date selector (**Today** default, custom range supported). Cadence auto-collects completed + touched todos from the [event log](03-data-model.md#eod-report-engine), bucketed CREATED / UPDATED / COMPLETED / CARRIED-OVER, and renders **clean markdown**: `## Category` → `- [x] item` with **sub-item rollups + tag annotations** and mono timestamps. One-click **Copy-as-Markdown / Export**; editable before send; carry-over rolls unfinished items forward with a slipped-days count. This is the **hero screen** — generous whitespace here (a deliberate contrast to the dense list), print/share-ready styling, markdown as the universal paste target for Slack/Jira/email.
+A date selector (**Today** default, custom range supported). Daybook auto-collects completed + touched todos from the [event log](03-data-model.md#eod-report-engine), bucketed CREATED / UPDATED / COMPLETED / CARRIED-OVER, and renders **clean markdown**: `## Collection` → `- [x] item` with **sub-item rollups + tag annotations** and mono timestamps. One-click **Copy-as-Markdown / Export**; editable before send; carry-over rolls unfinished items forward with a slipped-days count. This is the **hero screen** — generous whitespace here (a deliberate contrast to the dense list), print/share-ready styling, markdown as the universal paste target for Slack/Jira/email.
 
 ---
 
@@ -420,6 +422,6 @@ A date selector (**Today** default, custom range supported). Cadence auto-collec
 | Dense rows below 44px touch target | Auto-enable comfortable density on mobile. |
 | Accent overuse dilutes "primary action" signal | Reserve indigo for action + focus; tags use muted chip hues. |
 | WebKitGTK weakest renderer | Avoid heavy blur/filters; progressive-enhance elevation. |
-| Editor swap (CM6 → TipTap) if WYSIWYG later wins | Editor behind a React adapter + body CRDT behind a Rust trait; decide the plaintext-vs-document model early. |
+| Editor swap (CM6 → TipTap) if WYSIWYG later wins | Editor behind a framework-agnostic (plain-TS) adapter + body CRDT behind a Rust trait; decide the plaintext-vs-document model early. |
 
 See [05 — Roadmap](05-roadmap.md) for the full risk register, and [03 — Data Model](03-data-model.md) for the NODE schema, event log, and EOD engine these interactions drive.

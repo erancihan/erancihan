@@ -1,6 +1,6 @@
-# Cadence — Data Model & EOD Report Engine
+# Daybook — Data Model & EOD Report Engine
 
-> One unified NODE table (a todo and a promoted sub-item are the same row), two distinct classification axes, a hybrid CRDT, and an append-only event log that makes the end-of-day report deterministic and auditable.
+> One unified NODE table (a todo and a promoted sub-item are the same row), two distinct classification axes (both many-to-many, differing by role), a hybrid CRDT, and an append-only event log that makes the end-of-day report deterministic and auditable.
 
 **Status:** Planning / design artifact (no application code yet).
 **Related docs:** [Product Requirements](01-product-requirements.md) · [Architecture](02-architecture.md) · [UX & Interaction](04-ux-and-interaction.md) · [Roadmap](05-roadmap.md) · [Overview](../README.md)
@@ -14,6 +14,9 @@ Every entity choice below is driven by five hard requirements from the [PRD](01-
 | Principle | Consequence |
 | --- | --- |
 | **One node, one table.** A todo and a promoted sub-item are *the same row*. | Promotion is a flag flip, not a migration. Uniform tree query and sync. |
+| **Two axes, both many-to-many, distinguished by role.** Collections are named, nestable, shareable containers; Tags are flat personal labels. A node can live in *many* Collections and carry *many* Tags. | No single-select bucket. Both axes are tombstoned m2m joins; they differ by role, not by cardinality. |
+| **The Collection is the unit of sharing & sync scope.** Membership rows (`COLLECTION_MEMBER`) carry the permission boundary; personal-first, owner-only in MVP. | Sharing hooks exist in the schema without complicating the personal path. |
+| **One account/host owns each row.** Every NODE and COLLECTION belongs to exactly one account/host; IDs stay client-generated for offline creation. | Multi-host scoping is a filter on ownership, not a schema fork. |
 | **Client-generated IDs.** UUIDv7/ULID strings, minted on-device, stable, globally unique, never reused. | Create fully offline with no server round-trip; IDs sort roughly by creation time. |
 | **The event log is the source of truth for history.** Every meaningful state change appends an immutable `EVENT`. | "What did I do today" is a query, not a reconstruction. The same range always reproduces the same report. |
 | **SQLite is a derived projection.** The local relational store is rebuilt deterministically from the CRDT + op log. | Fast queryable index for lists and reports; never hand-edited as a primary. |
@@ -29,8 +32,10 @@ Every entity choice below is driven by five hard requirements from the [PRD](01-
 ```mermaid
 erDiagram
     NODE ||--o{ NODE : "parent_id (tree, ≤8 deep)"
-    NODE }o--o| CATEGORY : "category_id (≤1, single-select)"
-    CATEGORY ||--o{ CATEGORY : "parent_category_id (tree)"
+    NODE ||--o{ NODE_COLLECTION : "member of (m:n)"
+    COLLECTION ||--o{ NODE_COLLECTION : "contains (m:n)"
+    COLLECTION ||--o{ COLLECTION : "parent_id (nesting)"
+    COLLECTION ||--o{ COLLECTION_MEMBER : "shared with"
     NODE ||--o{ NODE_TAG : "tagged"
     TAG ||--o{ NODE_TAG : "labels (m:n)"
     NODE ||--o{ ATTACHMENT : "has"
@@ -45,7 +50,6 @@ erDiagram
         string title "LWW register"
         string body_md "Y.Text sequence CRDT"
         string status "inbox|todo|in_progress|blocked|done|dropped"
-        string category_id FK "single-select, LWW"
         string order_key "base62 fractional + :clientId"
         ts     created_at
         ts     updated_at
@@ -55,13 +59,29 @@ erDiagram
         ts     deleted_at
         string hlc "hybrid logical clock / version"
     }
-    CATEGORY {
-        string id PK
+    COLLECTION {
+        string id PK "ULID/UUIDv7"
         string name
-        string parent_category_id FK "tree"
-        string color "accent role"
+        string parent_id FK "nullable, nesting"
+        string owner_id "account/host"
+        string color "accent/structural role"
+        string icon
         string order_key
-        bool   deleted "tombstone"
+        ts     created_at
+        ts     updated_at
+        bool   tombstone
+    }
+    NODE_COLLECTION {
+        string node_id FK
+        string collection_id FK
+        string order_key "fractional, per-collection"
+        bool   tombstone "leave/remove merges"
+    }
+    COLLECTION_MEMBER {
+        string collection_id FK
+        string user_id
+        string role "owner|editor|viewer"
+        bool   tombstone
     }
     TAG {
         string id PK
@@ -120,11 +140,10 @@ The core of the model. A checklist child and a full detailed todo are **the same
 | `id` | string (ULID/UUIDv7) | immutable | Client-generated, stable, globally unique, never reused. |
 | `parent_id` | string? → NODE.id | LWW | `null` = root todo; else its parent. Self-referential 1→many tree. Cap depth ≈ 8; guard cycles client-side. |
 | `kind` | enum `{task, checklist_item}` | LWW | A `checklist_item` is a lightweight child; `promoted` levels it up. |
-| `promoted` | bool | LWW | `true` once "converted to an issue" — unlocks body, tags, category, children, attachments. |
+| `promoted` | bool | LWW | `true` once "converted to an issue" — unlocks body, tags, children, attachments. |
 | `title` | string | LWW register | Short one-line title (rendered in list rows and report bullets). |
 | `body_md` | markdown text | **`Y.Text` CRDT** | Literal markdown string; concurrent edits merge character-wise. Report = concatenation of bodies. |
 | `status` | enum `{inbox, todo, in_progress, blocked, done, dropped}` | LWW | Drives report buckets. `done` sets `completed_at`. |
-| `category_id` | string? → CATEGORY.id | LWW | **At most one** (single-select bucket). See §4. |
 | `order_key` | string | LWW | base62 fractional index + `:clientId` jitter suffix. Siblings sort lexicographically. See §5.3. |
 | `created_at` | ts (HLC + UTC) | set-once | |
 | `updated_at` | ts (HLC + UTC) | LWW | |
@@ -134,22 +153,47 @@ The core of the model. A checklist child and a full detailed todo are **the same
 | `deleted_at` | ts? | | |
 | `hlc` / `version` | string / vector | — | Hybrid logical clock + per-field version for LWW tie-breaking. |
 
-**Relations:** NODE 1—* NODE (parent) · NODE *—1 CATEGORY · NODE *—* TAG (via NODE_TAG) · NODE 1—* ATTACHMENT · NODE 1—* EVENT.
+> **No `category_id` on NODE.** A node's Collection membership is *not* a scalar FK — it lives in zero-or-more `NODE_COLLECTION` join rows (§3.2). A node can belong to several Collections at once; there is no single-select bucket. A NODE belongs to exactly one account/host (see `COLLECTION.owner_id`).
 
-> **Cheap vs. heavy nodes.** A `checklist_item` that was never promoted carries no `Y.Text` doc, no tags, no category — it stays a trivial row. The `Y.Text` body and its CRDT metadata are only instantiated when a body is actually edited, so a long checklist does not pay document overhead per item.
+**Relations:** NODE 1—* NODE (parent) · NODE *—* COLLECTION (via NODE_COLLECTION) · NODE *—* TAG (via NODE_TAG) · NODE 1—* ATTACHMENT · NODE 1—* EVENT.
 
-### 3.2 CATEGORY — axis 1 (single, hierarchical bucket)
+> **Cheap vs. heavy nodes.** A `checklist_item` that was never promoted carries no `Y.Text` doc, no tags, no collection membership — it stays a trivial row. The `Y.Text` body and its CRDT metadata are only instantiated when a body is actually edited, so a long checklist does not pay document overhead per item.
 
-| Field | Type | Merge | Notes |
+### 3.2 COLLECTION + NODE_COLLECTION — axis 1 (many-to-many, nestable, shareable containers)
+
+A **Collection** is a named, optionally nestable container and the **unit of sharing & sync scope**. Unlike the old single-select category, a node can belong to **many** Collections at once — membership is an m2m join, not an FK. Collections carry the structural/accent UI role and own the permission boundary (`COLLECTION_MEMBER`). Personal-first: MVP is owner-only; the membership table leaves room for sharing without changing the node path. Each Collection belongs to exactly one account/host (`owner_id`). Per-field LWW like NODE.
+
+| COLLECTION | Type | Merge | Notes |
 | --- | --- | --- | --- |
-| `id` | string | immutable | |
+| `id` | string (ULID/UUIDv7) | immutable | Client-generated. |
 | `name` | string | LWW | e.g. `ClientX`. |
-| `parent_category_id` | string? → CATEGORY.id | LWW | Tree, e.g. `Work > ClientX`. |
-| `color` | string | LWW | Accent/structural role in the design system. |
+| `parent_id` | string? → COLLECTION.id | LWW | Nullable; self-referential nesting, e.g. `Work > ClientX`. |
+| `owner_id` | string | set-once | Account/host that owns the Collection. |
+| `color` / `icon` | string | LWW | Accent/structural role in the design system. |
 | `order_key` | string | LWW | Sibling ordering (same scheme as nodes). |
-| `deleted` | bool | tombstone | |
+| `created_at` | ts | set-once | |
+| `updated_at` | ts | LWW | |
+| `tombstone` | bool | tombstone | Soft delete; membership rows tombstone alongside. |
 
-A node references **at most one** category. Deleting a category tombstones it; nodes keep the FK until reassigned (UI shows "Uncategorized").
+`NODE_COLLECTION` is the **tombstoned m2m join** that replaces the old `category_id` FK — one row per (node, collection) membership, so adding a node to one Collection on a device and removing it on another merge correctly.
+
+| NODE_COLLECTION | Type | Merge | Notes |
+| --- | --- | --- | --- |
+| `node_id` | string → NODE.id | — | Composite key `(node_id, collection_id)`. |
+| `collection_id` | string → COLLECTION.id | — | |
+| `order_key` | string | LWW | **Fractional** — per-collection ordering, so a node can sit in a different position in each Collection. |
+| `tombstone` | bool | **tombstone** | Leave/remove = set `tombstone=true`; a later-HLC removal wins over a concurrent re-add per policy. |
+
+`COLLECTION_MEMBER` is the **sharing hook** — who may see/edit a Collection. Empty (or owner-only) in MVP; present so sharing does not require a schema change later.
+
+| COLLECTION_MEMBER | Type | Merge | Notes |
+| --- | --- | --- | --- |
+| `collection_id` | string → COLLECTION.id | — | Composite key `(collection_id, user_id)`. |
+| `user_id` | string | — | |
+| `role` | enum `{owner, editor, viewer}` | LWW | Permission on the shared Collection. |
+| `tombstone` | bool | tombstone | Revoke = tombstone the membership. |
+
+Deleting a Collection tombstones it and its membership rows; a node's other memberships are untouched, and a node with no live membership renders as "Uncollected."
 
 ### 3.3 TAG + NODE_TAG — axis 2 (many-to-many label)
 
@@ -159,7 +203,7 @@ A node references **at most one** category. Deleting a category tombstones it; n
 | --- | --- | --- | --- |
 | `id` | string | immutable | |
 | `name` | string | LWW | e.g. `p1`, `call`, `urgent`. |
-| `color` | string | LWW | One of a controlled 8-hue muted chip set (kept visually distinct from category accents). |
+| `color` | string | LWW | One of a controlled 8-hue muted chip set (kept visually distinct from Collection accents). |
 | `deleted` | bool | tombstone | |
 
 | NODE_TAG | Type | Merge | Notes |
@@ -170,7 +214,7 @@ A node references **at most one** category. Deleting a category tombstones it; n
 | `deleted` | bool | **tombstone** | Un-tag = set `deleted=true`; a later-HLC delete wins over a concurrent re-add per policy. |
 | `hlc` | string | — | Tie-breaker for concurrent add/remove. |
 
-> **Why two axes and not one.** Category answers *"which bucket does this live in?"* (single-select, hierarchical, structural) and Tag answers *"what labels cut across buckets?"* (many-to-many, flat, cross-cutting). Merging them into one axis would violate the hard two-axis requirement and break report pivots — you could not report *only work items* (category subtree) *tagged `#urgent`* (tag) at the same time.
+> **Why two axes and not one.** Both axes are many-to-many; they differ by **role**, not cardinality. A Collection answers *"which named, shareable container(s) does this live in?"* (nestable, structural, the sync/permission boundary) and a Tag answers *"what personal labels cut across containers?"* (flat, lightweight, cross-cutting). Merging them into one axis would violate the hard two-axis requirement and break report pivots — you could not report *only work items* (a Collection subtree) *tagged `#urgent`* (a tag) at the same time.
 
 ### 3.4 ATTACHMENT + BLOB — images stored in the app
 
@@ -199,10 +243,10 @@ Immutable, never edited or deleted (only compacted behind a watermark). This is 
 | `id` | string | |
 | `node_id` | string → NODE.id | |
 | `actor_id` | string | Originating device/user. |
-| `type` | enum | `created` · `updated` · `status_changed` · `completed` · `reopened` · `promoted` · `category_set` · `tagged` · `untagged` · `attached` · `commented` · `carried_over` |
+| `type` | enum | `created` · `updated` · `status_changed` · `completed` · `reopened` · `promoted` · `collection_added` · `collection_removed` · `tagged` · `untagged` · `attached` · `commented` · `carried_over` |
 | `from_value` / `to_value` | json? | e.g. `{status: "todo"}` → `{status: "in_progress"}`. |
 | `occurred_at` | ts | **HLC + UTC** — timezone-robust across DST/travel. |
-| `payload_json` | json | Type-specific extras (e.g. `{attachment_id}`, `{tag_id}`, `{slipped_days}`). |
+| `payload_json` | json | Type-specific extras (e.g. `{attachment_id}`, `{collection_id}`, `{tag_id}`, `{slipped_days}`). |
 
 Because events are immutable and HLC-stamped, a fixed date range **always reproduces the same report** — the audit property the killer feature depends on.
 
@@ -210,14 +254,19 @@ Because events are immutable and HLC-stamped, a fixed date range **always reprod
 
 ## 4. The Two Classification Axes (side by side)
 
-| | **Category** (axis 1) | **Tag** (axis 2) |
+**Both axes are many-to-many.** They are not distinguished by cardinality — they differ by **role**: Collections are named, nestable, *shareable* containers that own the sync/permission boundary; Tags are lightweight, flat, *personal* labels.
+
+| | **Collection** (axis 1) | **Tag** (axis 2) |
 | --- | --- | --- |
-| Cardinality on a node | Exactly **one** (or none) | **Many** (0..n) |
-| Shape | Hierarchical tree | Flat set |
-| Question it answers | "Which bucket?" | "Which cross-cutting labels?" |
-| Storage | `NODE.category_id` FK (LWW) | `NODE_TAG` tombstoned join (m:n) |
-| Visual role | Accent / structural color | 8-hue muted chip set |
-| Report role | Default **group-by** headings | Filter + inline chips; alternate pivot |
+| Cardinality on a node | **Many** (0..n) | **Many** (0..n) |
+| Shape | Nestable tree (self `parent_id`) | Flat set |
+| Question it answers | "Which named container(s)?" | "Which cross-cutting labels?" |
+| Storage | `NODE_COLLECTION` tombstoned join (m:n) | `NODE_TAG` tombstoned join (m:n) |
+| Role | Structural; **unit of sharing & sync scope** (`COLLECTION_MEMBER`, owner-only in MVP) | Personal, cross-cutting labels |
+| Visual role | Accent / structural color + icon | 8-hue muted chip set |
+| Report role | Default **group-by** headings (an item may appear under several) | Filter + inline chips; alternate pivot |
+
+Because an item can belong to several Collections, the default report **dedups** it under a single primary (first) Collection; see §8.3.
 
 ---
 
@@ -228,7 +277,7 @@ Because events are immutable and HLC-stamped, a fixed date range **always reprod
 ```mermaid
 flowchart LR
     subgraph NODE["A NODE, on the wire"]
-        A["Scalars & structure<br/>title · status · category_id<br/>parent_id · order_key · due_at"]
+        A["Scalars & structure<br/>title · status<br/>parent_id · order_key · due_at"]
         B["body_md<br/>(the markdown prose)"]
     end
     A -->|per-field LWW register<br/>HLC-stamped| M1["Merge: last writer wins,<br/>per field, independently"]
@@ -279,7 +328,7 @@ sequenceDiagram
     U->>C: press "p" (promote focused sub-item)
     C->>C: set promoted = true (optionally kind = task)
     Note over C: parent_id UNCHANGED — hierarchy edge preserved
-    C->>C: unlock body_md (Y.Text), tags, category, children, attachments
+    C->>C: unlock body_md (Y.Text), tags, collections, children, attachments
     C->>L: append EVENT{ type: "promoted", node_id }
     C-->>U: same row, now a full detailed todo in place
 ```
@@ -288,7 +337,7 @@ sequenceDiagram
 | --- | --- |
 | Row identity | Same `id`, same row — **no copy, no migration**. |
 | Hierarchy | `parent_id` **unchanged**; the node keeps its place in the tree. |
-| Capabilities gained | Own `body_md`, tags, category, sub-items, attachments. |
+| Capabilities gained | Own `body_md`, tags, collection membership, sub-items, attachments. |
 | History | A `promoted` EVENT is appended — the report can show "promoted today." |
 | Reversibility | Setting `promoted=false` is possible but discouraged; the event trail preserves the history either way. |
 
@@ -309,7 +358,7 @@ A root task with three children (one already promoted, itself with a grandchild)
   "title": "Ship EOD report v1",
   "body_md": "## Goal\nGrouped **markdown** export from the event log.",
   "status": "in_progress",
-  "category_id": "cat_work_clientx",
+  "collections": ["col_work", "col_clientX"],
   "tags": ["tag_reporting", "tag_p1"],
   "order_key": "a3V:client-7f2",
   "created_at": "2026-07-09T09:12:00Z",
@@ -379,7 +428,7 @@ A root task with three children (one already promoted, itself with a grandchild)
 }
 ```
 
-> The nested `children`/`tags`/`attachments`/`events` shown inline are a **read projection** for clarity. On the wire these are separate rows/joins (`NODE.parent_id`, `NODE_TAG`, `ATTACHMENT`, `EVENT`) so each merges independently.
+> The nested `children`/`collections`/`tags`/`attachments`/`events` shown inline are a **read projection** for clarity. On the wire these are separate rows/joins (`NODE.parent_id`, `NODE_COLLECTION`, `NODE_TAG`, `ATTACHMENT`, `EVENT`) so each merges independently. `"collections"` is the list of live `NODE_COLLECTION` memberships — a node can carry several.
 
 ---
 
@@ -393,11 +442,11 @@ The killer feature. A report is **derived from the immutable event log** over a 
 
 ```mermaid
 flowchart TD
-    IN["Input: date range [start, end)<br/>default = today (local TZ / day boundary)<br/>+ optional filters (category subtree · tags · status)"]
+    IN["Input: date range [start, end)<br/>default = today (local TZ / day boundary)<br/>+ optional filters (collection subtree · tags · status)"]
     Q["1 Query EVENT log:<br/>occurred_at in [start,end)"]
-    R["2 Resolve events → current NODE snapshots<br/>(join for title, tags, category)"]
+    R["2 Resolve events → current NODE snapshots<br/>(join for title, tags, collections)"]
     B["3 Bucket:<br/>CREATED · UPDATED · COMPLETED · CARRIED_OVER"]
-    G["4 Group (pivotable):<br/>by Category tree (default) · by Tag · by project-root"]
+    G["4 Group (pivotable):<br/>by Collection (default, dedup) · by Tag · by project-root"]
     M["5 Render deterministic markdown<br/>checkbox bullets · sub-item rollups · tag chips · timestamps"]
     CO["6 Carry-over: emit carried_over events<br/>for open in-scope items → next day"]
     EX["7 Export: copy-as-markdown (primary)"]
@@ -415,7 +464,14 @@ flowchart TD
 
 ### 8.3 Grouping (pivotable)
 
-Default grouping is the **Category tree** (hierarchical H2 headings) with **Tag chips** inline. Alternate pivots: **by Tag**, or **by project-root** (a root node whose children form a project). Grouping is a view over the same resolved snapshots — switching pivots never re-queries the log.
+Default grouping is **by Collection** (nestable H2 headings) with **Tag chips** inline. Alternate pivots: **by Tag**, or **by project-root** (a root node whose children form a project). Grouping is a view over the same resolved snapshots — switching pivots never re-queries the log.
+
+**Multi-Collection items.** Because a node can belong to *several* Collections, grouping by Collection is not a clean partition. Two modes, stated explicitly:
+
+- **Dedup (default).** Each item is listed **once**, under a single **primary** Collection — its first (lowest `order_key`) live membership. Totals count each item once.
+- **List-under-each (optional).** The same item appears under **every** Collection it belongs to. Useful for per-client digests; totals then count memberships, not distinct items, and the footer notes the duplication.
+
+Uncollected items (no live `NODE_COLLECTION` row) group under an **"Uncollected"** heading.
 
 ### 8.4 Markdown output (sketch)
 
@@ -446,7 +502,7 @@ Incomplete in-scope items roll into the next day's report; each roll appends a `
 | Format | Status | Use |
 | --- | --- | --- |
 | **Markdown** | MVP (primary) | Copy-paste to Slack / Jira / email — the universal target. |
-| HTML | Later | Styled via the same shadcn theme. |
+| HTML | Later | Styled via the same design-system theme. |
 | JSON | Later | Machine-readable. |
 | PDF / rich clipboard | Later | Formal sharing. |
 
