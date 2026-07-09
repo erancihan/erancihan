@@ -11,6 +11,7 @@ const DEFAULTS = {
   previewDelay: 400,
   previewMaxHeight: 85,
   previewMaxWidth: 50,
+  zerochanMaxPages: 1,
 };
 
 /**
@@ -23,6 +24,7 @@ async function loadSettings() {
 
     document.getElementById('pixiv-path').value = settings.pixivSubfolder;
     document.getElementById('zerochan-path').value = settings.zerochanSubfolder;
+    document.getElementById('zerochan-max-pages').value = settings.zerochanMaxPages;
     document.getElementById('preview-enabled').checked = settings.previewEnabled;
     document.getElementById('preview-delay').value = settings.previewDelay;
     document.getElementById('preview-max-height').value = settings.previewMaxHeight;
@@ -39,6 +41,7 @@ async function saveSettings() {
   const settings = {
     pixivSubfolder: document.getElementById('pixiv-path').value.trim() || DEFAULTS.pixivSubfolder,
     zerochanSubfolder: document.getElementById('zerochan-path').value.trim() || DEFAULTS.zerochanSubfolder,
+    zerochanMaxPages: parseInt(document.getElementById('zerochan-max-pages').value, 10) || DEFAULTS.zerochanMaxPages,
     previewEnabled: document.getElementById('preview-enabled').checked,
     previewDelay: parseInt(document.getElementById('preview-delay').value, 10) || DEFAULTS.previewDelay,
     previewMaxHeight: parseInt(document.getElementById('preview-max-height').value, 10) || DEFAULTS.previewMaxHeight,

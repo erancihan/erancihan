@@ -55,11 +55,13 @@ function thumbToSampleUrl(thumbUrl) {
   return thumbUrl.replace('.240.', '.600.').replace('/240/', '/600/');
 }
 
-/** Read the thumbnail image URL from a listing element (handles lazy-load). */
+/** Read the thumbnail image URL from a listing element (handles lazy-load).
+ * Reads raw attributes first so it also works on documents parsed from fetched
+ * HTML (where the .src property would resolve against the wrong base URI). */
 function getThumbnailSrc(el) {
   const img = el.querySelector('img');
   if (!img) return null;
-  return (img.dataset && img.dataset.src) || img.src || null;
+  return img.getAttribute('data-src') || img.getAttribute('src') || img.src || null;
 }
 
 /**
@@ -304,6 +306,116 @@ function setupDetailPageFAB() {
   });
 }
 
+// ─── Batch Download (listing pages) ─────────────────────────────
+
+const BATCH_DELAY_MS = 250; // throttle between queued downloads
+const BATCH_MAX_PAGES = 20; // hard cap regardless of setting
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Is the current page a Zerochan listing/tag/search grid (not a detail page)? */
+function isListingPage() {
+  return !!document.querySelector('#thumbs') && !/^\/\d+$/.test(window.location.pathname);
+}
+
+/** Numeric work id for a listing <li>, from its /{id} detail link. */
+function getItemId(li) {
+  const link = li.querySelector('a[href]');
+  if (!link) return null;
+  try {
+    const m = new URL(link.href, window.location.href).pathname.match(/^\/(\d+)/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Collect {id, url} for every thumbnail in a (live or fetched) document. */
+function collectThumbnails(doc) {
+  const out = [];
+  for (const li of doc.querySelectorAll('#thumbs > li')) {
+    const id = getItemId(li);
+    const url = getListingImageUrl(li);
+    if (id && url) out.push({ id, url });
+  }
+  return out;
+}
+
+/** Build the URL for page `p` of the current listing, preserving query params. */
+function buildPageUrl(p) {
+  const params = new URLSearchParams(window.location.search);
+  params.set('p', String(p));
+  return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+}
+
+/** Current listing page number (1-based). */
+function getCurrentPage() {
+  const p = parseInt(new URLSearchParams(window.location.search).get('p') || '1', 10);
+  return Number.isFinite(p) && p > 0 ? p : 1;
+}
+
+/**
+ * Crawl from the current listing page across up to `maxPages` pages, queueing
+ * every thumbnail full-resolution into the tag folder. Later pages are fetched
+ * same-origin (with cookies, so no special API User-Agent is needed) and parsed;
+ * downloads are throttled and de-duplicated by work id.
+ * @param {number} maxPages
+ */
+async function crawlAndDownload(maxPages) {
+  const character = extractCharacterName();
+  const subfolder = sanitizeSubfolder(getSettings().zerochanSubfolder, 'zerochan');
+  const seen = new Set();
+  const startPage = getCurrentPage();
+  let total = 0;
+
+  for (let i = 0; i < maxPages; i++) {
+    let doc = document;
+    if (i > 0) {
+      try {
+        const res = await fetch(buildPageUrl(startPage + i), { credentials: 'include' });
+        if (!res.ok) break;
+        doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      } catch {
+        break;
+      }
+    }
+
+    const items = collectThumbnails(doc);
+    if (items.length === 0) break;
+
+    for (const it of items) {
+      if (seen.has(it.id)) continue;
+      seen.add(it.id);
+      browser.runtime.sendMessage({
+        action: 'download',
+        url: it.url,
+        filename: `${subfolder}/${character}/${extractFilename(it.url)}`,
+      });
+      total++;
+      await sleep(BATCH_DELAY_MS);
+    }
+    showToast(`Queued ${total} image${total === 1 ? '' : 's'} (page ${i + 1}/${maxPages})...`, 'info');
+  }
+
+  showToast(
+    total ? `Batch done: ${total} image${total === 1 ? '' : 's'} queued` : 'No images found on this page',
+    total ? 'success' : 'error'
+  );
+}
+
+/** On listing pages, add a FAB that batch-downloads the tag's images. */
+function setupBatchFAB() {
+  if (!isListingPage()) return;
+
+  const setting = parseInt(getSettings().zerochanMaxPages, 10) || 1;
+  const maxPages = Math.min(BATCH_MAX_PAGES, Math.max(1, setting));
+
+  createDownloadFAB({
+    tooltip: maxPages > 1 ? `Download all (up to ${maxPages} pages)` : 'Download all on this page',
+    onClick: debounceLeading(() => crawlAndDownload(maxPages), 3000),
+  });
+}
+
 // ─── Preview Adapter ────────────────────────────────────────────
 
 /** @type {import('../common/preview.js').PreviewAdapter} */
@@ -370,8 +482,9 @@ function init() {
   // Inject download buttons on thumbnails
   injectDownloadButtons();
 
-  // Set up FAB on detail pages
+  // Set up FAB: single-image download on detail pages, batch on listing pages.
   setupDetailPageFAB();
+  setupBatchFAB();
 
   // Initialize preview on thumbnail listings (scoped to the grid items).
   initPreview(zerochanAdapter, '#thumbs > li, li[data-id]');

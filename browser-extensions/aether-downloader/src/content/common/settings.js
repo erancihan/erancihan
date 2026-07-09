@@ -9,6 +9,9 @@ const DEFAULTS = {
   previewDelay: 400,
   previewMaxHeight: 85,
   previewMaxWidth: 50,
+  // Batch crawl: how many listing pages the Zerochan "download all" FAB walks,
+  // starting from the current page (1 = current page only).
+  zerochanMaxPages: 1,
 };
 
 let cache = { ...DEFAULTS };
