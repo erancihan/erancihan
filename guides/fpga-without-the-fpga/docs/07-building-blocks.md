@@ -169,8 +169,9 @@ O(W²) area and a long, slow critical path. A 32×32 multiplier built from
 plain LUTs is a monster.
 
 Which is why FPGAs don't build it from LUTs. Real parts ship **hard DSP
-slices**: dedicated silicon multipliers (typically in the 16×16 to 18×18
-range) with built-in accumulators, pre-adders and pipeline registers. The
+slices**: dedicated silicon multipliers (anywhere from ~16×16 on small
+parts up to ~27×18 on larger ones) with built-in accumulators, pre-adders
+and pipeline registers. The
 names vary by family — DSP48 on AMD/Xilinx parts, `SB_MAC16` on the Lattice
 iCE40, `MULT18X18`-style blocks on the ECP5, and the exact widths and
 features differ — but the deal is the same everywhere: write `a * b` and

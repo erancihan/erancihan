@@ -275,11 +275,14 @@ Run it:
 
 ```console
 $ cd src && make 06-gpu-simt
+WARNING: gpu.v:67: $readmemh(kernel.hex): Not enough words in the file for the requested range [0:255].
 kernel finished in 48 cycles (16 adds on 4 lanes)
 ALL TESTS PASSED
 ```
 
-The 48 is worth auditing by hand: a 6-instruction prologue, then 4 loop
+That `$readmemh` warning is expected and harmless: the kernel is 17 words
+but the instruction memory is 256, so the rest stays zero (`NOP`). The 48
+is worth auditing by hand: a 6-instruction prologue, then 4 loop
 iterations of 10 instructions, then `HALT` — 6 + 40 + 1 = 47 instructions
 at one per cycle, plus one edge for the testbench to observe the
 registered `done` flag. And the throughput claim checks out: 16 correct

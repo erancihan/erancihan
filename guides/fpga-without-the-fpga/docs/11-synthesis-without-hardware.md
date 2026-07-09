@@ -85,8 +85,9 @@ parts:
 
 - **`SB_LUT4`** — a 4-input look-up table, the fabric's unit of
   combinational logic. Nine of them compute `count + 1`.
-- **`SB_DFFESR`** — a D flip-flop with clock **E**nable, **S**et and
-  **R**eset. Eight of them, one per bit of `count` — exactly the state
+- **`SB_DFFESR`** — a D flip-flop with clock **E**nable and **S**ynchronous
+  **R**eset (the `S` is *synchronous*, qualifying the reset — there is no
+  set input). Eight of them, one per bit of `count` — exactly the state
   [chapter 05](05-sequential-logic-and-fsms.md) said lives in flip-flops. The
   `E` is your `en`, the `R` your synchronous `rst`: the synthesizer read your
   `always` block and picked the flop flavor that matches.
@@ -268,7 +269,7 @@ Info:  0.5  0.5  Source regs[31]_...DFF.O           <- register-file read
 ...
 Info:  ...        Sink dmem_wdata_...LC.I1           (cpu.v:137  store-data mux)
 ...
-Info:  ...        Sink ...alu_b...CARRY.I1           (cpu.v:88   operand mux)
+Info:  ...        Sink ...alu_b...CARRY.I1           (cpu.v:87   operand mux)
 Info:  ...        Sink ...SB_CARRY...                (cpu.v:107  SLT compare)
 Info: Max frequency for clock 'clk': 39.66 MHz
 ```
@@ -278,7 +279,7 @@ Read a static-timing path top to bottom: it starts at a **source** register
 (wire delay) and **Source** (cell delay) hops, accumulating nanoseconds in
 the right-hand column until it lands on the **sink** — the input of the
 flop that must capture the result. The `cpu.v:NN` annotations tie each hop
-back to your source: line 88 is the `alu_b` operand mux, line 107 is the
+back to your source: line 87 is the `alu_b` operand mux, line 107 is the
 signed-less-than comparison, line 137 is the store-data path. In plain
 terms, this critical path is a register read feeding the ALU's comparator
 carry chain on its way to write-back — which is *precisely the datapath

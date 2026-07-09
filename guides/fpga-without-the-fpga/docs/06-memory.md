@@ -94,8 +94,9 @@ Four things to notice:
   executes — and it instantiates exactly this 2R1W shape.
 - **`x0` is hardwired to zero**, belt and braces: reads of address 0 are
   forced to `32'd0`, *and* writes to address 0 are dropped. That's the
-  RV32I contract, and half the instruction set's cleverness (`mv`, `not`,
-  `neg` are pseudo-ops built on `x0`) relies on it.
+  RV32I contract, and a swathe of the assembler's pseudo-instructions lean
+  on it (`nop` is `addi x0, x0, 0`, `j` is `jal x0, …`, `neg rd, rs` is
+  `sub rd, x0, rs`, `ret` is `jalr x0, 0(ra)`).
 - **It cannot be a block RAM.** BRAM reads are registered — data arrives a
   cycle after the address — so combinational-read memories map to LUT RAM
   or plain flip-flops instead. At 32 × 32 = 1024 bits that's cheap; it

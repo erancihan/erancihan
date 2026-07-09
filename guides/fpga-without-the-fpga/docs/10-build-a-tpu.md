@@ -319,7 +319,7 @@ back.
 ## Quantization: int8 in, int32 out
 
 Why int8 operands but a 32-bit accumulator? Do the arithmetic. Each product
-`a * w` with `a, w ∈ [-128, 127]` peaks at `-128 × -128 = 16384 < 2¹⁴`.
+`a * w` with `a, w ∈ [-128, 127]` peaks at `-128 × -128 = 16384 = 2¹⁴`.
 Summing `N` of them can reach `N × 2¹⁴`:
 
 - `N = 4`: magnitude up to `4 × 16384 = 65,536 ≈ 2¹⁶`.

@@ -113,7 +113,8 @@ splits it across two columns only because the columns exist.)
 | Branches | B | BEQ BNE BLT BGE BLTU BGEU | PC-relative, ±4 KiB reach |
 | Jumps | J / I | JAL, JALR | write `pc+4` to rd (the return address) |
 | Upper immediate | U | LUI, AUIPC | build 32-bit constants / PC-relative addresses |
-| System | I | ECALL, EBREAK, FENCE | on this core: halt, halt, no-op |
+| System | I | ECALL, EBREAK | on this core: both halt |
+| Misc-mem | I | FENCE | own opcode; memory ordering — a no-op on this core |
 
 Two conventions worth internalizing: loads and stores are the *only*
 instructions that touch data memory (this is the "load–store architecture"
@@ -459,12 +460,12 @@ infer a latch.
 > test program said:
 >
 > ```text
-> FAIL: mem[0x00000118] = 0x0fffffbc, expected 0xfffffffc
+> FAIL: mem[0x00000118] = 0x0ffffffc, expected 0xfffffffc
 > ```
 >
-> — well, close to that; the failing value was `0x0FFFFFFC`. The program
-> computes `-64 >>> 4` with `srai x16, x15, 4` and expects `-4`
-> (`0xFFFFFFFC`). It got `0x0FFFFFFC`: the *logical* shift of `0xFFFFFFC0`.
+> Look at that failing value. The program computes `-64 >>> 4` with
+> `srai x16, x15, 4` and expects `-4` (`0xFFFFFFFC`). It got `0x0FFFFFFC`:
+> the *logical* shift of `0xFFFFFFC0`.
 > The `$signed` was sitting right there, the `>>>` was sitting right there,
 > and the shift came out unsigned anyway.
 >
@@ -552,7 +553,7 @@ a demo and the CPU's acceptance test. It opens with its own contract:
 ```
 
 and then earns each line: an iterative Fibonacci loop (real control flow —
-a backward branch taken ten times):
+a backward jump taken ten times):
 
 ```asm
 fib_loop:
@@ -615,8 +616,8 @@ CPU halted after 98 cycles
 ALL TESTS PASSED
 ```
 
-47 instructions, 98 cycles — one instruction per cycle, with the loop
-iterations doing the multiplication. (`0x37` is 55, `0x63` is 99; the
+47 instructions, 98 cycles — one instruction per cycle, the extra cycles
+coming from the loop body running its ten iterations. (`0x37` is 55, `0x63` is 99; the
 `$readmemh` "not enough words" warning you'll also see is expected — the
 program is much shorter than the memory it loads into.) Then open
 `cpu.vcd` in GTKWave or Surfer, put `pc`, `instr`, `x21` and
