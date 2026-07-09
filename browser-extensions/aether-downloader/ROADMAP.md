@@ -15,7 +15,7 @@ no browser extension does Zerochan batch/tag crawling. See `RESEARCH.md`.
 | **0 — Real Chrome support** | `browser` namespace shim, per-browser manifest, `declarativeNetRequest` Referer rule (Chrome) vs `webRequest` (Firefox), dual `dist/firefox` + `dist/chrome` output | ✅ done |
 | **3a — Zerochan batch crawl** | listing/tag page "download all" FAB; crawls up to `zerochanMaxPages` pages (same-origin fetch + parse), throttled + de-duped | ✅ done |
 | **3b — Naming templates** | shared folder-template engine (`renderPath`) with per-site tokens; defaults reproduce prior layout | ✅ done |
-| **3c — Pixiv batch crawl** | user works / bookmarks / search-result crawling (via `/ajax/user/{id}/profile/all` etc.) | ⬜ planned |
+| **3c — Pixiv batch crawl** | "download all" FAB on user / bookmarks / tag-search pages; each work reuses `downloadArtworkById` (multi-page, ugoira, metadata, templates); confirm + throttle | ✅ done |
 | **3d — Ugoira conversion** | in-browser zip decode + encode to GIF / APNG / WebM / **MP4** (MP4 is the gap vs PBD) — needs bundled encoder libs | ⬜ planned |
 | **3e — QoL** | skip-already-downloaded / dedup, progress UI + pause/resume, 429 backoff/throttle | ⬜ planned |
 | **4 — Cleanup** | ✅ dead code / `activeTab` / `dev --watch` / `emitCss` / `vite.config.js`; ⬜ regenerate `icon-128.png` (currently 1024px) | 🚧 partial |
