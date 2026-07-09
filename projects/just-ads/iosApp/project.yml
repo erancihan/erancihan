@@ -1,0 +1,41 @@
+# XcodeGen spec for the iOS shell. Run `xcodegen generate` on a Mac to produce
+# iosApp.xcodeproj (a real .xcodeproj is binary and can't be authored here). Then open
+# in Xcode, let SPM resolve GoogleMobileAds, and Run onto a device/simulator.
+# The FRAMEWORK_SEARCH_PATHS / linking below is a starting point — verify against your
+# Kotlin + Compose Multiplatform versions (the KMP task name is embedAndSignAppleFrameworkForXcode).
+name: iosApp
+options:
+  bundleIdPrefix: dev.erancihan
+  deploymentTarget:
+    iOS: "15.0"
+
+packages:
+  GoogleMobileAds:
+    url: https://github.com/googleads/swift-package-manager-google-mobile-ads.git
+    from: "11.9.0"
+
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: iosApp
+    info:
+      path: iosApp/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.erancihan.justads
+        SWIFT_VERSION: "5.0"
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS:
+          - "-framework"
+          - "ComposeApp"
+    dependencies:
+      - package: GoogleMobileAds
+    preBuildScripts:
+      - name: "Build & embed Compose (KMP) framework"
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
