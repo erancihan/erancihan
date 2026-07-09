@@ -1,0 +1,29 @@
+// kernel.hex — vector add, C[i] = A[i] + B[i], N = 16 elements,
+// executed by 4 lanes using a grid-stride loop.
+//
+// Memory map (word addresses): A = 0..15, B = 16..31, C = 32..47.
+//
+// Encoding: op[31:24] a[23:16] b[15:8] c[7:0]   (see gpu.v)
+// The CUDA equivalent of this kernel:
+//   i = threadIdx.x;                     // LDID
+//   while (i < N) {                      // SLT + BNZ
+//       c[i] = a[i] + b[i];              // LD, LD, ADD, ST
+//       i += blockDim.x;                 // ADD (stride = 4 lanes)
+//   }
+01010000  // LDID r1          ; i = lane_id (0,1,2,3)
+02020010  // LDI  r2, 16      ; N
+02070004  // LDI  r7, 4       ; stride = number of lanes
+02030000  // LDI  r3, 0       ; base of A
+02040010  // LDI  r4, 16      ; base of B
+02050020  // LDI  r5, 32      ; base of C
+03060301  // ADD  r6, r3, r1  ; loop: r6 = &A[i]
+06060600  // LD   r6, r6      ;       r6 = A[i]
+03000401  // ADD  r0, r4, r1  ;       r0 = &B[i]
+06000000  // LD   r0, r0      ;       r0 = B[i]
+03060600  // ADD  r6, r6, r0  ;       r6 = A[i] + B[i]
+03000501  // ADD  r0, r5, r1  ;       r0 = &C[i]
+07060000  // ST   r6, r0      ;       C[i] = r6
+03010107  // ADD  r1, r1, r7  ;       i += stride
+08000102  // SLT  r0, r1, r2  ;       r0 = (i < N)
+09000006  // BNZ  r0, 6       ;       loop while r0 != 0 (uniform!)
+ff000000  // HALT
