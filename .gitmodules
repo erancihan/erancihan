@@ -22,3 +22,6 @@
 [submodule "projects/expense-analysis"]
 	path = projects/expense-analysis
 	url = git@github.com:erancihan/expense-analysis.git
+[submodule "projects/ai-avatar-companion"]
+	path = projects/ai-avatar-companion
+	url = git@github.com:erancihan/ai-avatar-companion.git
