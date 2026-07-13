@@ -1,0 +1,9 @@
+# build products
+c/huffman
+java/*.class
+rust/huffman
+rust/target/
+python/__pycache__/
+
+# test scratch space
+tests/.work/
