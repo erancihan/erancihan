@@ -25,3 +25,6 @@
 [submodule "projects/ai-avatar-companion"]
 	path = projects/ai-avatar-companion
 	url = git@github.com:erancihan/ai-avatar-companion.git
+[submodule "projects/claude-statusline"]
+	path = projects/claude-statusline
+	url = git@github.com:erancihan/claude-statusline.git
