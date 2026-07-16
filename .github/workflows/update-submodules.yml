@@ -31,8 +31,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: true
-          # Full history: the PR branch is rebased onto master, which needs a merge base
-          fetch-depth: 0
 
       - name: Update all submodules to latest remote HEAD
         run: |
@@ -47,58 +45,56 @@ jobs:
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit to PR branch (rebase + amend, keep single commit)
+      - name: Commit to PR branch via API (GitHub signs bot commits)
         if: steps.changes.outputs.has_changes == 'true'
         id: commit
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           # Build a commit body listing old -> new SHA per changed submodule,
-          # measured against master (the PR base). Submodule worktrees already
-          # sit at the new SHAs; gitlinks in HEAD still hold the old ones.
+          # plus the gitlink tree entries for the API commit. Submodule
+          # worktrees already sit at the new SHAs; gitlinks in HEAD still hold
+          # the old ones.
           BODY=""
+          ENTRIES="[]"
           for sub in $(git diff --name-only); do
             OLD=$(git rev-parse --short "HEAD:${sub}")
-            NEW=$(git -C "$sub" rev-parse --short HEAD)
-            BODY="${BODY}- ${sub}: ${OLD} -> ${NEW}"$'\n'
+            NEW=$(git -C "$sub" rev-parse HEAD)
+            BODY="${BODY}- ${sub}: ${OLD} -> $(git -C "$sub" rev-parse --short HEAD)"$'\n'
+            ENTRIES=$(jq -c --arg path "$sub" --arg sha "$NEW" \
+              '. + [{path: $path, mode: "160000", type: "commit", sha: $sha}]' <<<"$ENTRIES")
           done
 
-          # Reuse the existing PR branch when present: rebase it onto master first,
-          # then amend, so the branch always reads as exactly master + 1 commit.
-          REMOTE_EXISTS=false
-          if git fetch origin "$BRANCH" 2>/dev/null; then
-            REMOTE_EXISTS=true
-            git checkout -B "$BRANCH" FETCH_HEAD
-            # A gitlink conflict means the old bump is obsolete; restart from master
-            git rebase master || { git rebase --abort; git reset --hard master; }
-          else
-            git checkout -b "$BRANCH" master
-          fi
+          BASE=$(git rev-parse HEAD)
 
-          # Stage the new gitlinks and overwrite (amend) the bump commit in place;
-          # first run on a fresh branch creates it instead
+          # Anti-churn: tree SHAs are content-addressed, so the new tree's SHA
+          # can be computed locally without creating anything; skip the API
+          # calls when the remote branch already carries this exact tree on the
+          # same master base
           git add -A
-          MSG="chore: update submodule references"
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse master)" ]; then
-            git commit --amend -m "$MSG" -m "$BODY"
+          NEW_TREE=$(git write-tree)
+          REMOTE=$(gh api "repos/$GITHUB_REPOSITORY/commits/heads/$BRANCH" \
+            --jq '{tree: .commit.tree.sha, parent: .parents[0].sha}' 2>/dev/null || echo '{}')
+          if [ "$(jq -r .tree <<<"$REMOTE")" = "$NEW_TREE" ] &&
+             [ "$(jq -r .parent <<<"$REMOTE")" = "$BASE" ]; then
+            echo "Remote branch already up to date; skipping."
           else
-            git commit -m "$MSG" -m "$BODY"
-          fi
-
-          # Anti-churn: skip the push when the remote branch already carries
-          # identical content on the same master base
-          PUSH=true
-          if [ "$REMOTE_EXISTS" = true ]; then
-            if [ "$(git rev-parse 'FETCH_HEAD^{tree}')" = "$(git rev-parse 'HEAD^{tree}')" ] &&
-               [ "$(git rev-parse 'FETCH_HEAD^')" = "$(git rev-parse 'HEAD^')" ]; then
-              PUSH=false
-              echo "Remote branch already up to date; skipping push."
-            fi
-          fi
-          if [ "$PUSH" = true ]; then
-            # Plain --force: branch is bot-owned, races excluded via concurrency group
-            git push --force origin "$BRANCH"
+            # The commit is created through the REST API instead of git so that
+            # GitHub signs it as github-actions[bot] (installation-token
+            # commits with no custom author/committer get a verified
+            # signature), satisfying the required-signatures rule on master.
+            # The low-level tree/commit endpoints are needed because
+            # createCommitOnBranch and the contents API cannot write gitlinks.
+            # Building on top of master keeps the branch at master + 1 commit.
+            TREE=$(jq -n --arg base "$(git rev-parse 'HEAD^{tree}')" --argjson tree "$ENTRIES" \
+              '{base_tree: $base, tree: $tree}' \
+              | gh api "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
+            COMMIT=$(jq -n --arg msg "chore: update submodule references"$'\n\n'"$BODY" \
+              --arg tree "$TREE" --arg parent "$BASE" \
+              '{message: $msg, tree: $tree, parents: [$parent]}' \
+              | gh api "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq .sha)
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/heads/$BRANCH" -f sha="$COMMIT" 2>/dev/null \
+              || gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" \
+                   -f sha="$COMMIT" -F force=true
           fi
 
           {
