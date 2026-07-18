@@ -1,0 +1,12 @@
+[package]
+name = "huffman"
+version = "1.0.0"
+edition = "2021"
+description = "A byte-oriented Huffman codec (teaching implementation)"
+
+[[bin]]
+name = "huffman"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
