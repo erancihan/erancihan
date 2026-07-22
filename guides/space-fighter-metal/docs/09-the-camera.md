@@ -3,7 +3,7 @@
 > **You'll leave this chapter with:** how a chase camera is built from the ship's
 > transform, why we blend world-up with ship-up, and the small tuning knobs that
 > change the whole game feel — reading
-> [`CameraSystem`](../src/Sources/SpaceFighter/Systems/CameraSystem.swift).
+> `CameraSystem`.
 
 ---
 

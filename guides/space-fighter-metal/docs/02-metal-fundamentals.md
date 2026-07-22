@@ -25,8 +25,8 @@ Two consequences shape the whole API:
 ## The cast of objects
 
 Here's everyone you'll meet, roughly in the order they appear, with the line in
-[`Renderer.swift`](../src/Sources/SpaceFighter/Render/Renderer.swift) or
-[`main.swift`](../src/Sources/SpaceFighter/main.swift) that creates them.
+`Renderer.swift` or
+`main.swift` that creates them.
 
 | Object | What it is | Lifetime |
 |---|---|---|

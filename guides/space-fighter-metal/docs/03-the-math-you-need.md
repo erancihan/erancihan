@@ -2,7 +2,7 @@
 
 > **You'll leave this chapter with:** enough linear algebra to read every matrix
 > in the project, an understanding of *why we orient ships with quaternions*, and
-> a line-by-line grip on [`Math.swift`](../src/Sources/SpaceFighter/Math.swift).
+> a line-by-line grip on `Math.swift`.
 
 You do not need to love math to build this. You need four things: vectors, the
 model/view/projection chain, quaternions for rotation, and the `simd` library

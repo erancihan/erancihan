@@ -3,8 +3,8 @@
 > **You'll leave this chapter with:** the ability to read and modify our Metal
 > shaders, a solid grip on **instancing** (one mesh → many entities → one draw
 > call), the CPU↔GPU struct-layout contract, and a full tour of
-> [`Renderer.swift`](../src/Sources/SpaceFighter/Render/Renderer.swift) and
-> [`Shaders.swift`](../src/Sources/SpaceFighter/Render/Shaders.swift).
+> `Renderer.swift` and
+> `Shaders.swift`.
 
 ---
 
@@ -27,7 +27,7 @@ turns those arrays into pixels.
 
 The shaders read Swift data directly out of buffers, so the memory layout has to
 match on both sides *exactly*. These pairs must stay in lockstep — the Swift ones
-in [`RenderTypes.swift`](../src/Sources/SpaceFighter/Render/RenderTypes.swift),
+in `RenderTypes.swift`,
 the MSL ones at the top of `Shaders.swift`:
 
 | Swift (`RenderTypes.swift`) | MSL (`Shaders.swift`) | Bytes | Purpose |

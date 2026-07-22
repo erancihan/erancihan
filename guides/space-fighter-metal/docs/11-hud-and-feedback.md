@@ -3,7 +3,7 @@
 > **You'll leave this chapter with:** how to draw 2D directly on top of a 3D
 > scene in normalised device coordinates, the aspect-ratio gotcha that squashes
 > naive HUDs, and where you'd add real text — reading
-> [`HUD.swift`](../src/Sources/SpaceFighter/HUD.swift) and `Renderer.drawHUD`.
+> `HUD.swift` and `Renderer.drawHUD`.
 
 ---
 

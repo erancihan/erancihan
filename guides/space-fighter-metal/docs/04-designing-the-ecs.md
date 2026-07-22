@@ -2,9 +2,9 @@
 
 > **You'll leave this chapter with:** a real understanding of the three ECS
 > storage strategies and why we chose the **sparse set**, plus a full reading of
-> [`Entity`](../src/Sources/SpaceFighter/ECS/Entity.swift),
-> [`ComponentStore`](../src/Sources/SpaceFighter/ECS/ComponentStore.swift) and
-> [`World`](../src/Sources/SpaceFighter/ECS/World.swift).
+> `Entity`,
+> `ComponentStore` and
+> `World`.
 
 ---
 
@@ -19,11 +19,11 @@
 
 - **Component** — a plain-data struct, no methods. A `Transform`, a `Velocity`,
   an `Enemy`. It answers *"what does this entity have?"* All of ours live in
-  [`Components.swift`](../src/Sources/SpaceFighter/Components.swift).
+  `Components.swift`.
 
 - **System** — a function over every entity that has a particular set of
   components. It answers *"what does having those make it do?"* Ours are the
-  files in [`Systems/`](../src/Sources/SpaceFighter/Systems/).
+  files in `Systems/`.
 
 The player ship is nothing but an id with a `Transform`, `Velocity`, `Player`,
 `Weapon`, `Renderable` and `Collider` attached (`Game.spawnPlayer`). A bullet is
@@ -126,7 +126,7 @@ for entity in velocities.owners {                 // MovementSystem
 
 ## The `World`: one place that owns everything
 
-[`World`](../src/Sources/SpaceFighter/ECS/World.swift) holds the entities and one
+`World` holds the entities and one
 `ComponentStore` per component type. The interesting bit is storing stores of
 *different generic types* in a single dictionary. We key them by the component's
 metatype and erase to a protocol:

@@ -16,21 +16,20 @@
 
 ## What this guide is (and isn't)
 
-This is a **learning guide with a working game attached**. The
-[`docs/`](docs/) chapters explain every idea — the GPU pipeline, the matrix
-math, the ECS storage, the flight model — and the [`src/`](src/) directory is a
-**complete, runnable prototype** those chapters describe. You can read first and
-run later, or run it now and read to understand what you just flew.
+This is a **from-scratch implementation guide**. The [`docs/`](docs/) chapters
+build the whole thing — the Metal renderer, the matrix and quaternion math, the
+ECS storage, the flight model, the gameplay — and show every piece of code in
+full, inline, as you go. You end with a small macOS Swift Package you wrote
+yourself and run with `swift run`.
 
-- The [`docs/`](docs/) chapters teach the concepts, with diagrams and the exact
-  code they refer to.
-- The [`src/`](src/) directory is a real Swift Package: `cd src && swift run`
-  and you're flying.
+- Chapter [01](docs/01-project-setup.md) scaffolds the project (a SwiftPM
+  executable); each later chapter says which files to create and fills them in.
+- The code is presented and explained where it's introduced — there's no
+  separate codebase to cross-reference; the guide *is* the source.
 
-Unlike a fill-in-the-blanks tutorial, the code isn't stubbed — it works. The
-skill this builds isn't "type what I typed"; it's **reading a small,
-honest game codebase and knowing where every piece lives and why**, so you can
-change it.
+The skill this builds isn't "type what I typed"; it's **understanding a small,
+honest game engine well enough to know where every piece lives and why** — so you
+can build on it.
 
 > **Note:** this guide is for learning. It is not official Apple documentation.
 > Cross-check the [Metal](https://developer.apple.com/documentation/metal) and
@@ -70,8 +69,8 @@ flowchart LR
   G -->|lit · unlit · stars · HUD| D[(Drawable)]
 ```
 
-Each box is one function in [`src/`](src/); the arrows are the order they run in
-[`Game.update`](src/Sources/SpaceFighter/Game.swift). That's the game.
+Each box is one system you'll build; the arrows are the order they run in
+`Game.update` (chapter 07). That's the game.
 
 | Idea | One-liner | Chapter |
 | --- | --- | --- |
@@ -121,24 +120,23 @@ You do **not** need any prior Metal, OpenGL, Vulkan, or ECS knowledge.
 space-fighter-metal/
 ├── README.md                 ← you are here (the map)
 ├── resources.md              ← primary sources & further reading
-├── docs/                     ← the guide, one chapter per file
-│   ├── 01-project-setup.md
-│   ├── 02-metal-fundamentals.md
-│   ├── 03-the-math-you-need.md
-│   ├── 04-designing-the-ecs.md
-│   ├── 05-the-render-pipeline.md
-│   ├── 06-meshes-and-geometry.md
-│   ├── 07-the-game-loop.md
-│   ├── 08-flight-and-input.md
-│   ├── 09-the-camera.md
-│   ├── 10-gameplay-systems.md
-│   ├── 11-hud-and-feedback.md
-│   └── 12-where-to-go-next.md
-└── src/                      ← the runnable game (swift run)
-    ├── README.md             ← build, controls, file map
-    ├── Package.swift
-    └── Sources/SpaceFighter/ ← ECS, systems, renderer, shaders
+└── docs/                     ← the guide, one chapter per file
+    ├── 01-project-setup.md
+    ├── 02-metal-fundamentals.md
+    ├── 03-the-math-you-need.md
+    ├── 04-designing-the-ecs.md
+    ├── 05-the-render-pipeline.md
+    ├── 06-meshes-and-geometry.md
+    ├── 07-the-game-loop.md
+    ├── 08-flight-and-input.md
+    ├── 09-the-camera.md
+    ├── 10-gameplay-systems.md
+    ├── 11-hud-and-feedback.md
+    └── 12-where-to-go-next.md
 ```
+
+The Swift project you build lives wherever you scaffold it in chapter 01 — the
+guide walks you through creating it file by file.
 
 ---
 
@@ -150,7 +148,7 @@ top of it, and 12 is the horizon.
 
 | # | Chapter | What you'll learn |
 | --- | --- | --- |
-| 01 | 🛠️ [Project setup](docs/01-project-setup.md) | What we're building and why Metal + ECS; running it with `swift run`; the shape of a frame; turning it into a real `.app`. |
+| 01 | 🛠️ [Project setup](docs/01-project-setup.md) | What we're building and why Metal + ECS; scaffolding the SwiftPM package; the shape of a frame; turning it into a real `.app`. |
 | 02 | 🧠 [Metal fundamentals](docs/02-metal-fundamentals.md) | The GPU as a service: device, command queue, command buffer, render pass, pipeline state, `MTKView`, the vertex→fragment pipeline, and the depth buffer. |
 | 03 | 🧠 [The math you need](docs/03-the-math-you-need.md) | Coordinate spaces; model/view/projection; why we orient with *quaternions* not Euler angles; `simd`, and every helper in `Math.swift` derived. |
 | 04 | 🛠️ [Designing the ECS](docs/04-designing-the-ecs.md) | Entities, components, systems; array-of-structs vs **sparse set** vs archetypes; our `World` + `ComponentStore`; generations, and safe deferred destruction. |
@@ -167,11 +165,12 @@ top of it, and 12 is the horizon.
 
 ## How to use this guide
 
-- **Run it early.** `cd src && swift run`, fly around for two minutes, *then*
-  read. Every chapter lands harder when you've seen the thing it explains move.
-- **Follow the schedule.** The single most important file is
-  [`Game.swift`](src/Sources/SpaceFighter/Game.swift): the list of systems, in
-  order, is the entire game logic. Keep it open.
+- **Build as you read, and run early.** Scaffold the project in chapter 01 and
+  `swift run` often — every chapter lands harder once you've seen the thing it
+  explains move.
+- **Follow the schedule.** The heart of the game is `Game.update` (chapter 07):
+  the list of systems, in order, is the entire game logic. Keep that chapter
+  close.
 - **Change one number.** Halve `spawnInterval`, double a turn rate, tint the
   ship red. Fast feedback is the whole reason to build on something small.
 - **Add one behaviour end-to-end.** A new component, a new system, one line in

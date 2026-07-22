@@ -3,7 +3,7 @@
 > **You'll leave this chapter with:** an understanding of what drives a frame,
 > why we multiply everything by *delta time*, the fixed-vs-variable timestep
 > trade-off, and why the **order** of systems in
-> [`Game.update`](../src/Sources/SpaceFighter/Game.swift) *is* the game logic.
+> `Game.update` *is* the game logic.
 
 ---
 

@@ -3,9 +3,9 @@
 > **You'll leave this chapter with:** how the game creates challenge and
 > resolves it — enemy spawning and AI, weapons and cooldowns, sphere collision
 > with layers, and the score/health/respawn loop — across
-> [`WeaponSystem`](../src/Sources/SpaceFighter/Systems/WeaponSystem.swift),
-> [`EnemySystem`](../src/Sources/SpaceFighter/Systems/EnemySystem.swift) and
-> [`CollisionSystem`](../src/Sources/SpaceFighter/Systems/CollisionSystem.swift).
+> `WeaponSystem`,
+> `EnemySystem` and
+> `CollisionSystem`.
 
 ---
 

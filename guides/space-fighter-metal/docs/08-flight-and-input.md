@@ -2,7 +2,7 @@
 
 > **You'll leave this chapter with:** a clean way to decouple input from
 > hardware, and a full understanding of the arcade flight model in
-> [`FlightControlSystem`](../src/Sources/SpaceFighter/Systems/FlightControlSystem.swift)
+> `FlightControlSystem`
 > — how pitch/yaw/roll become a quaternion, and why turns bank on their own.
 
 ---
@@ -12,8 +12,8 @@
 The systems that fly the ship should not know that `W` is key code 13. If they
 did, adding gamepad support later would mean editing gameplay code. So we put a
 translation layer in between. Raw events go into an
-[`InputController`](../src/Sources/SpaceFighter/GameView.swift); it emits an
-[`InputState`](../src/Sources/SpaceFighter/Input.swift) of *intent*:
+`InputController`; it emits an
+`InputState` of *intent*:
 
 ```swift
 struct InputState {

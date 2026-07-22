@@ -3,7 +3,7 @@
 > **You'll leave this chapter with:** an understanding of flat shading and face
 > normals, and the ability to generate every shape in the game — ship, enemy,
 > bolt, endless starfield, ground grid — in code, reading
-> [`Mesh.swift`](../src/Sources/SpaceFighter/Mesh.swift) top to bottom. Zero art
+> `Mesh.swift` top to bottom. Zero art
 > assets, exactly the brief.
 
 ---
