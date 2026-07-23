@@ -31,3 +31,6 @@
 [submodule "projects/go-otp"]
 	path = projects/go-otp
 	url = git@github.com:erancihan/go-otp.git
+[submodule "projects/negotiation-ecs"]
+	path = projects/negotiation-ecs
+	url = git@github.com:erancihan/negotiation-ecs.git
