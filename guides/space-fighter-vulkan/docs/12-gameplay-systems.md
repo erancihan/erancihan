@@ -183,8 +183,9 @@ The shared numbers live in a small `GameStats` struct that systems read and writ
 struct GameStats {
     int   score = 0;
     int   deaths = 0;
-    float playerHealth = 100.0f;
-    float hitFlash = 0.0f;        // seconds of red flash left (chapter 13)
+    float playerHealth    = 100.0f;
+    float playerMaxHealth = 100.0f;   // the hull bar's denominator (chapter 13)
+    float hitFlash = 0.0f;            // seconds of red flash left (chapter 13)
 };
 ```
 

@@ -2,8 +2,8 @@
 
 > **You'll leave this chapter with:** the CPU↔GPU struct-layout contract in
 > Vulkan's std140/std430 rules, **VMA** doing the allocating, the difference
-> between **staging** (device-local) and **host-visible** buffers and when to use
-> each, and the descriptor machinery — **set layouts, pools, sets and push
+> between **device-local** buffers (filled through a **staging** copy) and
+> **host-visible** buffers and when to use each, and the descriptor machinery — **set layouts, pools, sets and push
 > constants** — that finally connects a buffer to a shader. This is where the
 > uniforms and instancing of chapters 03 and 06 become real memory.
 
@@ -154,7 +154,16 @@ uniformBuffers[i] = createBuffer(sizeof(FrameUniforms),
     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
     VMA_MEMORY_USAGE_AUTO);
 // each frame:  memcpy(uniformBuffers[currentFrame].mapped, &frame, sizeof frame);
+// then:        vmaFlushAllocation(allocator, uniformBuffers[currentFrame].alloc, 0, VK_WHOLE_SIZE);
 ```
+
+That `vmaFlushAllocation` is easy to forget and free to include:
+`HOST_ACCESS_SEQUENTIAL_WRITE` does **not** guarantee the memory is
+`HOST_COHERENT`, and on non-coherent memory CPU writes aren't visible to the GPU
+until flushed. On desktop the memory you'll actually get is almost always
+coherent — which makes the flush a no-op there, and makes the bug invisible right
+up until it isn't. Flush after every write to a mapped allocation and the
+question never comes up.
 
 Crucially, these are allocated **per frame-in-flight** (chapter 05). While the GPU
 reads frame *N*'s uniform buffer, the CPU writes frame *N+1*'s — different buffer,
@@ -298,6 +307,7 @@ for (auto& [mesh, list] : byMesh) {
     all.insert(all.end(), list.begin(), list.end());
 }
 memcpy(instanceBuffers[currentFrame].mapped, all.data(), all.size() * sizeof(InstanceData));
+vmaFlushAllocation(allocator, instanceBuffers[currentFrame].alloc, 0, VK_WHOLE_SIZE);
 
 for (const Group& g : groups) {
     const Mesh& m = meshes[g.mesh];
@@ -310,6 +320,13 @@ for (const Group& g : groups) {
 The trick is that `gl_InstanceIndex` in the shader **includes `firstInstance`**, so
 `instances[gl_InstanceIndex]` reads the right slice with no per-group descriptor
 rebinding — one SSBO, one descriptor set, one `memcpy`, N draws.
+
+Two meshes never enter `byMesh`: the **grid** and the **starfield**. They aren't
+entities — the renderer draws each once per frame through its own tiny path, with
+a plain non-indexed `vkCmdDraw` (they carry no index buffer, chapter 08). The
+grid contributes one hand-built `InstanceData` — its snapped model matrix,
+chapter 08 — appended after the entity groups; the stars need none at all, since
+`star.vert` positions them from the camera alone.
 
 > **The teaching-prototype shortcut, labelled.** We size each frame's instance
 > buffer to a generous max and re-`memcpy` the whole thing per frame. That's

@@ -44,7 +44,7 @@ topic. ⭐ = start here for that topic.
 | Resource | What it's for |
 |---|---|
 | ⭐ **RenderDoc** — https://renderdoc.org | Capture a Vulkan frame and inspect every draw, buffer, descriptor and pipeline — the single best tool for "why does this render wrong?" (Chapter 14). |
-| **Vulkan Configurator (`vkconfig`)** — https://vulkan.lunarg.com/doc/sdk/latest/windows/vkconfig.html | Turn on GPU-assisted and synchronization validation without touching code (Chapters 01, 14). |
+| **Vulkan Configurator (`vkconfig`)** — https://vulkan.lunarg.com/doc/sdk/latest/windows/vkconfig.html | Turn on GPU-assisted and synchronization validation without touching code (Chapter 14). |
 | **Tracy Profiler** — https://github.com/wolfpld/tracy | A frame profiler that instruments CPU and GPU together — find where frame time actually goes before optimising (Chapter 14). |
 
 ## Rust alternative — `ash`

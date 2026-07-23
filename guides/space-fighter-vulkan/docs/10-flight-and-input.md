@@ -21,6 +21,7 @@ struct InputState {
     float pitch = 0;      // + nose up,   - nose down
     float yaw   = 0;      // + nose left, - nose right
     float roll  = 0;      // + roll left, - roll right
+    float throttle = 0;   // wired through, unused — chapter 14's first exercise
     bool  firing   = false;
     bool  boosting = false;
 };

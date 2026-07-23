@@ -20,7 +20,7 @@ constellation of libraries. Here's the whole kit, and why each is here:
 |---|---|---|
 | **Vulkan SDK** (LunarG) | The loader, headers, **validation layers**, and `glslc`/shaderc. | The core API and — crucially — the layers that turn misuse into readable errors. |
 | **GLFW** | Cross-platform window + input + Vulkan surface creation. | Vulkan has no windowing of its own; GLFW gives us a window, a `VkSurfaceKHR`, and keyboard input on Linux/Windows/macOS. |
-| **GLM** | Header-only vector/matrix/quaternion math, GLSL-shaped. | Our `simd` equivalent — `vec3`, `mat4`, `quat`, laid out to match std140/std430. |
+| **GLM** | Header-only vector/matrix/quaternion math, GLSL-shaped. | Our `simd` equivalent — `vec3`, `mat4`, `quat` in GLSL's shapes. (Their *layout* still has rules — the std140 padding trap, chapter 07.) |
 | **VMA** | Vulkan Memory Allocator (AMD). | Real GPU memory management is fiddly; VMA does the allocation/sub-allocation so we don't hand-roll a memory heap. |
 | **shaderc** | GLSL → **SPIR-V** compiler (ships in the SDK). | Vulkan consumes SPIR-V bytecode, not GLSL text. We compile ours at build time. |
 
@@ -62,7 +62,7 @@ and — the one Vulkan-specific build step — **compiles every `.vert`/`.frag` 
 `shaders/` to SPIR-V** with `glslc`:
 
 ```cmake
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.19)   # 3.19+ for the Vulkan::glslc target
 project(SpaceFighter LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -74,21 +74,18 @@ find_package(glm REQUIRED)             # math
 
 add_executable(SpaceFighter
     src/main.cpp
-    src/Game.cpp
-    src/Mesh.cpp
-    src/HUD.cpp
-    src/render/VulkanContext.cpp
-    src/render/Swapchain.cpp
-    src/render/Renderer.cpp
-    # …later chapters add files here
+    # append each new .cpp here as the chapters create them:
+    #   src/Game.cpp  src/Mesh.cpp  src/HUD.cpp
+    #   src/render/VulkanContext.cpp  src/render/Swapchain.cpp  src/render/Renderer.cpp
 )
 
 target_include_directories(SpaceFighter PRIVATE src third_party)
 target_link_libraries(SpaceFighter PRIVATE Vulkan::Vulkan glfw glm::glm)
 
 # --- Compile GLSL → SPIR-V at build time --------------------------------
-file(GLOB SHADERS "${CMAKE_SOURCE_DIR}/shaders/*.vert"
-                  "${CMAKE_SOURCE_DIR}/shaders/*.frag")
+file(GLOB SHADERS CONFIGURE_DEPENDS
+     "${CMAKE_SOURCE_DIR}/shaders/*.vert"
+     "${CMAKE_SOURCE_DIR}/shaders/*.frag")
 foreach(shader ${SHADERS})
     get_filename_component(name ${shader} NAME)
     set(spv "${CMAKE_BINARY_DIR}/shaders/${name}.spv")
@@ -104,6 +101,20 @@ add_custom_target(shaders DEPENDS ${SPV_FILES})
 add_dependencies(SpaceFighter shaders)
 ```
 
+Two notes on that file. First, it lists only `src/main.cpp` — CMake errors at
+configure time on source files that don't exist, so **create a stub now** and the
+project builds from day one:
+
+```cpp
+// src/main.cpp — replaced wholesale in chapter 09
+int main() { return 0; }
+```
+
+As later chapters create real files, add each to the `add_executable` list.
+Second, `CONFIGURE_DEPENDS` on the shader glob makes CMake re-scan the folder
+when you *add* a shader file — without it, a new shader is silently ignored until
+you re-run `cmake` by hand.
+
 The shader step is worth pausing on: unlike Metal, where we compiled MSL from a
 string at launch, **Vulkan wants SPIR-V bytecode**, so shaders are compiled
 *ahead of time* by `glslc` and loaded as `.spv` files at runtime (chapter 06).
@@ -115,12 +126,15 @@ Build and run with the usual CMake dance:
 ```console
 $ cmake -S . -B build
 $ cmake --build build
-$ ./build/SpaceFighter
+$ cd build && ./SpaceFighter
 ```
 
-Once the renderer and a first entity exist (by chapter 06) that opens a window;
-until then it just compiles. You'll live in this edit–build–run loop for the rest
-of the guide.
+Run from inside `build/` — the renderer loads its compiled shaders by the
+relative path `shaders/….spv` (the loading code is in chapter 06), and that's
+where the build wrote them. Once the swapchain and frame loop exist (chapter 05)
+running opens a window cleared to deep space blue; the first ship appears when
+the pipelines and buffers land (chapters 06–07). Until then it just compiles.
+You'll live in this edit–build–run loop for the rest of the guide.
 
 ### The files you'll create
 
@@ -138,7 +152,7 @@ src/
 ├── Mesh.hpp / .cpp          procedural ship / enemy / bolt / stars / grid (ch 08)
 ├── ecs/                     Entity, ComponentStore, World                 (ch 04)
 ├── systems/                 one file per behaviour                        (ch 09–12)
-└── render/                  Vulkan context, swapchain, pipelines, renderer(ch 02, 05–07)
+└── render/                  VulkanContext, Swapchain, Renderer, RenderTypes (ch 02, 05–07)
 
 shaders/
 ├── lit.vert / lit.frag      ship & enemies (directional light)           (ch 06)

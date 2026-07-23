@@ -173,6 +173,11 @@ class World {
     std::unordered_set<uint32_t> living;
     std::vector<Entity> pendingDestroy;
 public:
+    Entity create() {                                    // ids are monotonic, never recycled
+        Entity e{nextId++};
+        living.insert(e.id);
+        return e;
+    }
     template <typename T>
     ComponentStore<T>& store() {
         auto key = std::type_index(typeid(T));

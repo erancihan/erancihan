@@ -37,8 +37,25 @@ struct Mesh {                         // the uploaded, GPU-side handle
   is really "which pipeline draws it": triangles → `lit`/`bolt`, lines → `gridLine`,
   points → `star`.
 
-`Renderer::init` uploads each mesh's data into device-local buffers once
-(chapter 07's `uploadStatic`) and never touches them again.
+`Renderer::init` runs each generated `MeshData` through a small wrapper over
+chapter 07's `uploadStatic` — one call per buffer — and never touches the result
+again:
+
+```cpp
+Mesh uploadMesh(const MeshData& d) {
+    Mesh m;
+    m.vertexBuffer = uploadStatic(d.vertices.data(),
+                                  d.vertices.size() * sizeof(Vertex),
+                                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    if (!d.indices.empty())
+        m.indexBuffer = uploadStatic(d.indices.data(),
+                                     d.indices.size() * sizeof(uint16_t),
+                                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    m.vertexCount = (uint32_t)d.vertices.size();
+    m.indexCount  = (uint32_t)d.indices.size();
+    return m;
+}
+```
 
 ---
 
@@ -174,11 +191,12 @@ Brightness rides along in `normal.x` (we had a spare channel — points don't ne
 lighting normal), giving the field some variety instead of a wall of identical
 dots.
 
-> **One Vulkan requirement:** writing `gl_PointSize` from the vertex shader only
-> takes effect if the pipeline enables the `largePoints` feature *or* uses
-> point-list topology with a size the implementation supports — which our `star`
-> pipeline does. If your points render as single pixels, that feature flag (set at
-> device creation, chapter 02) is the thing to check.
+> **One Vulkan requirement:** with point-list topology the vertex shader **must**
+> write `gl_PointSize` — Vulkan has no default, and leaving it unwritten is
+> undefined. And any size other than `1.0` (ours is `2.0`) additionally needs the
+> device-level **`largePoints`** feature, which we enabled in `pEnabledFeatures`
+> back in chapter 02. If validation complains about point size, or your stars
+> render as single pixels, that feature is the thing to check.
 
 ### Why this matters
 
@@ -231,7 +249,7 @@ The recipe, start to finish:
 1. Add a value to the `MeshID` enum (e.g. `MeshID::Asteroid`).
 2. Write a generator returning `flat({...})` for a solid, or raw points/lines for a
    point/line mesh.
-3. Upload it in `Renderer::init`: `meshes[MeshID::Asteroid] = uploadStatic(asteroid());`.
+3. Upload it in `Renderer::init`: `meshes[MeshID::Asteroid] = uploadMesh(asteroid());`.
 4. Give some entity `Renderable{MeshID::Asteroid, color}`.
 
 That's the whole art pipeline for now. Chapter 14 covers graduating to real models

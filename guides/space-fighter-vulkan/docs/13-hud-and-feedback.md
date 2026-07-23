@@ -21,6 +21,9 @@ The HUD vertex is dead simple — a 2D position and a color, no normal, no matri
 struct HUDVertex { glm::vec2 position; glm::vec4 color; };
 ```
 
+(This is the struct the `hud` pipeline's own vec2+vec4 vertex-input layout was
+built for back in chapter 06 — the one pipeline that doesn't consume `Vertex`.)
+
 ### The Vulkan Y-down twist
 
 Here's the one place Vulkan's downward NDC (chapter 03) leaks into gameplay code.
@@ -130,7 +133,7 @@ mapped HUD buffer, bind the pipeline, draw:
 
 ```cpp
 memcpy(hudBuffers[currentFrame].mapped, v.data(), v.size() * sizeof(HUDVertex));
-vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, hudPipeline);
+vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, hud);
 vkCmdBindVertexBuffers(cmd, 0, 1, &hudBuffers[currentFrame].buffer, &zeroOffset);
 vkCmdDraw(cmd, (uint32_t)v.size(), 1, 0, 0);          // non-indexed, one instance
 ```

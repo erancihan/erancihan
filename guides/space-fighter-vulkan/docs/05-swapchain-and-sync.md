@@ -1,4 +1,4 @@
-# 05 · Swapchain, commands & synchronization 🛠️
+# 05 · Swapchain, commands & sync 🛠️
 
 > **You'll leave this chapter with:** the whole path from a GLFW window to pixels
 > on screen — **surface, swapchain, image views, the depth buffer, render pass,
@@ -12,7 +12,10 @@ into, and MetalKit paced our frames and managed the depth texture. Vulkan gives
 us none of that. We build the ring of images we present (the **swapchain**), the
 depth image, the structure of a render (the **render pass**), the things to record
 commands into (**command buffers**), and — the real lesson — the synchronization
-that keeps a CPU and a GPU running in parallel without racing.
+that keeps a CPU and a GPU running in parallel without racing. File-wise, the
+once-only objects this chapter builds live in `render/VulkanContext.cpp` and
+`render/Swapchain.cpp` from chapter 01's map; the per-frame sequence at the end
+is `Renderer::drawFrame`.
 
 ---
 
@@ -68,11 +71,14 @@ link):
 - **`IMMEDIATE`** — no sync, may tear. Lowest latency.
 
 ```cpp
-VkPresentModeKHR choosePresent(const std::vector<VkPresentModeKHR>& modes) {
-    for (auto m : modes) if (m == VK_PRESENT_MODE_MAILBOX_KHR) return m;
-    return VK_PRESENT_MODE_FIFO_KHR;         // guaranteed to exist
+VkPresentModeKHR choosePresent(const std::vector<VkPresentModeKHR>&) {
+    return VK_PRESENT_MODE_FIFO_KHR;         // guaranteed to exist — vsync, our default
 }
 ```
+
+When you want lower latency, prefer `MAILBOX` when it appears in the supported
+list and fall back to FIFO — a three-line upgrade. We stay on FIFO so the frame
+loop is vsync-paced, which chapter 09 leans on.
 
 ### 3. Extent (the pixel size) and image count
 
@@ -139,8 +145,9 @@ for (size_t i = 0; i < swapchainImages.size(); i++) {
 In the Metal guide we handed `MTKView` a `depthStencilPixelFormat` and it created
 and managed the depth texture for us. Vulkan has no such helper: we allocate a
 depth image, back it with memory (VMA — chapter 07), and make a view, exactly once
-(and again on resize). Conceptually it's the same same-size image of distances
-from chapter 02's sibling — the thing that lets near hide far — we just own it now.
+(and again on resize). Conceptually it's the depth image from chapter 02's
+draw-call walkthrough — the same-size image of distances that lets near hide far
+— except now we own its creation.
 
 ```cpp
 VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;             // widely supported
@@ -173,6 +180,7 @@ color.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;  // ready to show
 
 VkAttachmentDescription depth{};
 depth.format         = VK_FORMAT_D32_SFLOAT;
+depth.samples        = VK_SAMPLE_COUNT_1_BIT;
 depth.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;      // clear depth to 1.0
 depth.storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE; // we never read it back
 depth.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -238,12 +246,12 @@ vkCreateCommandPool(device, &pci, nullptr, &commandPool);
 VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
 ai.commandPool        = commandPool;
 ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-ai.commandBufferCount = MAX_FRAMES_IN_FLIGHT;                            // one per frame slot
+ai.commandBufferCount = MAX_FRAMES_IN_FLIGHT;      // = 2; defined in the sync section below
 vkAllocateCommandBuffers(device, &ai, commandBuffers.data());
 ```
 
 Recording one frame looks like this — begin, begin the render pass with its clear
-values, (the draws go here, chapters 06–07 and 12), end:
+values, (the draws go here, chapters 06–07 and 13), end:
 
 ```cpp
 void recordFrame(VkCommandBuffer cmd, uint32_t imageIndex, /* draw data */) {
@@ -270,7 +278,7 @@ void recordFrame(VkCommandBuffer cmd, uint32_t imageIndex, /* draw data */) {
 ```
 
 That skeleton is the same "clear, encode draws, finish" shape as Metal's encoder —
-the draws inside are chapters 06, 07 and 12. What's genuinely new is what happens
+the draws inside are chapters 06, 07 and 13. What's genuinely new is what happens
 *around* it: getting an image to draw into, and knowing when the GPU is done with
 the last one. That's synchronization.
 
@@ -302,6 +310,27 @@ struct FrameSync {
 };
 ```
 
+Create them once at init, next to the command buffers — and note the one flag
+doing serious work:
+
+```cpp
+VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+VkFenceCreateInfo     fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;            // ← start life signaled
+for (FrameSync& s : frames) {
+    vkCreateSemaphore(device, &sci, nullptr, &s.imageAvailable);
+    vkCreateSemaphore(device, &sci, nullptr, &s.renderFinished);
+    vkCreateFence(device, &fci, nullptr, &s.inFlight);
+}
+```
+
+**Why signaled?** The first thing `drawFrame` ever does is wait on this fence —
+but on frame 1 nothing has been submitted yet, so nothing will ever signal it,
+and an unsignaled fence would block forever. That's the classic Vulkan
+first-frame deadlock, and `VK_FENCE_CREATE_SIGNALED_BIT` is the fix: the first
+wait returns immediately, and every later wait is satisfied by the previous
+submission on that slot.
+
 ### Frames in flight
 
 If we had exactly *one* set of these, the CPU would record a frame, then block on
@@ -325,7 +354,8 @@ this is *the* Vulkan frame:
 void drawFrame(/* per-frame draw data */) {
     FrameSync& s = frames[currentFrame];
 
-    // 1. Wait until THIS frame slot's previous GPU work is done, then reset the fence.
+    // 1. Wait until THIS frame slot's previous GPU work is done.
+    //    (The fence was created signaled, so frame 1 sails through.)
     vkWaitForFences(device, 1, &s.inFlight, VK_TRUE, UINT64_MAX);
 
     // 2. Acquire the next swapchain image; the GPU will signal imageAvailable when ready.
@@ -380,11 +410,12 @@ in step 1 now blocks on the frame you just submitted, and CPU/GPU stop overlappi
 That experiment is the fastest way to internalise why frames-in-flight exists.
 
 > **Where you'd tighten this.** For clarity we key `renderFinished` by
-> frame-in-flight. A subtle case (more swapchain images than frames in flight) is
-> handled most correctly by keying the render-finished semaphore *per swapchain
-> image* instead; validation on some drivers will nudge you there. It doesn't
-> change the shape above — chapter 14 notes it among the "make it production"
-> items.
+> frame-in-flight. Strictly, though, the fence only proves the *submit* finished
+> — the presentation engine may still be waiting on that semaphore when this slot
+> cycles around, so the reuse isn't formally guaranteed, and recent validation
+> layers flag exactly this. The fully-correct form keys the render-finished
+> semaphore **per swapchain image**. It doesn't change the shape above — chapter
+> 14 lists it among the "make it production" items.
 
 ---
 

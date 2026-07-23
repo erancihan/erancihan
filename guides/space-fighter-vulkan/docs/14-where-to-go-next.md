@@ -63,7 +63,7 @@ to every `vkCreateGraphicsPipelines` call and save its data on exit. Pair it wit
 ### VMA tuning — stop re-uploading everything
 
 Our per-frame instance and HUD buffers are sized to a generous max and fully
-re-`memcpy`'d each frame (chapter 07). Real usage: grow buffers on demand, only
+re-`memcpy`'d each frame (chapters 07 and 13). Real usage: grow buffers on demand, only
 upload what changed, and lean on VMA's features you haven't touched —
 **`vmaSetAllocationName`** for debugging, the **budget API** to stay under memory
 limits, and **defragmentation** if long sessions fragment the heap. VMA also has a
@@ -97,7 +97,7 @@ fill the same `MeshData` struct:
 - **glTF 2.0** — the open standard, and the right first target. Use
   [cgltf](https://github.com/jkuhlmann/cgltf) (a single-header loader) or
   [tinygltf](https://github.com/syoyo/tinygltf), read positions/normals/UVs, and
-  upload with the same `uploadStatic` (chapter 07).
+  upload with the same `uploadMesh` (chapter 08).
 - **`.obj`** — trivially simple via [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader),
   great for a first real asset.
 
@@ -185,10 +185,13 @@ Vulkan's portability is a real dividend of the work you did. The same code alrea
 targets **Windows and Linux**. To reach more:
 
 - **macOS / iOS via [MoltenVK](https://github.com/KhronosGroup/MoltenVK)** — a
-  Vulkan-to-Metal translation layer. Enable `VK_KHR_portability_subset` (and the
-  matching instance flag) and most of this guide runs on Apple hardware — closing
-  the loop with the sibling Metal guide, which is what MoltenVK is doing under the
-  hood.
+  Vulkan-to-Metal translation layer. Two switches are required with current
+  loaders: enable the `VK_KHR_portability_enumeration` instance extension with
+  `VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR` (without it,
+  `vkCreateInstance` returns `VK_ERROR_INCOMPATIBLE_DRIVER`), and enable
+  `VK_KHR_portability_subset` on the device when it's advertised. With those, most
+  of this guide runs on Apple hardware — closing the loop with the sibling Metal
+  guide, which is what MoltenVK is doing under the hood.
 - **Android** — Vulkan is a first-class Android API; the renderer ports with a
   different surface-creation call and a touch-based `Input` producer (the seam from
   chapter 10 earns its keep).
@@ -218,7 +221,7 @@ Three tools will teach you more than any tutorial:
   see exactly what each shader received and every pipeline's state. When something
   renders wrong, this shows you *why* in seconds — it's the Vulkan counterpart of
   Metal's GPU capture, and better in several ways.
-- **Validation layers, harder.** You've had the basics on all guide (chapter 01).
+- **Validation layers, harder.** You've had the basics on all along (chapter 01).
   Turn on **GPU-assisted validation** and **synchronization validation** in Vulkan
   Configurator (`vkconfig`) to catch out-of-bounds descriptor access and subtle
   sync hazards the base layers miss — exactly the bugs that appear as you add the
@@ -238,8 +241,9 @@ them.
 
 Every item above plugs into a seam this guide already built: content swaps behind
 `MeshData`, behaviour is a new component + system + schedule line, rendering upgrades
-live behind the instance-SSBO handoff, sync and memory sit behind `VulkanContext` and
-VMA, and the timestep decision gates physics and netcode. That's the real deliverable
+live behind the instance-SSBO handoff, device setup sits behind `VulkanContext`
+and memory behind VMA, the frame's sync lives in `Renderer::drawFrame`, and the
+timestep decision gates physics and netcode. That's the real deliverable
 — not a finished game, but a small, honest Vulkan codebase whose every extension
 point you can now name, and whose every verbose line you now know the reason for. Go
 add something, and watch how little else you have to touch.

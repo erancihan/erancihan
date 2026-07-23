@@ -115,9 +115,10 @@ A third-person space fighter you fly with the keyboard:
 - **sphere collisions**, a hull bar, score, a hit-flash, and respawns;
 - a **starfield** that tiles endlessly and a **ground grid** for a horizon —
   both procedural, no art assets;
-- all of it drawn by a small **Vulkan** renderer with lit, unlit, point and HUD
-  pipelines, a swapchain and depth buffer you built, VMA-backed buffers, and a
-  two-deep **frames-in-flight** loop — running through a **sparse-set ECS**.
+- all of it drawn by a small **Vulkan** renderer with five pipelines built from
+  four shader pairs (lit, unlit, star, HUD), a swapchain and depth buffer you
+  built, VMA-backed buffers, and a two-deep **frames-in-flight** loop — running
+  through a **sparse-set ECS**.
 
 Everything is simple geometry generated in code — exactly the "no fancy shapes
 for now" brief — and chapter [14](docs/14-where-to-go-next.md) maps the road from
@@ -133,7 +134,7 @@ here to real models, lighting, audio and netcode.
   notes in chapter 14.
 - **The [Vulkan SDK](https://vulkan.lunarg.com)** (LunarG) — the loader,
   validation layers, and `glslc`/shaderc. Chapter 01 installs it.
-- **A C++17 compiler and CMake 3.16+.** GCC, Clang or MSVC.
+- **A C++17 compiler and CMake 3.19+.** GCC, Clang or MSVC.
 - **Some C++** (or another systems language — the ideas port). No prior graphics
   or game-engine experience assumed; that's what the guide is for.
 - **A little comfort with vectors and matrices.** Chapter 03 re-derives what you
@@ -185,14 +186,14 @@ Metal guide's because **Vulkan asks you to build what MetalKit provided.**
 | --- | --- | --- |
 | 01 | 🛠️ [Project setup & toolchain](docs/01-project-setup.md) | What we're building and why Vulkan + ECS; the SDK, GLFW, GLM, VMA and shaderc; the CMake build; the shape of a frame; validation layers on from the start. |
 | 02 | 🧠 [Vulkan fundamentals](docs/02-vulkan-fundamentals.md) | The GPU as a service you configure by hand: instance, physical-device selection, queue families, logical device and queues — and *why* Vulkan is so verbose (and when that pays off). |
-| 03 | 🧠 [The math you need](docs/03-the-math-you-need.md) | Coordinate spaces; model/view/projection; quaternions vs Euler angles; **GLM**, and the three Vulkan clip-space gotchas — Y points **down** in NDC, depth is **0..1**, and where the Y-flip goes. |
+| 03 | 🧠 [The math you need](docs/03-the-math-you-need.md) | Coordinate spaces; model/view/projection; quaternions vs Euler angles; **GLM**, and the three Vulkan gotchas — Y points **down** in NDC (the projection Y-flip), depth is **0..1**, and the std140 padding trap. |
 | 04 | 🛠️ [Designing the ECS](docs/04-designing-the-ecs.md) | Entities, components, systems; array-of-structs vs **sparse set** vs archetypes; our `World` + `ComponentStore` in C++; type-erased stores, and safe deferred destruction. (Same design as the Metal guide.) |
 | 05 | 🛠️ [Swapchain, commands & sync](docs/05-swapchain-and-sync.md) | Surface, **swapchain**, image views; render passes + framebuffers (and a note on dynamic rendering); command pools/buffers; and the thing MetalKit hid — **semaphores, fences and frames-in-flight**. Plus swapchain recreation on resize. |
-| 06 | 🛠️ [The graphics pipeline & SPIR-V](docs/06-the-graphics-pipeline.md) | GLSL → **SPIR-V** with shaderc; the immutable `VkPipeline` and *every* fixed-function state you must name; pipeline layouts; reading all four shader pairs in full; instancing via `gl_InstanceIndex`. |
+| 06 | 🛠️ [The graphics pipeline & SPIR-V](docs/06-the-graphics-pipeline.md) | GLSL → **SPIR-V** with shaderc; the immutable `VkPipeline` and *every* fixed-function state you must name; pipeline layouts; the lit shaders read line by line; instancing via `gl_InstanceIndex`; the frame's draw order. |
 | 07 | 🛠️ [Buffers, memory (VMA) & descriptors](docs/07-buffers-memory-descriptors.md) | **VMA**; staging vs host-visible; vertex/index/uniform/storage buffers; **descriptor set layouts, pools and sets**; **push constants** (vs Metal's `setBytes`); and how uniforms and instancing actually reach the shader. |
 | 08 | 🛠️ [Meshes & simple geometry](docs/08-meshes-and-geometry.md) | Flat shading and face normals; generating the ship, enemy, bolt, endless starfield and grid in code — zero art assets. (Same shapes as the Metal guide; C++/GLM.) |
 | 09 | 🛠️ [The game loop & timing](docs/09-the-game-loop.md) | The GLFW loop; delta time; fixed vs variable timestep; clamping hitches; why system *order* is the logic. |
-| 10 | 🛠️ [Flight & input (GLFW)](docs/10-flight-and-input.md) | Abstracting input from keys with GLFW; the arcade flight model; integrating body-space rotation with quaternions; auto-banking into turns. |
+| 10 | 🛠️ [Flight & input](docs/10-flight-and-input.md) | Abstracting input from keys with GLFW; the arcade flight model; integrating body-space rotation with quaternions; auto-banking into turns. |
 | 11 | 🛠️ [The camera](docs/11-the-camera.md) | The chase camera; `lookAt`; blending world-up with ship-up so banks read without nausea; field of view and smoothing. |
 | 12 | 🛠️ [Gameplay systems](docs/12-gameplay-systems.md) | Spawning and difficulty; weapons and cooldowns; homing AI; sphere collision, layers and the broad-phase question; health, score, respawn. |
 | 13 | 🛠️ [HUD & feedback](docs/13-hud-and-feedback.md) | Drawing in normalised device coordinates (and the Vulkan Y-down twist); the reticle, hull bar and hit-flash; aspect correction; and how you'd add real text. |
@@ -205,7 +206,7 @@ Metal guide's because **Vulkan asks you to build what MetalKit provided.**
 - **Build as you read, and run early.** Scaffold the project in chapter 01 and
   build often — every chapter lands harder once you've seen the thing it explains
   move. Vulkan's first triangle is more work than Metal's, so chapters 01–07 are
-  a climb; the game (10–13) is the fun payoff.
+  a climb; 08–09 coast downhill, and the game (10–13) is the fun payoff.
 - **Keep validation layers on.** They are the single best Vulkan learning tool —
   most mistakes print an exact, actionable message instead of a black screen.
   Chapter 01 turns them on and chapter 02 explains what they check.

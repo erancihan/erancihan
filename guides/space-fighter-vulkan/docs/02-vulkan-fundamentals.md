@@ -22,19 +22,23 @@ you walk a fixed initialisation path:
 
 ```mermaid
 flowchart LR
-  I[VkInstance<br/>loader + layers] --> P[VkPhysicalDevice<br/>pick a GPU]
+  I[VkInstance<br/>loader + layers] --> SF[VkSurfaceKHR<br/>the window, via GLFW]
+  SF --> P[VkPhysicalDevice<br/>pick a GPU]
   P --> Q[Queue families<br/>what work it accepts]
   Q --> D[VkDevice<br/>logical device]
   D --> QU[VkQueue<br/>submission lanes]
-  QU --> S[VkSurfaceKHR<br/>+ swapchain]
-  S --> R[Render pass · pipeline<br/>buffers · descriptors]
+  QU --> SW[Swapchain<br/>images to present]
+  SW --> R[Render pass · pipeline<br/>buffers · descriptors]
   R --> SY[Semaphores · fences<br/>you sync it yourself]
 ```
 
-The first four boxes are **this chapter** (device setup); the rest have their own
-chapters (surface/swapchain and sync in 05, pipeline in 06, buffers/descriptors
-in 07). That chain *is* Vulkan's reputation. The payoff for walking it: nothing
-about how your frame reaches the screen stays hidden.
+Everything through the queues is **this chapter** (device setup); the rest have
+their own chapters (swapchain and sync in 05, pipeline in 06, buffers/descriptors
+in 07). Note the surface's position: it's created **right after the instance** —
+one GLFW call, `glfwCreateWindowSurface`, shown in chapter 05 — because picking a
+GPU means testing it against the window you'll present to. That chain *is*
+Vulkan's reputation. The payoff for walking it: nothing about how your frame
+reaches the screen stays hidden.
 
 ---
 
@@ -49,7 +53,7 @@ this chapter; the rest are forward pointers so the whole model is visible at onc
 | `VkPhysicalDevice` | A specific GPU in the machine (you *query* it, don't create it). | Enumerated once | 02 |
 | `VkDevice` | The **logical device** — your configured connection to one GPU. | Once | 02 |
 | `VkQueue` | A lane you submit command buffers to (graphics, present). | Once | 02 |
-| `VkSurfaceKHR` | The window you'll present to (created by GLFW). | Once | 05 |
+| `VkSurfaceKHR` | The window you'll present to (created by GLFW). | Once | 02, 05 |
 | `VkSwapchainKHR` | The ring of images shown on screen. | Once (rebuilt on resize) | 05 |
 | `VkImageView` / `VkFramebuffer` | How a pass addresses an image; what it renders into. | Per swapchain image | 05 |
 | `VkRenderPass` | The declared structure of a rendering operation. | Once | 05 |
@@ -57,13 +61,14 @@ this chapter; the rest are forward pointers so the whole model is visible at onc
 | `VkPipelineLayout` / `VkDescriptorSetLayout` | The shape of the inputs a pipeline expects. | Once | 06, 07 |
 | `VkBuffer` + `VmaAllocation` | GPU-accessible memory (vertices, instances, uniforms). | Meshes once; per-frame data cycled | 07 |
 | `VkDescriptorSet` | A bound bundle of resources the shader reads. | Per frame-in-flight | 07 |
-| `VkCommandPool` / `VkCommandBuffer` | Where commands are allocated / recorded. | Pool once; buffers each frame | 05 |
+| `VkCommandPool` / `VkCommandBuffer` | Where commands are allocated / recorded. | Pool once; buffers per slot, re-recorded | 05 |
 | `VkSemaphore` / `VkFence` | GPU↔GPU and GPU↔CPU synchronization. | Per frame-in-flight | 05 |
 
 The split that mattered in Metal still matters here — build the top rows **once**
-and reuse; create the command buffer, sync objects and per-frame buffers **every
-frame** — but the list is three times longer, because Vulkan externalises what
-other APIs keep inside. Our `VulkanContext` (assembled in chapter 05) owns the
+and reuse; the command buffer, sync objects and per-frame buffers exist once
+**per frame-in-flight slot** and are reset, re-recorded and rewritten each frame
+— but the list is three times longer, because Vulkan externalises what other
+APIs keep inside. Our `VulkanContext` (assembled in chapter 05) owns the
 once-only handles; the `Renderer` owns the per-frame ones.
 
 ---
@@ -237,11 +242,15 @@ for (uint32_t f : uniqueFamilies) {
 
 const char* deviceExt[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };   // we WILL present
 
+VkPhysicalDeviceFeatures features{};             // optional hardware features: opt-in
+features.largePoints = VK_TRUE;                  // stars draw as >1-px points (chapter 08)
+
 VkDeviceCreateInfo ci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
 ci.queueCreateInfoCount    = (uint32_t)queueInfos.size();
 ci.pQueueCreateInfos       = queueInfos.data();
 ci.enabledExtensionCount   = 1;
 ci.ppEnabledExtensionNames = deviceExt;
+ci.pEnabledFeatures        = &features;
 
 VkDevice device;
 vkCreateDevice(physical, &ci, nullptr, &device);
@@ -251,12 +260,63 @@ vkGetDeviceQueue(device, fam.graphics.value(), 0, &graphicsQueue);
 vkGetDeviceQueue(device, fam.present.value(),  0, &presentQueue);
 ```
 
+`pEnabledFeatures` is the same opt-in rule yet again: the physical device
+*advertises* what it supports (`vkGetPhysicalDeviceFeatures` — query it first if
+you're being careful), but anything you don't enable here is off even when the
+hardware has it. `largePoints` is the one optional feature this game uses, for
+the starfield's 2-pixel points.
+
 Now you have the two things every later chapter needs: a `VkDevice` to create
 resources from, and queues to submit work to. Note you don't *create* queues —
 they come with the device, and `vkGetDeviceQueue` just hands you a handle to one.
 In `VulkanContext::init` these four steps run in order, and the rest of the
 renderer builds on the handles they leave behind (`instance`, `physical`,
 `device`, `graphicsQueue`, `presentQueue`, and the two family indices).
+
+---
+
+## What the GPU does with a draw call
+
+Device in hand, it's worth pinning down what all the later machinery *feeds*.
+When you eventually call `vkCmdDrawIndexed` (chapter 06), the GPU runs a fixed
+pipeline. The two stages *you* program are shaded; the rest is fixed-function
+hardware:
+
+```mermaid
+flowchart LR
+  V[Vertices in a buffer] --> VS{{Vertex shader<br/>you write}}
+  VS -->|clip-space positions| RA[Assembly + rasterizer<br/>fixed-function]
+  RA -->|fragments| FS{{Fragment shader<br/>you write}}
+  FS --> DT[Depth test<br/>fixed-function]
+  DT --> BL[Blend] --> FB[(Swapchain image)]
+```
+
+- **Vertex shader** — runs once per vertex. Its job: place the vertex in *clip
+  space* by multiplying through the model and camera matrices (chapter 03). Ours
+  also passes the world normal and color along (`lit.vert`, chapter 06).
+- **Rasterizer** — fixed hardware. Turns each triangle into the *fragments*
+  (candidate pixels) it covers, interpolating the vertex outputs across the face.
+- **Fragment shader** — runs once per fragment. Its job: compute a color. Ours
+  does a cheap directional-light calculation (`lit.frag`).
+- **Depth test** — fixed hardware. Compares each fragment's depth to what's
+  already there and discards the ones behind. This is what makes near things hide
+  far things without you sorting anything.
+
+### The depth buffer, concretely
+
+Draw an enemy, then draw a star behind it. Without depth testing, whichever you
+drew *last* wins and the star punches through the ship. The depth buffer fixes
+this: alongside the color image the GPU keeps a same-size image of *distances*.
+A fragment is kept only if it's nearer than the stored distance, and (if enabled)
+it updates that stored distance.
+
+Two things about it are Vulkan-specific. First, that distance image doesn't exist
+until *you* create it — chapters 05 and 07 allocate it by hand (MetalKit's view
+managed one for us in the sibling guide). Second, the test policy — compare how?
+write or not? — is frozen per **pipeline** (chapter 06), and choosing it per pass
+is a real rendering decision: our solids test *and* write depth, our glowing
+bolts and stars test but don't write (so they never block a ship drawn later),
+and the HUD ignores depth entirely.
 
 ---
 
@@ -294,6 +354,9 @@ prototype, Metal or an engine is less code. You're here to see how it works.
   **logical device + queues** (your configured handle and submission lanes).
 - Every call is a **`sType`'d Info struct** — verbose, extensible, and legible to
   the validation layers, which you keep on.
+- A draw runs **vertex shader → rasterizer → fragment shader → depth test →
+  blend**; you write the two shaders, the hardware does the rest — and the
+  **depth buffer** (an image you'll create yourself here) is how near hides far.
 - The verbosity buys **debuggability, portability and speed**; it costs lines. For
   learning and for scale, that's the trade — and you're learning.
 

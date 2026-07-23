@@ -19,6 +19,8 @@ it's refreshingly plain:
 double lastTime = glfwGetTime();
 while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();                                 // pump input + window events
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, GLFW_TRUE);  // Esc quits — ch 01's promise
 
     double now = glfwGetTime();
     float dt = float(now - lastTime);                 // real seconds since last frame

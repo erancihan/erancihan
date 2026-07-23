@@ -71,7 +71,7 @@ Here's the full cast of state, and what each does:
 
 | State struct | What it decides | Ours |
 |---|---|---|
-| `VertexInputState` | The layout of vertex buffers: bindings + attributes. | position + normal, one binding |
+| `VertexInputState` | The layout of vertex buffers: bindings + attributes. | mesh layout (pos+normal) or HUD layout (vec2+vec4) |
 | `InputAssemblyState` | How vertices group into primitives (topology). | triangle / line / point per pipeline |
 | `ViewportState` | The viewport + scissor rectangles. | **dynamic** (set each frame) |
 | `RasterizationState` | Fill mode, cull mode, winding, line width, depth bias. | fill, **cull none**, CCW |
@@ -104,6 +104,24 @@ both sides must honour, exactly like Metal's buffer-index numbering. Note we fee
 *vertices* through the vertex-input machinery but *instances* through a storage
 buffer the shader indexes itself (below) — a deliberate split we'll justify in a
 moment.
+
+One pipeline breaks the pattern: the **HUD** (chapter 13) consumes a different
+vertex — `HUDVertex { vec2 position; vec4 color; }` — so it needs its own binding
+and attributes:
+
+```cpp
+VkVertexInputBindingDescription hudBinding{0, sizeof(HUDVertex), VK_VERTEX_INPUT_RATE_VERTEX};
+VkVertexInputAttributeDescription hudAttrs[2]{};
+hudAttrs[0] = {0, 0, VK_FORMAT_R32G32_SFLOAT,       offsetof(HUDVertex, position)};  // vec2
+hudAttrs[1] = {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(HUDVertex, color)};     // vec4
+```
+
+Miss this and you get the nastiest kind of bug: both structs happen to be 24
+bytes, so with the mesh layout the HUD still *draws* — positions land — but
+attribute 1 reads three floats at offset 12 and every HUD color arrives shifted
+as `(g, b, a, 1)`, with no error to save you. Vulkan permits component-count
+mismatches (missing components default to `0,0,0,1`), which is exactly what makes
+it silent.
 
 ### Depth and blend: the real per-pipeline choices
 
@@ -148,16 +166,23 @@ gives us **four shader pairs but five pipelines**. A helper takes the knobs so e
 call is one line:
 
 ```cpp
+enum class VertexLayout { Mesh, Hud };            // which binding/attribute set to bake in
+
 VkPipeline makePipeline(const char* vert, const char* frag,
                         VkPrimitiveTopology topology,
-                        DepthMode depthMode, BlendMode blendMode);
+                        DepthMode depthMode, BlendMode blendMode,
+                        VertexLayout layout = VertexLayout::Mesh);
 
-lit      = makePipeline("lit.vert.spv",   "lit.frag.spv",   TRIANGLE, TestWrite, Opaque);
-gridLine = makePipeline("unlit.vert.spv", "unlit.frag.spv", LINE,     TestWrite, Additive);
-bolt     = makePipeline("unlit.vert.spv", "unlit.frag.spv", TRIANGLE, TestOnly,  Additive);
-star     = makePipeline("star.vert.spv",  "star.frag.spv",  POINT,    TestOnly,  Additive);
-hud      = makePipeline("hud.vert.spv",   "hud.frag.spv",   TRIANGLE, NoDepth,   Alpha);
+lit      = makePipeline("shaders/lit.vert.spv",   "shaders/lit.frag.spv",   TRIANGLE, TestWrite, Opaque);
+gridLine = makePipeline("shaders/unlit.vert.spv", "shaders/unlit.frag.spv", LINE,     TestWrite, Additive);
+bolt     = makePipeline("shaders/unlit.vert.spv", "shaders/unlit.frag.spv", TRIANGLE, TestOnly,  Additive);
+star     = makePipeline("shaders/star.vert.spv",  "shaders/star.frag.spv",  POINT,    TestOnly,  Additive);
+hud      = makePipeline("shaders/hud.vert.spv",   "shaders/hud.frag.spv",   TRIANGLE, NoDepth,   Alpha,
+                        VertexLayout::Hud);
 ```
+
+(The `shaders/` prefix matches where chapter 01's build wrote the `.spv` files,
+relative to the `build/` directory you run from.)
 
 Each is created once at startup with `vkCreateGraphicsPipelines` and switched
 mid-frame with `vkCmdBindPipeline` — the direct analogue of
@@ -287,7 +312,7 @@ The draw call itself is then tiny:
 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, lit);
 vkCmdBindVertexBuffers(cmd, 0, 1, &mesh.vertexBuffer, &zeroOffset);   // shared geometry
 vkCmdBindIndexBuffer(cmd, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-vkCmdBindDescriptorSets(cmd, …, &frameSet, …);   // frame UBO + this mesh's instance SSBO
+vkCmdBindDescriptorSets(cmd, …, &frameSet, …);   // frame UBO + the frame's instance SSBO (ch 07)
 vkCmdDrawIndexed(cmd, mesh.indexCount, instanceCount, 0, 0, 0);       // ← one call, N copies
 ```
 
@@ -296,6 +321,39 @@ The GPU runs the vertex shader `indexCount × instanceCount` times, and for each
 a bullet-hell game draws thousands of objects at 120 fps — and the reason our
 `RenderSystem` *buckets by mesh* is to make exactly these grouped calls possible.
 Chapter 07 shows where the instance SSBO comes from each frame.
+
+---
+
+## Putting a frame together: the draw order
+
+With five pipelines built, `recordFrame` (chapter 05) plays them in a deliberate
+order — a marriage of **painter's order** (for the blended stuff) and the
+**depth buffer** (for the solids):
+
+```mermaid
+flowchart TB
+  A["1 · Grid — gridLine<br/>additive, depth write"] --> B["2 · Stars — star<br/>additive, depth test only"]
+  B --> C["3 · Ship + enemies — lit<br/>opaque, depth test + write"]
+  C --> D["4 · Bolts — bolt<br/>additive glow, depth test only"]
+  D --> E["5 · HUD — hud<br/>alpha, no depth"]
+```
+
+Why this order and these depth settings:
+
+1. **Grid** writes depth, laying down a floor solids can test against.
+2. **Stars** test depth (so the grid can occlude ones below the horizon) but
+   *don't* write it — a star must never block a ship drawn later.
+3. **Ship + enemies** test *and* write depth: this is what makes near ships hide
+   far ones correctly, no manual sorting.
+4. **Bolts** glow additively and test-but-don't-write, so a bolt in front of the
+   ship brightens it rather than punching a hole in the depth buffer.
+5. **HUD** ignores depth entirely and always draws on top.
+
+Each pass is a few lines inside the render pass: bind the pipeline, draw. And
+here's a small Vulkan dividend: because each pass's depth and blend state is
+frozen *into* its pipeline (above), the "set the right depth state" step Metal
+did per-encoder is here just *which pipeline you bind* — get the order right and
+the states come with it.
 
 ---
 
@@ -312,6 +370,9 @@ Chapter 07 shows where the instance SSBO comes from each frame.
 - **Instancing** uses `gl_InstanceIndex` to read a per-entity **storage buffer**,
   collapsing many entities into one `vkCmdDrawIndexed` — the pull-model port of
   Metal's `[[instance_id]]`.
+- The frame draws **grid → stars → solids → bolts → HUD** — painter's order for
+  the blended passes, the depth buffer for the solids — and each pass's state
+  rides in its pipeline, so the order is just which pipeline you bind next.
 
 ---
 

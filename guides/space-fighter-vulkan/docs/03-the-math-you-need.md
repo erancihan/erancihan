@@ -3,8 +3,8 @@
 > **You'll leave this chapter with:** enough linear algebra to read every matrix
 > in the project, an understanding of *why we orient ships with quaternions*, a
 > line-by-line grip on `Math.hpp`, and — the Vulkan-specific part — the **three
-> clip-space rules that differ from every OpenGL tutorial**: Y points down, depth
-> is 0..1, and where the Y-flip goes.
+> rules that differ from every OpenGL tutorial**: Y points down in NDC (fixed by
+> the projection Y-flip), depth is 0..1, and shared structs obey std140 padding.
 
 You do not need to love math to build this. You need four things: vectors, the
 model/view/projection chain, quaternions for rotation, and the **GLM** library
