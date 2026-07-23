@@ -133,6 +133,14 @@ metatype and erase to a protocol:
 
 ```swift
 private var stores: [ObjectIdentifier: AnyComponentStore] = [:]
+private(set) var entities = Set<Entity>()
+private var nextId: UInt32 = 0
+
+func createEntity() -> Entity {                // ids are monotonic, never recycled
+    let e = Entity(id: nextId); nextId += 1
+    entities.insert(e)
+    return e
+}
 
 func store<T>(_ type: T.Type = T.self) -> ComponentStore<T> {
     let key = ObjectIdentifier(T.self)

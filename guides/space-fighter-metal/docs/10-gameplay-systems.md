@@ -168,7 +168,8 @@ final class GameStats {
     var score = 0
     var deaths = 0
     var playerHealth: Float = 100
-    var hitFlash: Float = 0        // seconds of red flash left (chapter 11)
+    var playerMaxHealth: Float = 100   // the hull bar's denominator (chapter 11)
+    var hitFlash: Float = 0            // seconds of red flash left (chapter 11)
 }
 ```
 

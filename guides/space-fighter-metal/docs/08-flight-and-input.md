@@ -20,6 +20,7 @@ struct InputState {
     var pitch: Float = 0      // + nose up,   - nose down
     var yaw: Float = 0        // + nose left, - nose right
     var roll: Float = 0       // + roll left, - roll right
+    var throttle: Float = 0   // wired through, unused — chapter 12's first exercise
     var firing = false
     var boosting = false
 }
