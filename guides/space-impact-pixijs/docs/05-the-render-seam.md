@@ -237,7 +237,7 @@ no player, no game, just the seam. Temporarily, in `main.ts`:
 
 ```ts
 import { Graphics } from "pixi.js";
-import { Transform, Velocity } from "./game/components";   // add Velocity next chapter; or inline
+import { Transform } from "./game/components";
 import { mountView } from "./game/factory";
 import { renderSystem } from "./game/systems/render";
 
