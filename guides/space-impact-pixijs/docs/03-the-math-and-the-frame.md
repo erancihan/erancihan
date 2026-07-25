@@ -214,8 +214,12 @@ export function boxesOverlap(
 }
 ```
 
-We use `circlesOverlap` for gameplay in chapter 10 and `boxesOverlap` for the
-off-screen cull in the lifetime system.
+`circlesOverlap` is the one the game leans on — every collision in chapter 10
+goes through it. `boxesOverlap` is here for the toolbox: rectangular UI hit
+areas, and box-vs-box checks you'll want the moment you add a non-round hazard.
+(The off-screen cull in chapter 07 *could* use it, but its margins are
+deliberately asymmetric — much wider on the right, so enemies can spawn beyond
+the edge and fly in — so it reads clearer as four direct comparisons.)
 
 ---
 

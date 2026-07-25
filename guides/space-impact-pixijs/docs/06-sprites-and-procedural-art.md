@@ -61,7 +61,7 @@ export function makeEnemyShip(kind: EnemyKind): Graphics {
     /* straight */       0xcc66ff;
   const g = new Graphics();
   g.poly([-16, 0, 12, -11, 5, 0, 12, 11]).fill(colour);
-  g.poly([12, -6, 20, 0, 12, 6]).fill(colour, 0.6);          // tail
+  g.poly([12, -6, 20, 0, 12, 6]).fill({ color: colour, alpha: 0.6 });  // tail
   g.circle(-4, 0, 3).fill(0x1a0a14);                         // eye
   return g;
 }

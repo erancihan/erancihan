@@ -69,6 +69,18 @@ Work a couple through: a player bolt (`mask = Enemy`) and an enemy (`layer =
 Enemy`) match. A player bolt and the *player* (`layer = Player`) share no bits —
 no friendly fire. Two enemies never collide. The filter does the thinking.
 
+We also need somewhere to keep the score. There's exactly one, so it's a
+**resource**, not a component. Add to **`src/game/resources.ts`**:
+
+```ts
+// src/game/resources.ts (add)
+
+/** Resource: the running score for this run. */
+export class Score {
+  constructor(public value = 0) {}
+}
+```
+
 ---
 
 ## Give the factories colliders & health
