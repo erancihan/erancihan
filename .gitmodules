@@ -34,3 +34,6 @@
 [submodule "projects/negotiation-ecs"]
 	path = projects/negotiation-ecs
 	url = git@github.com:erancihan/negotiation-ecs.git
+[submodule "projects/todo-app"]
+	path = projects/todo-app
+	url = git@github.com:erancihan/todo-app.git
