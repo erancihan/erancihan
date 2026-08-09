@@ -1,27 +1,47 @@
 # 01 · Project setup 🛠️
 
-> **You'll leave this chapter with:** the project scaffolded and building, a
-> clear picture of what Metal and an ECS each buy us, and a map of what one frame
-> will do — so the rest of the guide has somewhere to hang.
+> **You'll leave this chapter with:** an empty Swift package that builds and
+> runs, the conventions this guide follows, and a map of which chapter creates
+> which file — so you always know where you are.
+>
+> **Files created:** `Package.swift`, `Sources/SpaceFighter/main.swift`
 
-This is an **implementation guide**: you build the engine and the game as you
-read, and every piece is shown and explained in full. This chapter sets up the
-empty project the following chapters fill in.
+This is a **build-along guide**. You type the code; every file is given in full,
+and every chapter ends with something you can run. Nothing is elided, and there
+is no finished project to download — by chapter 11 you'll have written the whole
+thing.
 
 ---
 
-## Set up the project
+## How this guide hands you code
 
-The whole game is a single macOS executable. A Swift Package is the lightest way
-to get there — no Xcode project, no storyboard — so create one:
+Three conventions, so you're never guessing:
+
+1. **"Create `path/to/File.swift`" means a complete new file.** Everything
+   between the fences is the entire contents. Paste it, save it, move on.
+2. **Two files grow as the guide goes:** `Game.swift` (the system schedule) and
+   `main.swift` (the wiring). When a chapter changes one, it says so plainly and
+   shows you either the complete new version or the exact method to replace —
+   never a diff you have to reconstruct.
+3. **Every chapter ends with a `Checkpoint`.** Run it. If the output doesn't
+   match, something's wrong *now*, not three chapters later.
+
+Two chapters (02 and 12) are pure concept and create no files; they say so at the
+top.
+
+---
+
+## Create the package
+
+The whole game is a single macOS executable, and a Swift Package is the lightest
+way to get one — no Xcode project, no storyboard, no build phases.
 
 ```console
 $ mkdir SpaceFighter && cd SpaceFighter
 $ swift package init --type executable
 ```
 
-Replace the generated `Package.swift` with this — one executable target, macOS 13
-so the modern `simd` and Metal APIs are available:
+**Replace** the generated `Package.swift` with this:
 
 ```swift
 // swift-tools-version:5.9
@@ -29,46 +49,110 @@ import PackageDescription
 
 let package = Package(
     name: "SpaceFighter",
-    platforms: [.macOS(.v13)],
+    platforms: [
+        // Metal and the simd APIs we use predate this, but macOS 13 keeps the
+        // code modern and matches a current Xcode toolchain.
+        .macOS(.v13)
+    ],
     targets: [
-        .executableTarget(name: "SpaceFighter", path: "Sources/SpaceFighter")
+        .executableTarget(
+            name: "SpaceFighter",
+            path: "Sources/SpaceFighter"
+        )
     ]
 )
 ```
 
-Metal, MetalKit and AppKit are system frameworks on macOS, so there are **no
-dependencies to add** — `import Metal` just works. As you work through the guide
-you'll create these files under `Sources/SpaceFighter/` (each chapter says which):
+Metal, MetalKit and AppKit are **system frameworks** on macOS, so there are no
+dependencies to declare — `import Metal` just works.
 
-```
-Sources/SpaceFighter/
-├── main.swift                app + window + Metal view, the entry point   (ch 07)
-├── Game.swift                the world, and the per-frame system schedule (ch 07, 10)
-├── GameView.swift            input capture + the game-loop delegate       (ch 07, 08)
-├── Input.swift               InputState and key codes                     (ch 08)
-├── Math.swift                simd helpers: matrices, projection, quats     (ch 03)
-├── Components.swift          every component (pure data structs)          (ch 04)
-├── HUD.swift                 crosshair, hull bar, hit-flash geometry      (ch 11)
-├── Mesh.swift                procedural ship / enemy / bolt / stars / grid (ch 06)
-├── ECS/                      Entity, ComponentStore, World                (ch 04)
-├── Systems/                  one file per behaviour                       (ch 07–10)
-└── Render/                   Renderer, MSL Shaders, RenderTypes           (ch 02, 05)
+`swift package init` may have created `Sources/SpaceFighter/SpaceFighter.swift`.
+Delete it; we use a `main.swift` entry point instead:
+
+```console
+$ rm -f Sources/SpaceFighter/SpaceFighter.swift
 ```
 
-Whenever you want to see progress, build and run with:
+Now **create `Sources/SpaceFighter/main.swift`** — a placeholder we replace in
+chapter 06, just so the package has an entry point and builds:
+
+```swift
+// Entry point. A SwiftPM executable runs the top-level code in `main.swift`.
+// Chapter 06 replaces this with a real AppKit window and a Metal view.
+
+import Foundation
+
+print("SpaceFighter: toolchain OK")
+```
+
+### Checkpoint
 
 ```console
 $ swift run
+SpaceFighter: toolchain OK
 ```
 
-Once the renderer and a first entity exist (by chapter 05) that opens a window;
-until then it just compiles. You'll leave this running-and-tweaking loop —
-`swift run`, look, change a number — for the rest of the guide.
+If you see that line, your toolchain is good and everything from here is just
+adding files.
+
+---
+
+## What you'll create, and when
+
+Keep this table handy — it's the whole project. Every path is relative to
+`Sources/SpaceFighter/`.
+
+| Chapter | Files you create | After it, you can… |
+|---|---|---|
+| 01 | `main.swift` (placeholder) | run a binary |
+| 02 | *(none — concepts)* | — |
+| 03 | `Math.swift` | print a transformed point |
+| 04 | `ECS/Entity.swift`, `ECS/ComponentStore.swift`, `ECS/World.swift` | create entities and attach data |
+| 05 | `Render/RenderTypes.swift`, `Mesh.swift` | print the geometry you generated |
+| 06 | `Render/Shaders.swift`, `Render/Renderer.swift`, `main.swift` (real) | **see a ship on screen** |
+| 07 | `Components.swift`, `Systems/RenderSystem.swift`, `Systems/MovementSystem.swift`, `Game.swift`, `GameView.swift` | watch it move, driven by the ECS |
+| 08 | `Input.swift`, `Systems/FlightControlSystem.swift` | **fly it** |
+| 09 | `Systems/CameraSystem.swift` | fly it with a camera that feels right |
+| 10 | `Systems/WeaponSystem.swift`, `Systems/EnemySystem.swift`, `Systems/LifetimeSystem.swift`, `Systems/CollisionSystem.swift` | **play it** — shoot, get hit, score |
+| 11 | `HUD.swift` | see a reticle and a hull bar |
+| 12 | *(none — roadmap)* | — |
+
+The final layout:
+
+```
+SpaceFighter/
+├── Package.swift
+└── Sources/SpaceFighter/
+    ├── main.swift              app + window + Metal view
+    ├── Game.swift              the world, and the per-frame system schedule
+    ├── GameView.swift          the MTKViewDelegate that drives each frame
+    ├── Input.swift             InputState, key codes, InputController
+    ├── Math.swift              simd helpers: matrices, projection, quaternions
+    ├── Components.swift        every component (pure data structs)
+    ├── HUD.swift               crosshair, hull bar, hit-flash geometry
+    ├── Mesh.swift              procedural ship / enemy / bolt / stars / grid
+    ├── ECS/
+    │   ├── Entity.swift
+    │   ├── ComponentStore.swift
+    │   └── World.swift
+    ├── Systems/
+    │   ├── FlightControlSystem.swift
+    │   ├── MovementSystem.swift
+    │   ├── WeaponSystem.swift
+    │   ├── EnemySystem.swift
+    │   ├── LifetimeSystem.swift
+    │   ├── CollisionSystem.swift
+    │   ├── CameraSystem.swift
+    │   └── RenderSystem.swift
+    └── Render/
+        ├── RenderTypes.swift   CPU structs that mirror the shader structs
+        ├── Shaders.swift       all Metal Shading Language source
+        └── Renderer.swift      device, pipelines, depth states, the draw loop
+```
 
 ### What you're building toward
 
-By the end you'll fly a low-poly fighter with these controls (wired up in
-chapter 08), enemies warping in ahead of you:
+A third-person space fighter with these controls (wired up in chapter 08):
 
 | Key | Action |
 |---|---|
@@ -79,7 +163,7 @@ chapter 08), enemies warping in ahead of you:
 | `Space` | Fire |
 | `Esc` / `⌘Q` | Quit |
 
-Score, hull and deaths will show in the **window title**.
+Score, hull and deaths appear in the **window title**.
 
 ---
 
@@ -102,9 +186,9 @@ The alternatives frame the choice:
 - **Metal** — modern, first-class on every Mac/iPhone/iPad, and small enough at
   its core to hold in your head. That's us.
 
-We compile the shaders **at runtime from a string** (chapter 05), so the whole
-thing builds with a plain `swift run` — no `.metal` files in a build phase, no
-Xcode project required to get started.
+We compile the shaders **at runtime from a Swift string** (chapter 06), so the
+whole thing builds with a plain `swift run` — no `.metal` files in a build phase,
+no Xcode project required.
 
 ## Why an ECS?
 
@@ -125,25 +209,22 @@ An **Entity–Component–System** turns the model inside out:
 A "homing shielded splitter" is just an entity holding a `Homing`, a `Shield`
 and a `Splitter` component. New behaviour is a new component plus a new system —
 nothing else changes. And because components of one type live packed together in
-memory, systems iterate them fast and cache-friendly. Chapter 04 builds ours;
-for now, just know *data lives in components, behaviour lives in systems, and
-they meet in the `World`.*
+memory, systems iterate them fast and cache-friendly. Chapter 04 builds ours.
 
 ---
 
 ## The shape of a frame
 
-Here is the whole program in one breath. MetalKit calls our
-`RenderCoordinator.draw(in:)` (which you'll write in chapter 07) once per
-displayed frame. That callback does two things:
+Here is the whole program in one breath. MetalKit will call our
+`RenderCoordinator.draw(in:)` (chapter 07) once per displayed frame, and that
+callback does two things:
 
 1. **Simulate.** `Game.update` measures the time since the last frame and runs
    every system in order — read input, fly the ship, spawn and steer enemies,
-   move everything, expire bolts, resolve collisions, and finally collect what's
-   visible.
+   move everything, expire bolts, resolve collisions, then collect what's visible.
 2. **Draw.** `Renderer.render` takes that collection and records Metal commands:
    clear the screen, draw the grid and stars, draw the lit ships and enemies,
-   draw the glowing bolts, draw the HUD, and present the result.
+   draw the glowing bolts, draw the HUD, present.
 
 ```mermaid
 sequenceDiagram
@@ -165,57 +246,36 @@ then draw, sixty times a second.**
 
 ---
 
-## The pieces you'll build
-
-The same file map as above, but grouped by role — this is the whole system, and
-each chapter builds one part of it:
-
-- **`ECS/`** — the engine core: `Entity`, `ComponentStore`, `World` (chapter 04).
-- **`Components.swift`** — every kind of data an entity can hold (chapter 04).
-- **`Systems/`** — one file per behaviour (chapters 07–10).
-- **`Render/`** — `Renderer`, the MSL `Shaders`, and the `RenderTypes` that must
-  match them byte for byte (chapters 02, 05).
-- **`Mesh.swift`, `Math.swift`, `HUD.swift`, `Input.swift`** — supporting pieces.
-- **`Game.swift`** — wires it together and owns the per-frame schedule.
-- **`main.swift`, `GameView.swift`** — the AppKit window and the loop that drives
-  everything.
-
----
-
 ## From `swift run` to a real app
 
-`swift run` builds a bare Mach-O executable, and in chapter 07 you hand-build an
+`swift run` builds a bare Mach-O executable, and in chapter 06 you hand-build an
 `NSApplication` inside `main.swift` — no storyboard, no `.app` bundle. That's
 ideal for iterating: edit, `swift run`, see the change.
 
 For anything you'd hand to another person — an icon, a Dock presence that
-behaves, code signing, the App Store — you want a bundle. Two paths:
+behaves, code signing — you want a bundle. Two paths:
 
 1. **Xcode "macOS App" target.** File → New → Project → App, then drop the
    contents of `Sources/SpaceFighter/` in. Move the shader string into a
-   `.metal` file if you prefer compile-time shader errors (chapter 05 covers the
-   trade-off). Use an `MTKView` in your storyboard or create it in code as we do.
+   `.metal` file if you prefer compile-time shader errors (chapter 06 covers the
+   trade-off).
 2. **A SwiftPM app bundler.** Tools exist to wrap a SwiftPM executable into a
    `.app`; for a learning project the Xcode route is the least friction.
 
-The *code* is identical either way — only the packaging changes. We stay with
-`swift run` for the rest of the guide.
+The *code* is identical either way — only the packaging changes.
 
 ---
 
 ## Build issues you might hit
 
-- **"No Metal-capable GPU found."** You're on a machine (or VM) without a Metal
-  device. This project needs real Apple hardware.
+- **"No Metal-capable GPU found."** (From chapter 06 onward.) You're on a machine
+  or VM without a Metal device; this project needs real Apple hardware.
 - **`swift: command not found`.** Install the toolchain with
   `xcode-select --install`, or open the project in Xcode.
-- **A wall of shader errors on launch.** The MSL string doesn't compile. The
-  console prints the exact line; the CPU struct in `RenderTypes.swift` and the
-  MSL struct must stay in lockstep (chapter 05).
-- **The window opens but ignores the keyboard.** Click the window to focus it.
-  Input is read via a local event monitor set up in `main.swift` (chapter 08).
+- **`error: no such module 'Metal'`.** You're not on macOS, or the platform line
+  in `Package.swift` is missing.
 
 ---
 
-**Next:** the GPU is about to stop being a black box. →
+**Next:** the GPU stops being a black box. →
 [Chapter 02: Metal fundamentals](02-metal-fundamentals.md)

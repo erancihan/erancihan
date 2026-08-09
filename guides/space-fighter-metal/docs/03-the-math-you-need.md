@@ -1,19 +1,21 @@
-# 03 · The math you need 🧠
+# 03 · The math you need 🧠🛠️
 
 > **You'll leave this chapter with:** enough linear algebra to read every matrix
 > in the project, an understanding of *why we orient ships with quaternions*, and
-> a line-by-line grip on `Math.swift`.
+> your first real file — `Math.swift`, complete and verified.
+>
+> **Files created:** `Sources/SpaceFighter/Math.swift`
 
 You do not need to love math to build this. You need four things: vectors, the
 model/view/projection chain, quaternions for rotation, and the `simd` library
-that makes all of it one-liners. We'll take them in order.
+that makes all of it one-liners. We'll take them in order, then write the file.
 
 ---
 
 ## Our conventions (pin these up)
 
-Everything in the codebase obeys these four rules. Most 3D bugs are a violation
-of one of them.
+Everything you write from here obeys these four rules. Most 3D bugs are a
+violation of one of them.
 
 1. **Right-handed world space.** +X is right, +Y is up, +Z points *toward* the
    viewer. So a ship's **forward is its local −Z**. (Point your right hand's
@@ -24,15 +26,14 @@ of one of them.
 3. **Clip-space depth in [0, 1].** Metal's normalised depth runs 0 (near) to 1
    (far). (OpenGL used −1…1; a projection matrix copied from an OpenGL tutorial
    will render a depth-fighting mess.)
-4. **Angles in radians.** `simd` trig is radians; `Float.radians` converts from
-   the degrees humans think in.
+4. **Angles in radians.** `simd` trig is radians; we'll add a `.radians` helper
+   for the degrees humans think in.
 
 ---
 
 ## Vectors
 
-A `SIMD3<Float>` (`Vec3`) is a point or a direction. Two operations do almost all
-the work:
+A `SIMD3<Float>` is a point or a direction. Two operations do almost all the work:
 
 **Dot product** — `simd_dot(a, b)` — a single number that measures alignment.
 For unit vectors it's the cosine of the angle between them: `1` same direction,
@@ -44,13 +45,13 @@ diffuse = max(dot(surfaceNormal, directionToLight), 0)
 ```
 
 **Cross product** — `simd_cross(a, b)` — a new vector *perpendicular to both*.
-We use it to build coordinate frames (the camera's right axis is `up × forward`)
+We use it to build coordinate frames (the camera's right axis is `up × back`)
 and to find a rotation axis (to turn a homing enemy toward you, rotate about
 `currentHeading × desiredHeading`).
 
 **Length & normalize** — `simd_length(v)` gives magnitude; `simd_normalize(v)`
-scales a vector to length 1 while keeping its direction. Directions should almost
-always be normalized before you use them.
+scales a vector to length 1 while keeping its direction. Normalize directions
+before you use them.
 
 ---
 
@@ -58,9 +59,9 @@ always be normalized before you use them.
 
 We want to move, rotate and scale geometry, and — crucially — *compose* those.
 A 4×4 matrix expresses all of it and composes by multiplication. The trick that
-makes translation fit into a matrix is the **homogeneous coordinate**: we tack a
-`w = 1` onto each 3D point, making it 4D. Now a matrix's last column can add a
-translation, something a 3×3 can't do.
+makes translation fit is the **homogeneous coordinate**: tack a `w = 1` onto each
+3D point, making it 4D. Now a matrix's last column can add a translation,
+something a 3×3 can't do.
 
 A model matrix has this anatomy:
 
@@ -71,21 +72,12 @@ A model matrix has this anatomy:
 |  0   0   0   1 |   the last column T is translation
 ```
 
-`Transform.matrix` builds exactly this via `Math.trs`:
-
-```swift
-static func trs(translation t: Vec3, rotation r: Quat, scale s: Vec3) -> Mat4 {
-    translation(t) * rotation(r) * scale(s)   // read right-to-left
-}
-```
-
 ---
 
 ## The MVP chain: from a local corner to a screen pixel
 
 A vertex of the ship mesh starts in **local space** (relative to the ship's own
-origin). Three matrices carry it to the screen. This is *the* pipeline; memorise
-its shape.
+origin). Three matrices carry it to the screen. This is *the* pipeline.
 
 ```mermaid
 flowchart LR
@@ -94,49 +86,28 @@ flowchart LR
   C -->|Projection P| K[Clip space<br/>the GPU takes it from here]
 ```
 
-- **Model (M)** — places the mesh in the world: the ship's `Transform.matrix`.
+- **Model (M)** — places the mesh in the world. Built per entity from its
+  position, rotation and scale.
 - **View (V)** — moves the world so the camera sits at the origin looking down
-  −Z. Built by `Math.lookAt`.
+  −Z. Built by `lookAt`.
 - **Projection (P)** — applies perspective: far things shrink, and depth is
-  mapped into [0, 1]. Built by `Math.perspective`.
+  mapped into [0, 1]. Built by `perspective`.
 
-The vertex shader does the multiply. We even pre-multiply `P * V` on the CPU once
-per frame (into `FrameUniforms.viewProjection`) so the shader is a single matrix
-per vertex:
-
-```metal
-out.position = frame.viewProjection * (inst.model * float4(v.position, 1.0));
-```
+The vertex shader does the multiply. We'll pre-multiply `P * V` on the CPU once
+per frame so the shader is a single matrix per vertex.
 
 ### Projection, derived
 
-`Math.perspective` builds the standard right-handed, [0,1]-depth matrix:
-
-```swift
-let ys = 1 / tan(fovyRadians * 0.5)   // vertical scale from field of view
-let xs = ys / aspect                  // horizontal scale corrects for a wide window
-let zs = far / (near - far)           // maps z into [0,1] non-linearly
-```
-
-Two things to feel rather than memorise: a **narrower FOV zooms in** (bigger
-`ys`), and dividing by `aspect` is what stops the image stretching when you
-resize the window. We pass the live window aspect every frame from
-`Game.update`.
+Two things to feel rather than memorise: a **narrower field of view zooms in**,
+and dividing the horizontal scale by the aspect ratio is what stops the image
+stretching when you resize the window.
 
 ### View, derived
 
-`Math.lookAt(eye:center:up:)` builds an orthonormal camera frame and its inverse
-in one shot:
-
-```swift
-let z = simd_normalize(eye - center)     // camera looks down -z, so +z points back
-let x = simd_normalize(simd_cross(up, z))// right = up × back
-let y = simd_cross(z, x)                 // true up, re-orthogonalised
-```
-
-The rows are the camera's axes and the last column undoes the camera's position
-(`-dot(axis, eye)`). Multiplying a world point by this expresses it *relative to
-the camera* — which is exactly what projection expects. Chapter 09 uses it.
+`lookAt(eye:center:up:)` builds an orthonormal camera frame and its inverse in
+one shot: `z` points *back* from the target to the eye (because the camera looks
+down −z), `x` is `up × z`, and `y = z × x` re-orthogonalises up. The last column
+undoes the camera's position with `-dot(axis, eye)`.
 
 ---
 
@@ -148,98 +119,192 @@ The tempting way to store orientation is three angles — pitch, yaw, roll. It's
 readable and it's a trap. Applying three sequential angle-rotations has a failure
 mode called **gimbal lock**: at certain orientations (nose straight up), two of
 your three axes line up and you lose a degree of freedom — the ship gets stuck or
-snaps. Interpolating Euler angles is also ugly. A flight game, where the ship
-pitches and rolls through *every* orientation, hits these constantly.
+snaps. A flight game, where the ship pitches and rolls through *every*
+orientation, hits this constantly.
 
-A **quaternion** stores orientation as four numbers `(x, y, z, w)` — think of it
-as "an axis and an amount of spin about it," encoded so that composition is just
-multiplication. It has none of the pathologies:
+A **quaternion** stores orientation as four numbers `(x, y, z, w)` — think "an
+axis and an amount of spin about it," encoded so composition is multiplication.
+It has none of the pathologies:
 
 - **No gimbal lock.** Every orientation has a clean representation.
 - **Composes by multiplication.** "Then rotate a bit more" is `q * delta`.
-- **Interpolates smoothly** (slerp), which matters the moment you want a camera
-  or missile to ease toward a target.
+- **Interpolates smoothly** (slerp), which matters the moment a camera or missile
+  needs to ease toward a target.
 
-`simd` gives us `simd_quatf` with everything we need:
-
-```swift
-Quat(angle: θ, axis: Vec3(1,0,0))   // a rotation
-q1 * q2                              // compose (apply q2 in q1's frame)
-q.act(Vec3(0,0,-1))                  // rotate a vector — here, "which way is forward?"
-simd_normalize(q)                    // keep it unit after many multiplies
-```
-
-That last one matters: repeatedly multiplying quaternions accumulates tiny
-floating-point error, so we renormalise after each update (see
-`FlightControlSystem`).
-
-### Local-space rotation, the heart of the flight feel
-
-When you pitch the ship, you want it to pitch about *its own* wings, not the
-world's X axis. That's the difference between `q * delta` and `delta * q`:
+`simd` gives us `simd_quatf`:
 
 ```swift
-// FlightControlSystem: build this frame's tumble from pitch/yaw/roll...
-let delta = Quat(angle: pitch·dt, axis: [1,0,0])
-          * Quat(angle: yaw·dt,   axis: [0,1,0])
-          * Quat(angle: roll·dt,  axis: [0,0,1])
-// ...and apply it on the RIGHT, so it's relative to the current orientation.
-t.rotation = simd_normalize(t.rotation * delta)
+simd_quatf(angle: θ, axis: SIMD3<Float>(1,0,0))   // a rotation
+q1 * q2                                            // compose
+q.act(SIMD3<Float>(0,0,-1))                        // rotate a vector: "which way is forward?"
+simd_normalize(q)                                  // keep it unit after many multiplies
 ```
 
-Multiplying on the right means "in the ship's local frame." Roll ninety degrees
-and now "pitch up" tilts you sideways — exactly what a real aircraft does, and
-what makes the controls feel like flying rather than steering a cursor.
-
-### From quaternion to matrix
-
-The vertex shader wants a matrix, so `Math.rotation(_:)` expands a quaternion's
-four numbers into the 3×3 rotation block (padded to 4×4). We write it out by hand
-rather than lean on a specific `simd` initializer, so the formula is right there
-to read:
-
-```swift
-let x = q.vector.x, y = q.vector.y, z = q.vector.z, w = q.vector.w
-// ...the classic quaternion→matrix expansion...
-Vec4(1 - 2*(yy+zz),  2*(xy+wz),      2*(xz-wy),      0)   // first column
-```
-
-You never have to derive that expansion; you just have to know *this* is where
-orientation becomes a matrix the GPU can use.
+That last one matters: repeatedly multiplying quaternions accumulates
+floating-point error, so we renormalise after each update (chapter 08).
 
 ---
 
-## `simd`, and why the code is short
+## Create `Sources/SpaceFighter/Math.swift`
 
-Apple's `simd` module gives us `SIMD3<Float>`, `simd_float4x4`, `simd_quatf` and
-their operators, mapping to single CPU vector instructions **and** matching the
-memory layout Metal expects. That second point is doing quiet, load-bearing work:
-a `SIMD3<Float>` is 16-byte aligned exactly like MSL's `float3`, so we can hand a
-Swift struct straight to a shader with no marshalling (chapter 05 leans on this
-hard, and warns about the one place — a lone `float3` — where it bites).
-
-Our type aliases keep the signatures readable:
+Everything above, in one file. Type it in:
 
 ```swift
+import Foundation   // for scalar tan() used in the perspective projection
+import simd
+
+// Small, self-contained linear-algebra helpers built on Apple's `simd`.
+//
+// Conventions (see chapter 03):
+//   * Right-handed world space. +X right, +Y up, +Z toward the viewer, so the
+//     "forward" a ship faces is -Z in its own local space.
+//   * Column-major 4x4 matrices (what Metal and `simd_float4x4` both expect),
+//     so a transform is `M * v` and composition reads right-to-left:
+//     `translate * rotate * scale`.
+//   * Clip-space depth in [0, 1], the Metal convention (OpenGL used [-1, 1]).
+
 typealias Vec3 = SIMD3<Float>
 typealias Vec4 = SIMD4<Float>
 typealias Mat4 = simd_float4x4
 typealias Quat = simd_quatf
+
+extension Float {
+    /// Degrees -> radians. `simd` trig works in radians; designers think in degrees.
+    var radians: Float { self * .pi / 180 }
+}
+
+enum Math {
+    /// Identity transform.
+    static let identity = matrix_identity_float4x4
+
+    /// Translation matrix.
+    static func translation(_ t: Vec3) -> Mat4 {
+        Mat4(columns: (
+            Vec4(1, 0, 0, 0),
+            Vec4(0, 1, 0, 0),
+            Vec4(0, 0, 1, 0),
+            Vec4(t.x, t.y, t.z, 1)
+        ))
+    }
+
+    /// Uniform scale matrix.
+    static func scale(_ s: Float) -> Mat4 { scale(Vec3(repeating: s)) }
+
+    /// Non-uniform scale matrix.
+    static func scale(_ s: Vec3) -> Mat4 {
+        Mat4(columns: (
+            Vec4(s.x, 0, 0, 0),
+            Vec4(0, s.y, 0, 0),
+            Vec4(0, 0, s.z, 0),
+            Vec4(0, 0, 0, 1)
+        ))
+    }
+
+    /// Rotation matrix from a unit quaternion.
+    ///
+    /// We build it by hand from the quaternion's components rather than relying
+    /// on a specific `simd_float4x4(quat)` initializer, so the code is obvious
+    /// and portable across toolchains. `q.vector` is `(x, y, z, w)`.
+    static func rotation(_ q: Quat) -> Mat4 {
+        let x = q.vector.x, y = q.vector.y, z = q.vector.z, w = q.vector.w
+        let xx = x * x, yy = y * y, zz = z * z
+        let xy = x * y, xz = x * z, yz = y * z
+        let wx = w * x, wy = w * y, wz = w * z
+        return Mat4(columns: (
+            Vec4(1 - 2 * (yy + zz), 2 * (xy + wz),     2 * (xz - wy),     0),
+            Vec4(2 * (xy - wz),     1 - 2 * (xx + zz), 2 * (yz + wx),     0),
+            Vec4(2 * (xz + wy),     2 * (yz - wx),     1 - 2 * (xx + yy), 0),
+            Vec4(0, 0, 0, 1)
+        ))
+    }
+
+    /// Compose a full model matrix: scale, then rotate, then translate.
+    static func trs(translation t: Vec3, rotation r: Quat, scale s: Vec3) -> Mat4 {
+        translation(t) * rotation(r) * scale(s)
+    }
+
+    /// Right-handed perspective projection with clip depth in [0, 1].
+    ///
+    /// `fovyRadians` is the *vertical* field of view; horizontal FOV follows
+    /// from the aspect ratio. Objects nearer than `near` or beyond `far` are
+    /// clipped.
+    static func perspective(fovyRadians: Float, aspect: Float, near: Float, far: Float) -> Mat4 {
+        let ys = 1 / tan(fovyRadians * 0.5)
+        let xs = ys / aspect
+        let zs = far / (near - far)
+        return Mat4(columns: (
+            Vec4(xs, 0, 0, 0),
+            Vec4(0, ys, 0, 0),
+            Vec4(0, 0, zs, -1),
+            Vec4(0, 0, zs * near, 0)
+        ))
+    }
+
+    /// Right-handed "look at" view matrix. `up` need not be exactly orthogonal
+    /// to the view direction; it is re-orthogonalised here.
+    static func lookAt(eye: Vec3, center: Vec3, up: Vec3) -> Mat4 {
+        let z = simd_normalize(eye - center)   // camera looks down -z
+        let x = simd_normalize(simd_cross(up, z))
+        let y = simd_cross(z, x)
+        return Mat4(columns: (
+            Vec4(x.x, y.x, z.x, 0),
+            Vec4(x.y, y.y, z.y, 0),
+            Vec4(x.z, y.z, z.z, 0),
+            Vec4(-simd_dot(x, eye), -simd_dot(y, eye), -simd_dot(z, eye), 1)
+        ))
+    }
+
+    /// Move `current` toward `target` at up to `maxDelta` per call. Handy for
+    /// easing throttle, camera and control rates without overshoot.
+    static func moveToward(_ current: Float, _ target: Float, _ maxDelta: Float) -> Float {
+        let d = target - current
+        if abs(d) <= maxDelta { return target }
+        return current + (d < 0 ? -maxDelta : maxDelta)
+    }
+}
 ```
 
----
-
-## The one-screen summary
-
-- **Directions:** dot = alignment (and our lighting); cross = a perpendicular
-  (and our coordinate frames). Normalize directions.
-- **Transforms:** `translate * rotate * scale`, applied right-to-left; the MVP
-  chain carries a vertex local → world → view → clip.
-- **Orientation is a quaternion**, integrated as `q = normalize(q * delta)` in
-  the ship's local frame — that's the flight feel, and it's gimbal-lock-free.
-- **`simd`** makes it terse and, not coincidentally, GPU-layout-compatible.
+Two notes on what you just typed. `Math.rotation` is the classic
+quaternion-to-matrix expansion written out in full — you never have to derive it,
+but this is where orientation becomes something the GPU can use. And
+`Math.perspective` is the one place the `[0, 1]` depth convention is baked in;
+that `zs = far / (near - far)` is what makes it Metal's projection and not
+OpenGL's.
 
 ---
 
-**Next:** with math in hand, we build the engine core. →
-[Chapter 04: Designing the ECS](04-designing-the-ecs.md)
+## Checkpoint
+
+Temporarily **replace `main.swift`** with this to prove the math works:
+
+```swift
+import Foundation
+import simd
+
+// Put a point 1 unit down the ship's nose (local -Z), rotate the ship 90 degrees
+// about +Y, and move it to (10, 0, 0). The nose should end up pointing down -X,
+// so the point lands at (9, 0, 0).
+let rotation = Quat(angle: 90.radians, axis: Vec3(0, 1, 0))
+let model = Math.trs(translation: Vec3(10, 0, 0), rotation: rotation, scale: Vec3(repeating: 1))
+let nose = model * Vec4(0, 0, -1, 1)
+
+print(String(format: "nose -> (%.2f, %.2f, %.2f)", nose.x, nose.y, nose.z))
+print(String(format: "forward -> %@", "\(rotation.act(Vec3(0, 0, -1)))"))
+```
+
+```console
+$ swift run
+nose -> (9.00, 0.00, 0.00)
+forward -> SIMD3<Float>(-1.0, 0.0, ...)
+```
+
+The `9.00` is the whole chapter in one number: the local nose at −Z got rotated
+to point down −X and then translated to `x = 10`, landing at `x = 9`. If you get
+`11.00`, your rotation went the other way; if you get `10.00, 0.00, -1.00`, the
+rotation didn't apply at all — check that `trs` multiplies in the order
+`translation * rotation * scale`.
+
+---
+
+**Next:** the engine core — entities, components, and the storage that makes
+them fast. → [Chapter 04: Designing the ECS](04-designing-the-ecs.md)

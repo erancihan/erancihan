@@ -15,7 +15,7 @@ Metal, ECS design, game-loop timing and the math — organized by topic.
 |---|---|
 | ⭐ Apple — **Metal** documentation — https://developer.apple.com/documentation/metal | The API reference for every object in Chapter 02: device, command queue, pipeline state, encoders. |
 | Apple — **MetalKit** / `MTKView` — https://developer.apple.com/documentation/metalkit | The view + delegate that drive our game loop (Chapters 02, 07). |
-| ⭐ Apple — **Metal Shading Language Specification** (PDF) — https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf | The definitive MSL reference — attributes like `[[vertex_id]]`, `[[instance_id]]`, `[[point_coord]]` used in Chapter 05. |
+| ⭐ Apple — **Metal Shading Language Specification** (PDF) — https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf | The definitive MSL reference — attributes like `[[vertex_id]]`, `[[instance_id]]`, `[[point_coord]]` used in Chapter 06. |
 | Apple — **Metal** hub — https://developer.apple.com/metal/ | Feature-set tables, tools, and links to sample code and WWDC sessions. |
 | Apple — *Using Metal to Draw a View's Contents* (sample) — https://developer.apple.com/documentation/metal/using-a-render-pipeline-to-render-primitives | The minimal "triangle on screen" pipeline our `Renderer` grows from. |
 | Apple — **Model I/O** — https://developer.apple.com/documentation/modelio | Loading real 3D assets (USD/OBJ) when code geometry stops being enough (Chapter 12). |

@@ -1,9 +1,10 @@
 # 11 · HUD & feedback 🛠️
 
-> **You'll leave this chapter with:** how to draw 2D directly on top of a 3D
-> scene in normalised device coordinates, the aspect-ratio gotcha that squashes
-> naive HUDs, and where you'd add real text — reading
-> `HUD.swift` and `Renderer.drawHUD`.
+> **You'll leave this chapter with:** a reticle, a hull bar and a damage flash
+> drawn straight over the 3D scene — and the last file in the project.
+>
+> **Files created:** `Sources/SpaceFighter/HUD.swift`
+> **Files changed:** `Game.swift` (one line)
 
 ---
 
@@ -12,17 +13,18 @@
 The HUD doesn't live in the world — it's painted flat over the finished 3D image.
 So it skips the whole model/view/projection chain and gives positions **directly
 in clip space** (a.k.a. normalised device coordinates): X and Y each run −1 to
-+1, origin at the centre, +Y up. The bottom-left corner is `(−1, −1)`, the centre
-is `(0, 0)`.
++1, origin at the centre, +Y up. Bottom-left is `(−1, −1)`.
 
-The HUD vertex is dead simple — a 2D position and a colour, no normal, no matrix:
+You already wrote both halves of the machinery for this. `HUDVertex` went into
+`RenderTypes.swift` in chapter 05 — a 2D position and a colour, no normal, no
+matrix:
 
 ```swift
 struct HUDVertex { var position: SIMD2<Float>; var color: Vec4 }
 ```
 
-and the shader just wraps the 2D point into a 4D clip position and passes the
-colour through:
+And the shader from chapter 06 just wraps that 2D point into a 4D clip position
+and passes the colour through — no transform at all:
 
 ```metal
 vertex HUDInOut hud_vertex(uint vid [[vertex_id]], constant HUDVertex* verts [[buffer(0)]]) {
@@ -31,115 +33,165 @@ vertex HUDInOut hud_vertex(uint vid [[vertex_id]], constant HUDVertex* verts [[b
 }
 ```
 
-No transform at all. You place things by choosing coordinates in [−1, 1].
+`Renderer.drawHUD` is likewise already written and currently doing nothing,
+because `Game.update` hands it an empty array. All that's left is to produce the
+vertices.
 
 ---
 
 ## Everything is a rectangle
 
 We have no fonts and no textures, so every HUD element is built from coloured
-rectangles, and each rectangle is two triangles. One helper does it:
+rectangles, and each rectangle is two triangles.
+
+### Create `Sources/SpaceFighter/HUD.swift`
 
 ```swift
-private static func appendRect(_ out: inout [HUDVertex],
-                               cx: Float, cy: Float, hw: Float, hh: Float, color: Vec4) {
-    // four corners around (cx, cy), emitted as two triangles (6 vertices)
+import simd
+
+/// Builds the heads-up display as a flat list of coloured triangles in
+/// normalised device coordinates (-1…1, origin centre, +Y up). No fonts, no
+/// textures — just a crosshair, a hull bar, and a red flash when you're hit.
+/// Numeric readouts (score, hull %) go in the window title to keep this simple.
+enum HUD {
+    static func build(stats: GameStats, aspect: Float) -> [HUDVertex] {
+        var v: [HUDVertex] = []
+
+        // Full-screen damage flash, drawn first so everything sits on top of it.
+        if stats.hitFlash > 0 {
+            let a = 0.35 * min(stats.hitFlash / 0.5, 1)
+            appendRect(&v, cx: 0, cy: 0, hw: 1, hh: 1, color: Vec4(1, 0.1, 0.1, a))
+        }
+
+        // Reticle: a cyan cross at screen centre. Divide X extents by the aspect
+        // ratio so it stays square on a wide window.
+        let cyan = Vec4(0.4, 1.0, 0.9, 0.9)
+        appendRect(&v, cx: 0, cy: 0, hw: 0.035 / aspect, hh: 0.004, color: cyan) // horizontal
+        appendRect(&v, cx: 0, cy: 0, hw: 0.004 / aspect, hh: 0.035, color: cyan) // vertical
+
+        // Hull bar, bottom-left. Background then fill; the fill shifts green->red
+        // as the hull drops.
+        let frac = max(0, min(stats.playerHealth / stats.playerMaxHealth, 1))
+        let barX: Float = -0.72, barY: Float = -0.9
+        let barHW: Float = 0.22, barHH: Float = 0.02
+        appendRect(&v, cx: barX, cy: barY, hw: barHW, hh: barHH, color: Vec4(0.1, 0.1, 0.12, 0.7))
+        let fillHW = barHW * frac
+        let fillColor = Vec4(1 - frac, 0.2 + 0.7 * frac, 0.25, 0.95)
+        appendRect(&v, cx: barX - barHW + fillHW, cy: barY, hw: fillHW, hh: barHH, color: fillColor)
+
+        return v
+    }
+
+    /// Append two triangles forming an axis-aligned rectangle.
+    private static func appendRect(_ out: inout [HUDVertex],
+                                   cx: Float, cy: Float,
+                                   hw: Float, hh: Float,
+                                   color: Vec4) {
+        let a = SIMD2<Float>(cx - hw, cy - hh)
+        let b = SIMD2<Float>(cx + hw, cy - hh)
+        let c = SIMD2<Float>(cx + hw, cy + hh)
+        let d = SIMD2<Float>(cx - hw, cy + hh)
+        out.append(HUDVertex(position: a, color: color))
+        out.append(HUDVertex(position: b, color: color))
+        out.append(HUDVertex(position: c, color: color))
+        out.append(HUDVertex(position: a, color: color))
+        out.append(HUDVertex(position: c, color: color))
+        out.append(HUDVertex(position: d, color: color))
+    }
 }
 ```
 
-`HUD.build` assembles the whole overlay into one flat `[HUDVertex]` array, which
-`Renderer.drawHUD` uploads and draws in a single call. Three elements:
+### Reading the three elements
 
-### The reticle
+**The reticle** is a wide-thin rectangle crossed with a tall-thin one, both at
+the origin.
 
-A cyan cross at the centre — a wide-thin rectangle over a tall-thin one:
-
-```swift
-appendRect(&v, cx: 0, cy: 0, hw: 0.035 / aspect, hh: 0.004, color: cyan)  // horizontal bar
-appendRect(&v, cx: 0, cy: 0, hw: 0.004 / aspect, hh: 0.035, color: cyan)  // vertical bar
-```
-
-### The hull bar
-
-Bottom-left, drawn as a dark background rectangle with a coloured fill on top. The
-fill's width tracks health, and its colour slides green→red as hull drops:
-
-```swift
-let frac = max(0, min(stats.playerHealth / stats.playerMaxHealth, 1))
-appendRect(&v, cx: barX, cy: barY, hw: barHW, hh: barHH, color: darkBackground)
-let fillColor = Vec4(1 - frac, 0.2 + 0.7 * frac, 0.25, 0.95)   // red when low, green when full
-appendRect(&v, cx: barX - barHW + fillHW, cy: barY, hw: barHW * frac, hh: barHH, color: fillColor)
-```
-
+**The hull bar** is a dark background rectangle with a coloured fill on top. The
+fill's width tracks health and its colour slides green→red as hull drops.
 Anchoring the fill at the bar's left edge (`barX - barHW + fillHW`) is why it
-drains from the right instead of shrinking toward its centre.
+drains from the right instead of shrinking toward its own centre — a small detail
+that looks obviously wrong if you get it backwards.
 
-### The damage flash
-
-When you're rammed, `CollisionSystem` sets `stats.hitFlash = 0.5`. The HUD draws
-a full-screen red rectangle whose alpha fades with the remaining time, and
-`Game.update` ages it out with `dt`:
-
-```swift
-if stats.hitFlash > 0 {
-    let a = 0.35 * min(stats.hitFlash / 0.5, 1)
-    appendRect(&v, cx: 0, cy: 0, hw: 1, hh: 1, color: Vec4(1, 0.1, 0.1, a))   // whole screen
-}
-```
-
-It's drawn **first** in the array so everything else layers on top of it.
+**The damage flash** is a full-screen red rectangle whose alpha fades with
+`stats.hitFlash` — set to 0.5 by `CollisionSystem` when you're rammed, and aged
+out by `Game.update` with `dt`. It's appended **first** so everything else layers
+on top.
 
 ---
 
 ## Two details that make it correct
 
-**Aspect correction.** Clip space is square (−1…1 both axes) but your window is
-wide, so a rectangle that's `0.035` in both X and Y renders *wider* than it is
+**Aspect correction.** Clip space is square (−1…1 on both axes) but your window
+is wide, so a rectangle that's `0.035` in both X and Y renders *wider* than it is
 tall — a squashed, non-square reticle. Dividing the X extents by the aspect ratio
-(`0.035 / aspect`) cancels the window's stretch and keeps the cross square at any
-size. The hull bar is a long horizontal thing, so we leave it un-corrected on
-purpose.
+cancels the window's stretch. The hull bar is a long horizontal thing, so we
+leave it un-corrected on purpose.
 
 **Painter's order + no depth.** The HUD pass uses the `noDepth` state
 (`compare .always`, no write) so it ignores the depth buffer entirely and always
-draws over the scene, and it uses **alpha blending** so the flash and bar are
+draws over the scene, and **alpha blending** so the flash and bar are
 translucent. Within the HUD, order in the array *is* the layering — flash, then
-bar, then reticle on top. This is the classic 2D painter's model: back to front,
-no depth test (chapter 05).
+bar, then reticle on top. Classic 2D painter's model: back to front, no depth
+test.
 
-`Renderer.drawHUD` is the whole render side — upload the vertices, draw triangles,
-done:
+---
+
+## Update `Game.swift`
+
+One line. In `update`, change the returned `hud` from an empty array to the built
+one:
 
 ```swift
-let buffer = device.makeBuffer(bytes: hud, length: ..., options: .storageModeShared)!
-enc.setVertexBuffer(buffer, offset: 0, index: 0)
-enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: hud.count)
+        return FrameRenderData(frame: frame,
+                               instances: instances,
+                               playerPosition: position,
+                               hud: HUD.build(stats: stats, aspect: max(aspect, 0.01)))
 ```
+
+---
+
+## Checkpoint
+
+```console
+$ swift run
+```
+
+A cyan cross sits at screen centre and a hull bar sits bottom-left. Fly into an
+enemy: the screen flashes red and fades over half a second, and the bar shortens
+and shifts toward red. Take five hits and you respawn with a full green bar.
+
+Two things to check specifically:
+
+1. **Resize the window wide.** The reticle stays a square cross. Delete the
+   `/ aspect` on the two reticle lines and resize again to see the squash it
+   prevents.
+2. **The bar drains rightward**, staying anchored at its left edge.
+
+**If the HUD doesn't appear at all**, confirm you changed that `hud:` line in
+`Game.update` — `Renderer.drawHUD` early-returns on an empty array.
 
 ---
 
 ## The elephant: text
 
 You've noticed there are no *numbers* on screen. Score, hull % and deaths go in
-the **window title** instead (`RenderCoordinator.draw`), because real text
-rendering is a genuine detour we deliberately skipped. When you want it, here are
-the honest options, cheapest first:
+the **window title** (`RenderCoordinator.draw`), because real text rendering is a
+genuine detour. When you want it in-scene, the honest options, cheapest first:
 
-- **Overlay an AppKit view.** Put an `NSTextField` (or a `CATextLayer`) on top of
-  the `MTKView`. Zero graphics code, perfect system text, and fine for a
-  score/among static labels. The catch: it's a separate layer, not part of your
-  Metal frame, so it can't interleave with 3D or use your shaders.
+- **Overlay an AppKit view.** Put an `NSTextField` or `CATextLayer` on top of the
+  `MTKView`. Zero graphics code, perfect system text, fine for static labels. The
+  catch: it's a separate layer, not part of your Metal frame, so it can't
+  interleave with 3D or use your shaders.
 - **Bake glyphs to a texture atlas.** Render the font once with Core Text into a
   texture, then draw each character as a textured quad (UV into the atlas). This
-  is how most engines do HUD text — fast, in-pipeline, and it composes with
-  everything. More setup: an atlas, UVs, and a textured HUD pipeline.
+  is how most engines do HUD text — fast, in-pipeline, composes with everything.
+  More setup: an atlas, UVs, and a textured HUD pipeline.
 - **Signed-distance-field (SDF) fonts.** Store glyphs as distance fields so they
-  stay crisp at any scale and get cheap outlines/glow. The standard for scalable
-  in-engine text; the most work to set up.
+  stay crisp at any scale and get cheap outlines and glow. The standard for
+  scalable in-engine text; the most work to set up.
 
-For a prototype, the window title is a completely reasonable answer — it keeps
-the HUD chapter about *drawing*, not font engineering. Reach for the atlas
-approach when "simple shapes" stops being enough.
+For a prototype the window title is a perfectly reasonable answer — it keeps this
+chapter about *drawing*, not font engineering.
 
 ---
 
@@ -150,6 +202,9 @@ vertices — a pure function, no state, no side effects. It doesn't poke the
 renderer; it produces data the renderer consumes, exactly like `RenderSystem`
 produces `InstanceData`. Same seam, same discipline: gameplay computes *what to
 show*, the renderer decides *how to draw it*.
+
+**And that's the whole game.** Every file from chapter 01's table now exists. Go
+fly it for a few minutes before reading the last chapter — you earned it.
 
 ---
 
