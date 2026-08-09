@@ -2,7 +2,11 @@
 
 > **You'll leave this chapter with:** a working mental model of the GPU as a
 > service you submit work to, and names for the seven or eight Metal objects that
-> show up in every frame — so `Renderer.swift` reads like prose, not spells.
+> show up in every frame — so when you write the renderer in chapter 06 it reads
+> like prose, not spells.
+>
+> **Files created: none.** This is a concept chapter. Read it, then chapters 05
+> and 06 put every idea here into code.
 
 ---
 
@@ -24,9 +28,9 @@ Two consequences shape the whole API:
 
 ## The cast of objects
 
-Here's everyone you'll meet, roughly in the order they appear, with the line in
-`Renderer.swift` or
-`main.swift` that creates them.
+Here's everyone you'll meet, roughly in the order they appear. You'll create the
+first group once in `Renderer.init` (chapter 06) and the second group fresh every
+frame in `Renderer.render`.
 
 | Object | What it is | Lifetime |
 |---|---|---|
@@ -41,14 +45,19 @@ Here's everyone you'll meet, roughly in the order they appear, with the line in
 | `CAMetalDrawable` | The texture you're drawing this frame that gets shown. | **Every frame** |
 
 The split matters: the top rows are built **once** and reused; the bottom rows
-are created **fresh every frame**. Our `Renderer.init` does all the once-only
-setup; `Renderer.render` does the per-frame recording.
+are created **fresh every frame**. That split is exactly how chapter 06 is
+organised — `Renderer.init` does all the once-only setup, `Renderer.render` does
+the per-frame recording.
+
+The snippets below are **previews, not files to create** — they're the lines
+you'll write in chapter 06, shown here so the concepts have something concrete
+attached.
 
 ### Device, queue, library
 
 ```swift
-let device = MTLCreateSystemDefaultDevice()!          // main.swift
-let queue  = device.makeCommandQueue()!               // Renderer.init
+let device  = MTLCreateSystemDefaultDevice()!
+let queue   = device.makeCommandQueue()!
 let library = try device.makeLibrary(source: Shaders.source, options: nil)
 ```
 
@@ -161,9 +170,9 @@ depthCompareFunction = .less ; isDepthWriteEnabled = false
 depthCompareFunction = .always ; isDepthWriteEnabled = false
 ```
 
-`Renderer` keeps all three and swaps between them per pass. Getting these right
-is why the ship correctly hides the grid behind it while a glowing bolt in front
-still lets you see the ship through its halo.
+Your renderer will keep all three and swap between them per pass. Getting these
+right is why the ship correctly hides the grid behind it while a glowing bolt in
+front still lets you see the ship through its halo.
 
 ---
 
@@ -177,8 +186,9 @@ pace frames, and a depth texture. **MetalKit**'s `MTKView` does all three:
 - given a `depthStencilPixelFormat`, it manages the depth texture and folds it
   into `currentRenderPassDescriptor`.
 
-We set it up in `main.swift` and `Renderer.init`, then let it drive us. Chapter
-07 picks up that `draw(in:)` callback as the game loop's heartbeat.
+You'll set it up in `main.swift` and `Renderer.init` in chapter 06, then let it
+drive you. Chapter 07 picks up that `draw(in:)` callback as the game loop's
+heartbeat.
 
 ---
 
@@ -192,8 +202,9 @@ We set it up in `main.swift` and `Renderer.init`, then let it drive us. Chapter
 - The **depth buffer** is how near hides far — and choosing *test/write* per pass
   is a real rendering decision, not boilerplate.
 
-You now have the vocabulary. Chapter 05 spends it on our actual shaders and draw
-loop — but first we need the matrices those shaders multiply by.
+You now have the vocabulary. Chapter 06 spends it on real shaders and a real draw
+loop — but first we need the matrices those shaders multiply by, and the geometry
+they draw.
 
 ---
 

@@ -1,8 +1,11 @@
 # 12 · Where to go next 🧠
 
-> **You'll leave this chapter with:** a prioritised map from this prototype to a
-> real game — what to add, in what order, and which chapter's seam each change
-> plugs into. Nothing here is required; it's the horizon.
+> **You'll leave this chapter with:** a prioritised map from the game you just
+> built to a real one — what to add, in what order, and which chapter's seam each
+> change plugs into. Nothing here is required; it's the horizon.
+>
+> **Files created: none.** You've written the whole project; this is what comes
+> after.
 
 The prototype is deliberately small, but it's *honestly* small — every shortcut
 was a labelled decision, not an accident. This chapter turns those labels into a
@@ -19,7 +22,7 @@ different seam and takes minutes.
    and unused (chapter 08). Map `Shift`/`Ctrl` to ease `throttle`, and use it to
    lerp speed between a min and max. *Seam: input → flight.*
 2. **A new enemy shape + behaviour.** Add a `MeshID` case, a `MeshLibrary`
-   generator (chapter 06), and a component + system for a new movement pattern
+   generator (chapter 05), and a component + system for a new movement pattern
    (a strafer that circles you). *Seam: mesh + component + schedule.*
 3. **An explosion.** On a kill in `CollisionSystem`, spawn a handful of
    short-lived entities with outward velocities and a `Lifetime` — instant
@@ -51,7 +54,7 @@ Poly Pizza, Quaternius.
 
 ## Looking better: lighting, shadows, post
 
-Our lighting is one directional term (chapter 05). The upgrade path, in order of
+Our lighting is one directional term (chapter 06). The upgrade path, in order of
 bang-for-effort:
 
 - **Multiple lights + specular** — add point lights and a Blinn-Phong highlight;
@@ -110,7 +113,7 @@ Our ECS and collision are sized for hundreds of entities. Past a few thousand:
 - **Entity generations** (chapter 04) — fold a generation into the id so
   long-lived handles (a lock-on target you remember across frames) can detect a
   recycled slot. Add this the moment a system stores an `Entity` between frames.
-- **Triple-buffered instance data** (chapter 05) — stop allocating instance
+- **Triple-buffered instance data** (chapter 06) — stop allocating instance
   buffers per draw; cycle through 2–3 pre-sized buffers with a semaphore so the
   CPU can build frame *N+1* while the GPU still reads frame *N*. The standard
   Metal throughput pattern.
