@@ -42,7 +42,7 @@ files are the reference; per-chapter checkpoints remain the reader's real test.
 | 9 | 08-flight-and-input | 184 | reviewed | 9 |
 | 10 | 09-the-camera | 29 | reviewed | 9 |
 | 11 | 10-gameplay-systems | 329 | reviewed | 9 |
-| 12 | 11-hud-and-feedback | 62 | todo | |
+| 12 | 11-hud-and-feedback | 62 | reviewed | 9 |
 | 13 | 12-where-to-go-next | 0 | reviewed | 9 |
 | 14 | Assemble + README/index + full smoke test | — | todo | |
 
@@ -87,3 +87,4 @@ work/
 - **Unit 9 done.** ch08: Input.swift (InputState/Key/InputController) and FlightControlSystem in anchored steps, plus diffs to Game, GameView and main. 39%% code. Cumulative replay now **16 of 17 files match**; main.swift reconstructs correctly through the 06.B -> 07 -> 08 diff chain, which is the real proof the cross-chapter anchoring holds. Only Game.swift outstanding, as chs 09-11 still modify it.
 - **Unit 10 done.** ch09: CameraSystem.swift plus a one-line Game.swift swap. 14%% code. Chapter is framed around fixing a named defect in ch07's placeholder (invisible banking) and centres on the 0.65/0.35 up-vector blend with both extremes offered as experiments. Replay: **17 of 18 match**, Game.swift still pending chs 10-11.
 - **Unit 11 done — last big chapter.** ch10: Weapon/Lifetime/Enemy/Collision systems plus five Game.swift edits, 49%% code, was 329 lines across 6 pastes. Replay: **21 of 22 match**, and Game.swift now differs from canonical by exactly one line (the ch11 HUD call), which proves the 07->08->09->10 diff chain against it is correct. Also fixed a stale forward-reference comment ch09 was leaving behind in Game.update.
+- **Unit 12 done — ALL 12 CHAPTERS COMPLETE.** ch11: HUD.swift plus the final one-line Game.swift change. Full cumulative replay now reconstructs **all 23 files byte-exact against canonical, 0 mismatches**, with every chapter passing the format check. Remaining: unit 14 (promote units/ to docs/, README + index, remove work/ scaffolding, final smoke test).
