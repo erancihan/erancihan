@@ -22,11 +22,15 @@ ECS storage, the flight model, the gameplay — and show every piece of code in
 full, inline, as you go. You end with a small macOS Swift Package you wrote
 yourself and run with `swift run`.
 
-- Chapter [01](docs/01-project-setup.md) scaffolds the project (a SwiftPM
-  executable). Every later chapter names the **exact files to create** and gives
-  their **complete contents** — nothing elided, no diffs to reconstruct.
-- Every chapter ends with a **checkpoint**: run it, and here's what you should
-  see. You get a ship on screen in chapter 06 and can fly it by chapter 08.
+- Chapter [01](docs/01-project-setup.md) scaffolds the project and explains the
+  reading conventions. Every later chapter names the **exact file and position**
+  for each snippet: a `swift` block under a location line for new code, a `diff`
+  block with real context lines for changes to existing code.
+- Code arrives **a handful of lines at a time**, with the reasoning around it —
+  not as finished files to paste. Every line is still given; nothing is elided.
+- Every chapter ends with a **checkpoint** (run this, see that, and here's what
+  each failure mode means) and most with a **challenge** that has no answer given.
+- You get a ship on screen in chapter 06.B and can fly it by chapter 08.
 - There's no separate codebase to cross-reference; the guide *is* the source.
 
 The skill this builds isn't "type what I typed"; it's **understanding a small,
@@ -78,9 +82,9 @@ Each box is one system you'll build; the arrows are the order they run in
 | --- | --- | --- |
 | **Entities & components** | Identity is a number; everything it *is* comes from data attached to it | [04](docs/04-designing-the-ecs.md) |
 | **Systems & schedule** | Behaviour is functions over components, run in a fixed order per frame | [04](docs/04-designing-the-ecs.md), [07](docs/07-the-game-loop.md) |
-| **The GPU frame** | Command buffer → render pass → pipeline state → draw; depth sorts it | [02](docs/02-metal-fundamentals.md), [06](docs/06-the-render-pipeline.md) |
+| **The GPU frame** | Command buffer → render pass → pipeline state → draw; depth sorts it | [02](docs/02-metal-fundamentals.md), [06.B](docs/06.B-the-renderer.md) |
 | **Transforms** | Position + a *quaternion* orientation + scale, baked to a matrix | [03](docs/03-the-math-you-need.md), [08](docs/08-flight-and-input.md) |
-| **Instancing** | One mesh, many entities, a single draw call | [06](docs/06-the-render-pipeline.md) |
+| **Instancing** | One mesh, many entities, a single draw call | [06.B](docs/06.B-the-renderer.md) |
 
 ---
 
@@ -128,7 +132,8 @@ space-fighter-metal/
     ├── 03-the-math-you-need.md
     ├── 04-designing-the-ecs.md
     ├── 05-meshes-and-geometry.md
-    ├── 06-the-render-pipeline.md
+    ├── 06.A-shaders.md
+    ├── 06.B-the-renderer.md
     ├── 07-the-game-loop.md
     ├── 08-flight-and-input.md
     ├── 09-the-camera.md
@@ -146,6 +151,8 @@ guide walks you through creating it file by file.
 
 Concept chapters (🧠) build understanding; build chapters (🛠️) hand you code to
 write. Go in order — each chapter's checkpoint depends on the last one working.
+Chapter 06 is split in two because the renderer is the largest piece of the
+project: 06.A is the GPU side, 06.B the Swift that drives it.
 
 | # | Chapter | What you'll learn | You'll have |
 | --- | --- | --- | --- |
@@ -154,7 +161,8 @@ write. Go in order — each chapter's checkpoint depends on the last one working
 | 03 | 🧠🛠️ [The math you need](docs/03-the-math-you-need.md) | Coordinate spaces; model/view/projection; why we orient with *quaternions* not Euler angles; `simd`. Write `Math.swift`. | matrices you can verify |
 | 04 | 🛠️ [Designing the ECS](docs/04-designing-the-ecs.md) | Entities, components, systems; dictionary vs **sparse set** vs archetypes; generations; safe deferred destruction. Write the `World`. | entities + components |
 | 05 | 🛠️ [Meshes & simple geometry](docs/05-meshes-and-geometry.md) | The CPU↔GPU struct contract and the `float3` alignment trap; flat shading and face normals; generating ship, enemy, bolt, starfield and grid in code. | geometry you can print |
-| 06 | 🛠️ [The render pipeline](docs/06-the-render-pipeline.md) | Writing MSL shaders; the pull-vertex model; **instancing**; the buffer-index contract; blend modes and depth policy per pass. | **a ship on screen** |
+| 06.A | 🛠️ [Shaders](docs/06.A-shaders.md) | Writing MSL; the pull-vertex model; `[[instance_id]]`; the buffer-index contract; the normal matrix; the starfield wrap. | four shader pairs |
+| 06.B | 🛠️ [The renderer](docs/06.B-the-renderer.md) | Pipelines and depth states; blend modes; uploading meshes; **instancing**; the five passes; the AppKit window. | **a ship on screen** |
 | 07 | 🛠️ [The game loop & timing](docs/07-the-game-loop.md) | Every component; the ECS→renderer seam; the `MTKViewDelegate` heartbeat; delta time; fixed vs variable timestep; why system *order* is the logic. | it moves |
 | 08 | 🛠️ [Flight & input](docs/08-flight-and-input.md) | Abstracting input from keys; the arcade flight model; body-space rotation with quaternions; auto-banking into turns. | **you can fly it** |
 | 09 | 🛠️ [The camera](docs/09-the-camera.md) | The chase camera; `lookAt`; blending world-up with ship-up so banks read without nausea; field of view; smoothing. | it feels right |
