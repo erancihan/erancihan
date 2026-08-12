@@ -54,11 +54,16 @@ def parse_blocks(text):
             body = []
             while j < len(lines) and not lines[j].startswith("```"):
                 body.append(lines[j]); j += 1
-            # nearest non-blank line above the fence
-            k = i - 1
-            while k >= 0 and not lines[k].strip():
+            # location lines can wrap, so look back over the preceding
+            # paragraph (up to 3 non-blank lines) for the file reference
+            ctx, k = [], i - 1
+            while k >= 0 and len(ctx) < 3:
+                if lines[k].strip():
+                    ctx.append(lines[k])
+                elif ctx:
+                    break
                 k -= 1
-            yield lang, body, (lines[k] if k >= 0 else ""), i + 1
+            yield lang, body, " ".join(reversed(ctx)), i + 1
             i = j + 1
         else:
             i += 1
@@ -101,7 +106,7 @@ def reconstruct(path):
 
     for lang, body, prev, ln in parse_blocks(text):
         m = CREATE_RE.search(prev) if prev else None
-        target = m.group(1) if m else None
+        target = m.group(1).split("/")[-1] if m else None   # basename: unique here
         low = (prev or "").lower()
 
         if lang == "swift":
@@ -141,8 +146,10 @@ def check_format(path):
             code += n
         else:
             other += n   # console output, trees, mermaid — not code the reader types
-        if lang in ("swift", "diff", "metal") and n > MAX_BLOCK:
-            issues.append(f"line {ln}: {lang} block is {n} lines (cap {MAX_BLOCK})")
+        cap = 40 if ("throwaway" in (prev or "").lower()
+                     or "replace the whole file" in (prev or "").lower()) else MAX_BLOCK
+        if lang in ("swift", "diff", "metal") and n > cap:
+            issues.append(f"line {ln}: {lang} block is {n} lines (cap {cap})")
         if lang == "diff" and not any(
                 l and not l[0] in "+-" for l in body):
             issues.append(f"line {ln}: diff block has no context lines")

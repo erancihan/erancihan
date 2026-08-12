@@ -34,7 +34,7 @@ files are the reference; per-chapter checkpoints remain the reader's real test.
 | 1 | 01-project-setup | 68 | reviewed | 9 |
 | 2 | 02-metal-fundamentals | 32 | reviewed | 9 |
 | 3 | 03-the-math-you-need | 140 | reviewed | 9 |
-| 4 | 04-designing-the-ecs | 223 | todo | |
+| 4 | 04-designing-the-ecs | 223 | reviewed | 9 |
 | 5 | 05-meshes-and-geometry | 218 | todo | |
 | 6 | 06.A-shaders (part of ch06) | 120 | todo | |
 | 7 | 06.B-renderer-and-main (part of ch06) | 376 | todo | |
@@ -79,3 +79,4 @@ work/
 - **Unit 1 done.** ch01 rewritten: adds a 'How this guide hands you code' section (swift-under-location-line for new code, diff-with-context for edits, prose over comments, checkpoint + challenge). 11% code, largest block 14 lines, format OK. Verifier hardened twice: code%% now ignores console/tree/mermaid fences; canonical comparison is code-only (comments legitimately drift now) and runs only on a full replay, since main.swift/Game.swift are incomplete until their last chapter.
 - **Units 2 and 13 done.** ch02 previews now state explicitly that they carry no location line because nothing is created yet; ch12 carried over unchanged (no code). Verifier: concept chapters (those declaring 'Files created: none') are exempt from the anchoring rule, and filtered runs now print their issues instead of returning silently.
 - **Unit 3 done — format proven end-to-end.** Math.swift now arrives as 8 anchored steps (1 `new file` + 7 `diff`), largest block 14 lines, 45% code. Reconstruction replays them into a file matching canonical exactly. Verifier rewritten to enforce the documented convention literally: swift block needs 'new file' or 'replace' in its location line, diff blocks must name a target, unanchored swift blocks are previews and ignored by the build. Checkpoint blocks now carry a '`main.swift` — replace' location line so throwaway scratch is explicit.
+- **Unit 4 done.** ch04: Entity/ComponentStore/World built in 11 anchored steps, all three reconstruct exactly. removeIfPresent taught as naive -> swap-remove -> find the missing indexOf line (three runnable states). Added prose on why `owners` exists at all. Verifier: location lines may now wrap across up to 3 lines; files keyed by basename (paths appear with and without the Sources/SpaceFighter prefix); checkpoint scratch blocks get a 40-line cap since they are test harnesses, not incremental teaching.
