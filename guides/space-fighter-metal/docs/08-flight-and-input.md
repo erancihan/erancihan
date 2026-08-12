@@ -1,8 +1,8 @@
 # 08 · Flight & input 🛠️
 
 > **You'll leave this chapter with:** hands on the controls — an arcade flight
-> model that pitches, yaws, rolls and banks, driven by the keyboard through an
-> abstraction that doesn't know what a keyboard is.
+> model that pitches, yaws, rolls and banks, driven by a keyboard the gameplay
+> code knows nothing about.
 >
 > **Files created:** `Sources/SpaceFighter/Input.swift`,
 > `Systems/FlightControlSystem.swift`
@@ -12,26 +12,17 @@
 
 ## Input as intent, not keys
 
-The systems that fly the ship should not know that `W` is key code 13. If they
-did, adding gamepad support later would mean editing gameplay code. So we put a
-translation layer in between: raw events go into an `InputController`, which
-emits an `InputState` of **intent** — normalised axes in [−1, 1], not booleans
-about keys.
+The system that flies the ship must not know that `W` is key code 13. If it did,
+adding gamepad support later would mean editing gameplay code. So we put a
+translation layer in between, and the thing it produces describes **intent**.
 
-A keyboard produces −1 / 0 / +1; a gamepad stick would produce the smooth values
-in between, and *nothing downstream changes*.
-
-### Create `Sources/SpaceFighter/Input.swift`
+**`Sources/SpaceFighter/Input.swift`** — new file:
 
 ```swift
 import Foundation
 
-/// A snapshot of what the player is pressing this frame, decoupled from *how*
-/// we read it. `InputController` fills this in from AppKit key events; systems
-/// read the axes and never see a key code. Swapping in a gamepad later means
-/// changing only the code that writes these fields.
+/// What the player is asking for this frame, independent of how we read it.
 struct InputState {
-    // Held keys, resolved into signed axes in the range [-1, 1].
     var pitch: Float = 0      // + = nose up,   - = nose down
     var yaw: Float = 0        // + = nose left, - = nose right
     var roll: Float = 0       // + = roll left, - = roll right
@@ -40,79 +31,119 @@ struct InputState {
     var firing: Bool = false
     var boosting: Bool = false
 }
-
-/// The physical keys we care about, as macOS virtual key codes. Using codes
-/// rather than characters means the layout is positional (WASD stays where it
-/// is on a non-QWERTY keyboard).
-enum Key {
-    static let w: UInt16 = 13
-    static let a: UInt16 = 0
-    static let s: UInt16 = 1
-    static let d: UInt16 = 2
-    static let q: UInt16 = 12
-    static let e: UInt16 = 14
-    static let space: UInt16 = 49
-    static let arrowLeft: UInt16 = 123
-    static let arrowRight: UInt16 = 124
-    static let arrowDown: UInt16 = 125
-    static let arrowUp: UInt16 = 126
-    static let escape: UInt16 = 53
-}
-
-/// Collects raw key events into a tidy `InputState`. It knows about key codes;
-/// nothing downstream does.
-final class InputController {
-    private(set) var state = InputState()
-    private var pressed = Set<UInt16>()
-    private var boost = false
-
-    func keyDown(_ code: UInt16) { pressed.insert(code); rebuild() }
-    func keyUp(_ code: UInt16) { pressed.remove(code); rebuild() }
-    func setBoost(_ on: Bool) { boost = on; rebuild() }
-
-    private func rebuild() {
-        func held(_ codes: UInt16...) -> Bool { codes.contains { pressed.contains($0) } }
-
-        var s = InputState()
-        // Pitch: nose down when pushing forward (flight-sim / Star Fox feel).
-        if held(Key.w, Key.arrowUp) { s.pitch -= 1 }
-        if held(Key.s, Key.arrowDown) { s.pitch += 1 }
-        // Yaw: + is nose-left (see FlightControlSystem).
-        if held(Key.a, Key.arrowLeft) { s.yaw += 1 }
-        if held(Key.d, Key.arrowRight) { s.yaw -= 1 }
-        // Roll.
-        if held(Key.q) { s.roll += 1 }
-        if held(Key.e) { s.roll -= 1 }
-
-        s.firing = held(Key.space)
-        s.boosting = boost
-        state = s
-    }
-}
 ```
 
-Note pitch: **pushing forward (`W`/`↑`) dives.** That's the flight-sim
-convention. Because input is one clean layer, offering an "invert pitch" option
-later is a one-line sign flip in `rebuild()`, not a hunt through gameplay code.
+Those are **normalised axes** in [−1, 1], not booleans about keys. That choice is
+the whole point of the layer. A keyboard can only produce −1, 0 or +1, but a
+gamepad stick produces every value in between — and when you swap one for the
+other, *nothing downstream changes*, because `FlightControlSystem` was never
+reading keys in the first place. It multiplies an axis by a turn rate.
+
+**`Input.swift`** — after `InputState`:
+
+```diff
+     var firing: Bool = false
+     var boosting: Bool = false
+ }
++
++/// macOS virtual key codes. Positional, not character-based, so WASD stays
++/// where it is on a non-QWERTY layout.
++enum Key {
++    static let w: UInt16 = 13
++    static let a: UInt16 = 0
++    static let s: UInt16 = 1
++    static let d: UInt16 = 2
++    static let q: UInt16 = 12
++    static let e: UInt16 = 14
++    static let space: UInt16 = 49
++    static let arrowLeft: UInt16 = 123
++    static let arrowRight: UInt16 = 124
++    static let arrowDown: UInt16 = 125
++    static let arrowUp: UInt16 = 126
++    static let escape: UInt16 = 53
++}
+```
+
+Key **codes**, not characters, and that matters more than it looks. A code
+identifies a physical position on the keyboard, so `Key.w` is the key above `S`
+whether the user is on QWERTY, AZERTY or Dvorak. Match on characters instead and
+your French players get their controls scattered across the keyboard.
+
+Now the translator. It holds the set of keys currently down and collapses them
+into axes:
+
+**`Input.swift`** — after `Key`:
+
+```diff
+     static let escape: UInt16 = 53
+ }
++
++/// Collects raw key events into an InputState. This is the only type in the
++/// project that knows what a key code is.
++final class InputController {
++    private(set) var state = InputState()
++    private var pressed = Set<UInt16>()
++    private var boost = false
++
++    func keyDown(_ code: UInt16) { pressed.insert(code); rebuild() }
++    func keyUp(_ code: UInt16) { pressed.remove(code); rebuild() }
++    func setBoost(_ on: Bool) { boost = on; rebuild() }
++}
+```
+
+Tracking a *set of held keys* rather than reacting to individual events is what
+makes diagonal input work. Hold `A` and `W` together and both axes are non-zero,
+because we rebuild the whole state from everything currently down rather than
+letting the last event win.
+
+**`Input.swift`**, in `InputController` — after `setBoost`:
+
+```diff
+     func setBoost(_ on: Bool) { boost = on; rebuild() }
++
++    private func rebuild() {
++        func held(_ codes: UInt16...) -> Bool { codes.contains { pressed.contains($0) } }
++
++        var s = InputState()
++        if held(Key.w, Key.arrowUp) { s.pitch -= 1 }
++        if held(Key.s, Key.arrowDown) { s.pitch += 1 }
++        if held(Key.a, Key.arrowLeft) { s.yaw += 1 }
++        if held(Key.d, Key.arrowRight) { s.yaw -= 1 }
++        if held(Key.q) { s.roll += 1 }
++        if held(Key.e) { s.roll -= 1 }
++
++        s.firing = held(Key.space)
++        s.boosting = boost
++        state = s
++    }
+ }
+```
+
+Rebuilding from scratch each time means opposite keys cancel for free: hold `A`
+and `D` together and yaw is `+1 − 1 = 0`, with no special case.
+
+Note the pitch signs: **pushing forward (`W`/`↑`) dives.** That's the flight-sim
+convention — stick forward, nose down — and plenty of players expect the
+opposite. Because intent is isolated here, offering an "invert pitch" option is a
+sign flip on two lines, not a hunt through the flight model. That is the
+abstraction earning its keep.
 
 ---
 
 ## What "arcade flight model" means
 
 We are not simulating aerodynamics. There's no lift, no stall, no angle of
-attack. The rule is simply: **the ship always flies where its nose points, and
-your input turns the nose.** This is the Star Fox / Ace Combat *arcade* feel, and
-it's a handful of lines producing two outputs per frame — an updated
-**orientation** (a quaternion) and a **velocity** down the nose.
+attack, no energy. The rule is simply: **the ship flies where its nose points,
+and your input turns the nose.** That's the Star Fox lineage rather than the
+DCS one, and it produces two outputs per frame — an orientation and a velocity.
 
-### Create `Sources/SpaceFighter/Systems/FlightControlSystem.swift`
+**`Sources/SpaceFighter/Systems/FlightControlSystem.swift`** — new file:
 
 ```swift
 import simd
 
-/// Turns the player's input into orientation and velocity. This is the "flight
-/// model": an arcade one, in the spirit of Star Fox — responsive, forgiving, no
-/// stalls or real aerodynamics. The ship always flies where its nose points.
+/// Turns input into orientation and velocity. Responsive and forgiving; no
+/// stalls, no real aerodynamics.
 enum FlightControlSystem {
     // Maximum turn rates, radians / second.
     static let pitchRate: Float = 1.7
@@ -123,169 +154,226 @@ enum FlightControlSystem {
     // Speed envelope, world units / second.
     static let cruiseSpeed: Float = 55
     static let boostMultiplier: Float = 1.9
-
-    static func update(_ world: World, player: Entity, input: InputState, dt: Float) {
-        let players = world.store(Player.self)
-        let transforms = world.store(Transform.self)
-        let velocities = world.store(Velocity.self)
-
-        players.mutate(player) { $0.boosting = input.boosting }
-
-        // Compose a body-space rotation from this frame's pitch/yaw/roll and
-        // apply it on the right, so turns are always relative to where the ship
-        // currently points (roll left, then pitch, and "up" tilts with you).
-        let pitch = input.pitch * pitchRate
-        let yaw = input.yaw * yawRate
-        let roll = input.roll * rollRate + input.yaw * autoBank
-        transforms.mutate(player) { t in
-            let delta =
-                Quat(angle: pitch * dt, axis: Vec3(1, 0, 0)) *
-                Quat(angle: yaw * dt,   axis: Vec3(0, 1, 0)) *
-                Quat(angle: roll * dt,  axis: Vec3(0, 0, 1))
-            t.rotation = simd_normalize(t.rotation * delta)
-        }
-
-        // Drive velocity straight down the nose.
-        guard let t = transforms.get(player), let pl = players.get(player) else { return }
-        let speed = cruiseSpeed * (pl.boosting ? boostMultiplier : 1)
-        velocities.set(player, Velocity(linear: t.forward * speed))
-    }
 }
 ```
 
-### Three things to notice
+Every one of those is *per second*, which is what lets `dt` make them
+frame-rate independent. The relative sizes are the feel: roll is the fastest axis
+because rolling is how you *set up* a turn, and yaw is the slowest because a ship
+that can spin on the spot doesn't read as flying.
 
-**Rates × dt.** `pitchRate` is 1.7 rad/s; multiplying by `dt` makes the turn
-frame-rate independent (chapter 07).
+**`FlightControlSystem.swift`**, in `FlightControlSystem` — after the tunables:
 
-**Right-multiply.** `t.rotation * delta` composes the new tumble *in the ship's
-current frame*, so after you roll, "pitch" curls you through the roll — the thing
-that makes it feel like flying rather than steering a cursor. (`delta * t.rotation`
-would rotate about world axes and feel wrong immediately.)
+```diff
+     static let cruiseSpeed: Float = 55
+     static let boostMultiplier: Float = 1.9
++
++    static func update(_ world: World, player: Entity, input: InputState, dt: Float) {
++        let players = world.store(Player.self)
++        let transforms = world.store(Transform.self)
++        let velocities = world.store(Velocity.self)
++
++        players.mutate(player) { $0.boosting = input.boosting }
++    }
+ }
+```
 
-**The auto-bank that sells it.** Look again at
-`roll = input.roll * rollRate + input.yaw * autoBank`. Even if you never press a
-roll key, **yawing adds roll** — turn left and the ship banks into the turn like
-a real aircraft. It's a single term, and it's most of why the flight reads as "a
-plane." Set `autoBank` to 0 and the turns go flat and lifeless immediately; it's
-the first knob to play with.
+Now the rotation, which is chapter 03's local-space quaternion argument made
+concrete:
 
-Once the nose points somewhere, flying is trivial: `t.forward` is the ship's
-local −Z rotated into world space, so velocity is just that times speed, and the
-`MovementSystem` you already wrote integrates it one step later in the schedule.
+**`FlightControlSystem.swift`**, in `update` — after the `players.mutate` line:
+
+```diff
+         players.mutate(player) { $0.boosting = input.boosting }
++
++        let pitch = input.pitch * pitchRate
++        let yaw = input.yaw * yawRate
++        let roll = input.roll * rollRate + input.yaw * autoBank
++        transforms.mutate(player) { t in
++            let delta =
++                Quat(angle: pitch * dt, axis: Vec3(1, 0, 0)) *
++                Quat(angle: yaw * dt,   axis: Vec3(0, 1, 0)) *
++                Quat(angle: roll * dt,  axis: Vec3(0, 0, 1))
++            t.rotation = simd_normalize(t.rotation * delta)
++        }
+     }
+```
+
+Three things are happening in those eight lines, and each is worth naming.
+
+**Rates times `dt`.** `pitchRate` is 1.7 radians per second; multiplying by
+elapsed seconds gives this frame's share. Same discipline as chapter 07.
+
+**Right-multiplication.** `t.rotation * delta` composes the new tumble in the
+ship's **current** frame. Swap it to `delta * t.rotation` and the axes become
+world axes: roll ninety degrees and "pitch up" would still tilt you toward world
+up, which feels like dragging a cursor rather than flying. This one operand order
+is most of the difference between the two sensations, and chapter 03's checkpoint
+was building toward exactly this line.
+
+**The renormalise.** Thousands of quaternion multiplies accumulate floating-point
+error until the rotation stops being unit-length and starts skewing the mesh.
+`simd_normalize` costs almost nothing and prevents a bug that takes hours to
+diagnose because it appears gradually.
+
+### The auto-bank that sells it
+
+Look again at the roll line:
+
+```
+let roll = input.roll * rollRate + input.yaw * autoBank
+```
+
+Even with no roll key pressed, **yawing adds roll**. Turn left and the ship banks
+into the turn like a real aircraft leaning through a curve. It's one term, and
+it's most of the reason the flight reads as "a plane" rather than "a cursor".
+
+Set `autoBank` to `0` and fly for ten seconds. The turns go flat and lifeless
+immediately — the ship swivels like a turret. Put it back. This is the cheapest
+game-feel lesson in the project.
+
+Finally, velocity, which is trivial once the nose is pointed:
+
+**`FlightControlSystem.swift`**, in `update` — after the `transforms.mutate` block:
+
+```diff
+             t.rotation = simd_normalize(t.rotation * delta)
+         }
++
++        guard let t = transforms.get(player), let pl = players.get(player) else { return }
++        let speed = cruiseSpeed * (pl.boosting ? boostMultiplier : 1)
++        velocities.set(player, Velocity(linear: t.forward * speed))
+     }
+```
+
+`t.forward` is chapter 07's computed property — local −Z rotated into world
+space. Multiply by a speed and you have the velocity that `MovementSystem` will
+integrate one step later in the schedule. That ordering is deliberate: flight
+control writes velocity, movement reads it, and neither knows about the other.
 
 ---
 
 ## Wire it up
 
-Three small changes.
+Three files change, none by much.
 
-**1. `Game.swift` — take input and run the system.** Replace the `update` method
-with this version (the signature gains `input:`, and the drift velocity in
-`spawnPlayer` is no longer needed — flight control sets velocity every frame):
+**`Game.swift`**, in `spawnPlayer` — the temporary drift from chapter 07 goes,
+because flight control now sets velocity every frame:
 
-```swift
-    func update(dt rawDt: Float, input: InputState, aspect: Float) -> FrameRenderData {
-        let dt = min(max(rawDt, 0), 1.0 / 30.0)
-
-        // --- The system schedule --------------------------------------------
-        FlightControlSystem.update(world, player: player, input: input, dt: dt)
-        MovementSystem.update(world, dt: dt)
-        SpinSystem.update(world, dt: dt)
-        world.flushDestroyed()
-        // --------------------------------------------------------------------
-
-        let t = world.get(Transform.self, player) ?? Transform()
-        let eye = t.position - t.forward * 9 + t.up * 3
-        let view = Math.lookAt(eye: eye, center: t.position + t.forward * 14, up: Vec3(0, 1, 0))
-        let projection = Math.perspective(fovyRadians: fieldOfView.radians,
-                                          aspect: max(aspect, 0.01),
-                                          near: 0.1, far: 1200)
-        let frame = FrameUniforms(viewProjection: projection * view,
-                                  cameraPosition: eye,
-                                  lightDirection: lightDirection)
-
-        return FrameRenderData(frame: frame,
-                               instances: RenderSystem.buildInstances(world),
-                               playerPosition: t.position,
-                               hud: [])
-    }
+```diff
+         world.add(Transform(), to: player)
+-        world.add(Velocity(linear: Vec3(0, 0, -20)), to: player)
++        world.add(Velocity(), to: player)
+         world.add(Player(), to: player)
 ```
 
-Also in `spawnPlayer`, simplify the velocity line back to a plain `Velocity()`:
+**`Game.swift`** — `update` takes input and runs the new system first:
 
-```swift
-        world.add(Velocity(), to: player)
+```diff
+-    func update(dt rawDt: Float, aspect: Float) -> FrameRenderData {
++    func update(dt rawDt: Float, input: InputState, aspect: Float) -> FrameRenderData {
+         let dt = min(max(rawDt, 0), 1.0 / 30.0)
+ 
++        FlightControlSystem.update(world, player: player, input: input, dt: dt)
+         MovementSystem.update(world, dt: dt)
 ```
 
-**2. `GameView.swift` — pass input through.** Add an `input` property, take it in
-the initializer, and feed it to `game.update`:
+Flight control goes **before** movement. It has to: it writes the velocity that
+movement integrates, so reversing them would fly the ship on last frame's
+heading — a one-frame lag that is subtle enough to ship and infuriating to debug.
 
-```swift
-final class RenderCoordinator: NSObject, MTKViewDelegate {
-    private let game: Game
-    private let renderer: Renderer
-    private let input: InputController          // <- new
-    private var lastTime: CFTimeInterval
+**`GameView.swift`**, in `RenderCoordinator` — hold the controller:
 
-    init(game: Game, renderer: Renderer, input: InputController) {   // <- new param
-        self.game = game
-        self.renderer = renderer
-        self.input = input
-        self.lastTime = CACurrentMediaTime()
-    }
+```diff
+     private let game: Game
+     private let renderer: Renderer
++    private let input: InputController
+     private var lastTime: CFTimeInterval
+ 
+-    init(game: Game, renderer: Renderer) {
++    init(game: Game, renderer: Renderer, input: InputController) {
+         self.game = game
+         self.renderer = renderer
++        self.input = input
+         self.lastTime = CACurrentMediaTime()
+     }
 ```
 
-and inside `draw(in:)`, change the update call to:
+**`GameView.swift`**, in `draw(in:)` — pass this frame's intent through:
 
-```swift
-        let data = game.update(dt: dt, input: input.state, aspect: aspect)
+```diff
+-        let data = game.update(dt: dt, aspect: aspect)
++        let data = game.update(dt: dt, input: input.state, aspect: aspect)
+         renderer.render(in: view,
 ```
 
-**3. `main.swift` — read the keyboard.** Replace the block that creates the game
-and coordinator with this:
+---
 
-```swift
-let game = Game()
-let input = InputController()
-let coordinator = RenderCoordinator(game: game, renderer: renderer, input: input)
-mtkView.delegate = coordinator   // MTKView holds this weakly
+## Reading the keyboard
 
-// Route keyboard events into the InputController. A local monitor is the
-// simplest reliable way to read the keyboard without wrestling the responder
-// chain. We consume the events we use (return nil) so macOS doesn't beep, but
-// let anything with Command through so system shortcuts keep working.
-let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { event in
-    switch event.type {
-    case .keyDown:
-        if event.keyCode == Key.escape { NSApp.terminate(nil) }
-        if event.modifierFlags.contains(.command) { return event }
-        input.keyDown(event.keyCode)
-        return nil
-    case .keyUp:
-        if event.modifierFlags.contains(.command) { return event }
-        input.keyUp(event.keyCode)
-        return nil
-    case .flagsChanged:
-        input.setBoost(event.modifierFlags.contains(.shift))
-        return event
-    default:
-        return event
-    }
-}
+**`main.swift`** — create the controller and hand it to the coordinator:
 
-window.makeKeyAndOrderFront(nil)
-app.activate(ignoringOtherApps: true)
-
-// Keep strong references alive for the life of the process.
-_ = coordinator
-_ = keyMonitor
-
-app.run()
+```diff
+ let game = Game()
++let input = InputController()
+-let coordinator = RenderCoordinator(game: game, renderer: renderer)
++let coordinator = RenderCoordinator(game: game, renderer: renderer, input: input)
+ mtkView.delegate = coordinator   // MTKView holds this weakly
 ```
 
-Boost rides on `flagsChanged` because Shift is a modifier, not a regular key —
-macOS reports it as a flag change rather than a key-down.
+Now the events themselves. A local event monitor is the simplest reliable way to
+read the keyboard without fighting the responder chain:
+
+**`main.swift`** — after the `mtkView.delegate` line:
+
+```diff
+ mtkView.delegate = coordinator   // MTKView holds this weakly
++
++let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { event in
++    switch event.type {
++    case .keyDown:
++        if event.keyCode == Key.escape { NSApp.terminate(nil) }
++        if event.modifierFlags.contains(.command) { return event }
++        input.keyDown(event.keyCode)
++        return nil
++    case .keyUp:
++        if event.modifierFlags.contains(.command) { return event }
++        input.keyUp(event.keyCode)
++        return nil
++    case .flagsChanged:
++        input.setBoost(event.modifierFlags.contains(.shift))
++        return event
++    default:
++        return event
++    }
++}
+ 
+ window.makeKeyAndOrderFront(nil)
+```
+
+The return value is the part worth understanding. Returning `nil` **consumes**
+the event, which is what stops macOS playing the "unhandled key" beep every time
+you pitch. Returning the event passes it on — which we do for anything with
+Command held, so `⌘Q` and the rest of the system shortcuts keep working, and for
+`flagsChanged`, because swallowing modifier events would break the OS's own
+tracking of them.
+
+Boost rides on `flagsChanged` rather than `keyDown` because Shift is a modifier:
+macOS never sends a key-down for it, only a notification that the flags changed.
+Reading `modifierFlags.contains(.shift)` gives us press *and* release from the
+same event, which is why `setBoost` takes a `Bool` rather than being two methods.
+
+**`main.swift`** — keep the monitor alive:
+
+```diff
+ _ = coordinator
++_ = keyMonitor
+ app.run()
+```
+
+`addLocalMonitorForEvents` returns an opaque token, and dropping it removes the
+monitor. Without this line your controls work for exactly as long as it takes ARC
+to notice, which in a release build can be immediately.
 
 ---
 
@@ -295,7 +383,8 @@ macOS reports it as a flag change rather than a key-down.
 $ swift run
 ```
 
-**You can fly.** Click the window to focus it, then:
+**You can fly.** Click the window to focus it first — a local monitor only sees
+events for the active app.
 
 | Key | Action |
 |---|---|
@@ -305,37 +394,50 @@ $ swift run
 | `Shift` | Boost |
 | `Esc` | Quit |
 
-Things to check, in order:
+Check these four in order, because each isolates a different thing you just
+wrote:
 
-1. **Yaw left and the ship banks** into the turn without you touching `Q`/`E` —
-   that's `autoBank`.
-2. **Roll 90°, then pitch.** You should curl sideways through the roll, not pitch
-   about the world's horizontal. If you pitch "up" relative to the screen no
-   matter how you're rolled, you've got `delta * t.rotation` instead of
+1. **Yaw left and the ship banks** into the turn without touching `Q`. That's
+   `autoBank`.
+2. **Roll 90°, then pitch.** You should curl sideways through the roll. If you
+   still pitch relative to the screen, you have `delta * t.rotation` instead of
    `t.rotation * delta`.
-3. **Hold Shift** and the grid rushes past noticeably faster.
-4. **Fly straight up past vertical** and keep going. Nothing snaps or locks —
-   that's the quaternion earning its place (chapter 03).
+3. **Hold Shift** — the grid visibly rushes past faster.
+4. **Fly straight up and keep going past vertical.** Nothing snaps, sticks or
+   flips. That's the quaternion earning its place; Euler angles would gimbal-lock
+   right there.
 
-**If nothing responds**, click the window first; the local event monitor only
-sees events for the active app.
-
----
-
-## Why this lives in a system, not the ship
-
-There is no `Ship` class with a `fly()` method. Flight is a *system* that reads
-input plus the player's components and writes back orientation and velocity. The
-upshot: give *any* entity a `Player` component and this system flies it; take it
-away and the entity coasts on whatever velocity it has. Behaviour is attached,
-not inherited — chapter 04's promise, cashed out.
-
-`Player.throttle` and `InputState.throttle` are wired through but unused — a
-deliberate hook. Making Shift/Ctrl ease `throttle` between a min and max speed,
-and using it in place of the constant `cruiseSpeed`, is a five-minute extension
-and a good first change to make on your own.
+**If nothing responds**, click the window. **If the ship drifts with no input**,
+you left chapter 07's `Velocity(linear:)` in `spawnPlayer`. **If every keypress
+beeps**, your monitor is returning the event instead of `nil`.
 
 ---
 
-**Next:** the camera is currently a placeholder. Let's fix that. →
+## Why this is a system, not a method on a ship
+
+There is no `Ship` class with a `fly()` method. Flight is a function that reads
+input plus components and writes back orientation and velocity. Two consequences
+follow, and both are useful: give *any* entity a `Player` component and this
+system will fly it, and take it away and the entity simply coasts on whatever
+velocity it has.
+
+`Player.throttle` and `InputState.throttle` are wired through and unused. That's
+a deliberate hook — see the challenge.
+
+---
+
+## Challenge
+
+Implement the throttle. Map two keys to ease `Player.throttle` between 0 and 1
+(`Math.moveToward` from chapter 03 is exactly the tool), then use it to
+interpolate speed between a minimum and `cruiseSpeed` instead of using
+`cruiseSpeed` flat. Three things to get right: the easing must be `dt`-scaled or
+it'll be twice as fast on a 120 Hz display; throttle should persist when no key
+is held, unlike the turn axes which reset every frame; and decide whether boost
+multiplies the throttled speed or overrides it — they feel different, and one of
+them makes the throttle pointless.
+
+---
+
+**Next:** the camera is still the crude placeholder from chapter 07. →
 [Chapter 09: The camera](09-the-camera.md)
