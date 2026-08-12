@@ -22,6 +22,16 @@ Usage:
 """
 import re, os, sys, glob, difflib
 
+
+def code_only(text):
+    """Strip line comments and blank lines so comment drift doesn't fail the check."""
+    out = []
+    for l in text.split("\n"):
+        l = re.sub(r'\s*//.*$', '', l.rstrip())
+        if l.strip():
+            out.append(l)
+    return "\n".join(out)
+
 ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS      = os.path.join(ROOT, "guides/space-fighter-metal/docs")
 CANON     = os.path.join(ROOT, "work/inputs/canonical")
@@ -92,19 +102,23 @@ def reconstruct(path):
     for lang, body, prev, ln in parse_blocks(text):
         m = CREATE_RE.search(prev) if prev else None
         target = m.group(1) if m else None
+        low = (prev or "").lower()
 
         if lang == "swift":
-            if target and re.search(r'\b(Create|create)\b', prev):
+            if target and ("new file" in low or "replace" in low):
+                # "**`path`** — new file:"  /  "**`path`** — replace ...:"
                 files[target] = "\n".join(body)
             elif target:
-                pending = target   # e.g. "…in Foo.swift, add:" then a swift block
-                files.setdefault(target, "")
+                errors.append(
+                    f"line {ln}: swift block names {target} but the location line says "
+                    f"neither 'new file' nor 'replace' — should this be a diff block?")
+            # no file named -> illustrative preview; not part of the build
         elif lang == "diff":
             if not target:
                 errors.append(f"line {ln}: diff block with no file named in the line above")
                 continue
             if target not in files:
-                errors.append(f"line {ln}: diff targets {target} which no chapter has created yet")
+                errors.append(f"line {ln}: diff targets {target}, which has not been created yet")
                 continue
             try:
                 files[target] = apply_diff(files[target], body)
@@ -116,23 +130,29 @@ def reconstruct(path):
 def check_format(path):
     text = open(path).read()
     issues = []
-    code = prose = 0
+    # A chapter that declares it creates nothing is a concept chapter: its
+    # snippets are previews and are exempt from the location-line rule.
+    concept = "Files created: none" in text
+    CODE_LANGS = ("swift", "diff", "metal")
+    code = prose = other = 0
     for lang, body, prev, ln in parse_blocks(text):
         n = len(body)
-        code += n
+        if lang in CODE_LANGS:
+            code += n
+        else:
+            other += n   # console output, trees, mermaid — not code the reader types
         if lang in ("swift", "diff", "metal") and n > MAX_BLOCK:
             issues.append(f"line {ln}: {lang} block is {n} lines (cap {MAX_BLOCK})")
         if lang == "diff" and not any(
                 l and not l[0] in "+-" for l in body):
             issues.append(f"line {ln}: diff block has no context lines")
-        if lang in ("swift", "diff") and not CREATE_RE.search(prev or ""):
-            if "Checkpoint" not in prev and not prev.startswith(">"):
-                issues.append(f"line {ln}: {lang} block not anchored to a file "
-                              f"(line above: {prev.strip()[:60]!r})")
+        if lang == "diff" and not CREATE_RE.search(prev or ""):
+            issues.append(f"line {ln}: diff block not anchored to a file "
+                          f"(line above: {prev.strip()[:60]!r})")
     for l in text.split("\n"):
         if l.strip() and not l.startswith("```"):
             prose += 1
-    prose -= code
+    prose -= (code + other)
     pct = 100 * code / max(code + prose, 1)
     if pct > MAX_CODE_PCT:
         issues.append(f"chapter is {pct:.0f}% code (cap {MAX_CODE_PCT}%)")
@@ -154,14 +174,23 @@ def main():
         all_errors += [f"{os.path.basename(ch)}: {i}" for i in issues]
         print(f"{os.path.basename(ch):<34}{pct:>6.0f}%  {'OK' if not issues else str(len(issues))+' issue(s)'}")
 
-    print("\n--- reconstruction vs canonical ---")
+    if which:
+        print("\n(single-chapter run: skipping canonical comparison — files that "
+              "evolve across chapters are incomplete until the full replay)")
+        if all_errors:
+            print(f"\n--- {len(all_errors)} issue(s) ---")
+            for e in all_errors[:40]:
+                print(f"  {e}")
+        return 1 if all_errors else 0
+
+    print("\n--- reconstruction vs canonical (code, ignoring comments) ---")
     ok = bad = missing = 0
     for rel, body in sorted(built.items()):
         canon_path = os.path.join(CANON, rel)
         if not os.path.exists(canon_path):
             print(f"  ?  {rel}  (no canonical file to compare)"); missing += 1; continue
-        want = open(canon_path).read().rstrip("\n")
-        got  = body.rstrip("\n")
+        want = code_only(open(canon_path).read())
+        got  = code_only(body)
         if want == got:
             print(f"  OK {rel}"); ok += 1
         else:

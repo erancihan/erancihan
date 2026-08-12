@@ -31,19 +31,19 @@ files are the reference; per-chapter checkpoints remain the reader's real test.
 
 | # | Unit | Code lines (old) | Status | Score |
 |---|---|---|---|---|
-| 1 | 01-project-setup | 68 | todo | |
-| 2 | 02-metal-fundamentals | 32 | todo | |
-| 3 | 03-the-math-you-need | 140 | todo | |
+| 1 | 01-project-setup | 68 | reviewed | 9 |
+| 2 | 02-metal-fundamentals | 32 | reviewed | 9 |
+| 3 | 03-the-math-you-need | 140 | reviewed | 9 |
 | 4 | 04-designing-the-ecs | 223 | todo | |
 | 5 | 05-meshes-and-geometry | 218 | todo | |
-| 6 | 06a-shaders (part of ch06) | 120 | todo | |
-| 7 | 06b-renderer-and-main (part of ch06) | 376 | todo | |
+| 6 | 06.A-shaders (part of ch06) | 120 | todo | |
+| 7 | 06.B-renderer-and-main (part of ch06) | 376 | todo | |
 | 8 | 07-the-game-loop | 282 | todo | |
 | 9 | 08-flight-and-input | 184 | todo | |
 | 10 | 09-the-camera | 29 | todo | |
 | 11 | 10-gameplay-systems | 329 | todo | |
 | 12 | 11-hud-and-feedback | 62 | todo | |
-| 13 | 12-where-to-go-next | 0 | todo | |
+| 13 | 12-where-to-go-next | 0 | reviewed | 9 |
 | 14 | Assemble + README/index + full smoke test | — | todo | |
 
 Units write to `work/units/`; `verify.py` prefers `work/units/` over `docs/` once
@@ -75,3 +75,7 @@ work/
     the MSL string, so a reader typing it verbatim gets a literal backslash. Canonical
     corrected to `\(error)`; the bogus note must be dropped in the ch06 rewrite.
   - No subagents used (standing user instruction); loop runs inline.
+
+- **Unit 1 done.** ch01 rewritten: adds a 'How this guide hands you code' section (swift-under-location-line for new code, diff-with-context for edits, prose over comments, checkpoint + challenge). 11% code, largest block 14 lines, format OK. Verifier hardened twice: code%% now ignores console/tree/mermaid fences; canonical comparison is code-only (comments legitimately drift now) and runs only on a full replay, since main.swift/Game.swift are incomplete until their last chapter.
+- **Units 2 and 13 done.** ch02 previews now state explicitly that they carry no location line because nothing is created yet; ch12 carried over unchanged (no code). Verifier: concept chapters (those declaring 'Files created: none') are exempt from the anchoring rule, and filtered runs now print their issues instead of returning silently.
+- **Unit 3 done — format proven end-to-end.** Math.swift now arrives as 8 anchored steps (1 `new file` + 7 `diff`), largest block 14 lines, 45% code. Reconstruction replays them into a file matching canonical exactly. Verifier rewritten to enforce the documented convention literally: swift block needs 'new file' or 'replace' in its location line, diff blocks must name a target, unanchored swift blocks are previews and ignored by the build. Checkpoint blocks now carry a '`main.swift` — replace' location line so throwaway scratch is explicit.
