@@ -143,13 +143,16 @@ def check_format(path):
     for lang, body, prev, ln in parse_blocks(text):
         n = len(body)
         if lang in CODE_LANGS:
-            code += n
+            code += len([l for l in body if l.startswith("+")]) if lang == "diff" else n
         else:
             other += n   # console output, trees, mermaid — not code the reader types
         cap = 40 if ("throwaway" in (prev or "").lower()
                      or "replace the whole file" in (prev or "").lower()) else MAX_BLOCK
-        if lang in ("swift", "diff", "metal") and n > cap:
-            issues.append(f"line {ln}: {lang} block is {n} lines (cap {cap})")
+        # For diffs, only ADDED lines count: context lines are navigation, not
+        # new code the reader has to absorb.
+        weight = len([l for l in body if l.startswith("+")]) if lang == "diff" else n
+        if lang in ("swift", "diff", "metal") and weight > cap:
+            issues.append(f"line {ln}: {lang} block adds {weight} lines (cap {cap})")
         if lang == "diff" and not any(
                 l and not l[0] in "+-" for l in body):
             issues.append(f"line {ln}: diff block has no context lines")
@@ -192,9 +195,14 @@ def main():
 
     print("\n--- reconstruction vs canonical (code, ignoring comments) ---")
     ok = bad = missing = 0
+    canon_by_name = {}
+    for dirpath, _, names in os.walk(CANON):
+        for n in names:
+            canon_by_name[n] = os.path.join(dirpath, n)
+
     for rel, body in sorted(built.items()):
-        canon_path = os.path.join(CANON, rel)
-        if not os.path.exists(canon_path):
+        canon_path = canon_by_name.get(rel.split("/")[-1], "")
+        if not canon_path:
             print(f"  ?  {rel}  (no canonical file to compare)"); missing += 1; continue
         want = code_only(open(canon_path).read())
         got  = code_only(body)
