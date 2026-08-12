@@ -40,7 +40,7 @@ files are the reference; per-chapter checkpoints remain the reader's real test.
 | 7 | 06.B-renderer-and-main (part of ch06) | 376 | reviewed | 9 |
 | 8 | 07-the-game-loop | 282 | reviewed | 9 |
 | 9 | 08-flight-and-input | 184 | reviewed | 9 |
-| 10 | 09-the-camera | 29 | todo | |
+| 10 | 09-the-camera | 29 | reviewed | 9 |
 | 11 | 10-gameplay-systems | 329 | todo | |
 | 12 | 11-hud-and-feedback | 62 | todo | |
 | 13 | 12-where-to-go-next | 0 | reviewed | 9 |
@@ -85,3 +85,4 @@ work/
 - **Unit 7 (06.B) done — biggest unit cleared.** Renderer.swift goes from one 283-line paste to ~19 anchored steps and reconstructs exactly; main.swift built to its ch06 state with the throwaway StaticPreview delegate. 50%% code, no block over 20 added lines. Canonical Renderer.swift reordered to put BlendMode above the class so teaching order matches dependency order. Splits chosen at real seams (drawMesh: binding vs draw call) rather than by relaxing the cap.
 - **Unit 8 done.** ch07: Components (6 groups), RenderSystem, MovementSystem+SpinSystem, Game v1, GameView, and the StaticPreview deletion. 49%% code, all blocks in range. **Verifier bug fixed:** the full run replayed each chapter from an empty filesystem, so any chapter patching a file created earlier failed. Replay is now cumulative across chapters, which is the only version of this check that means anything. Full replay: **12 of 15 files match canonical**; the three that don't (Game/GameView/main) are exactly those chs 08-11 still modify.
 - **Unit 9 done.** ch08: Input.swift (InputState/Key/InputController) and FlightControlSystem in anchored steps, plus diffs to Game, GameView and main. 39%% code. Cumulative replay now **16 of 17 files match**; main.swift reconstructs correctly through the 06.B -> 07 -> 08 diff chain, which is the real proof the cross-chapter anchoring holds. Only Game.swift outstanding, as chs 09-11 still modify it.
+- **Unit 10 done.** ch09: CameraSystem.swift plus a one-line Game.swift swap. 14%% code. Chapter is framed around fixing a named defect in ch07's placeholder (invisible banking) and centres on the 0.65/0.35 up-vector blend with both extremes offered as experiments. Replay: **17 of 18 match**, Game.swift still pending chs 10-11.
