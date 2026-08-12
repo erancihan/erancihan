@@ -98,10 +98,11 @@ def apply_diff(current, hunk):
     return "\n".join(cur[:i] + after + cur[i + n:])
 
 
-def reconstruct(path):
-    """Replay one chapter's snippets. Returns (files, errors)."""
+def reconstruct(path, files=None):
+    """Replay one chapter's snippets onto `files` (carried across chapters)."""
     text = open(path).read()
-    files, errors = {}, []
+    files = {} if files is None else files
+    errors = []
     pending = None   # path awaiting a swift block
 
     for lang, body, prev, ln in parse_blocks(text):
@@ -177,9 +178,10 @@ def main():
     built, all_errors = {}, []
     print(f"{'chapter':<34}{'code%':>7}  format")
     for ch in chapters:
-        files, errs = reconstruct(ch)
+        # Carry the virtual filesystem forward: later chapters patch files that
+        # earlier chapters created. Only a cumulative replay is meaningful.
+        built, errs = reconstruct(ch, built)
         issues, pct = check_format(ch)
-        built.update(files)
         all_errors += [f"{os.path.basename(ch)}: {e}" for e in errs]
         all_errors += [f"{os.path.basename(ch)}: {i}" for i in issues]
         print(f"{os.path.basename(ch):<34}{pct:>6.0f}%  {'OK' if not issues else str(len(issues))+' issue(s)'}")

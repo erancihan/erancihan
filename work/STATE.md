@@ -38,7 +38,7 @@ files are the reference; per-chapter checkpoints remain the reader's real test.
 | 5 | 05-meshes-and-geometry | 218 | reviewed | 9 |
 | 6 | 06.A-shaders (part of ch06) | 120 | reviewed | 9 |
 | 7 | 06.B-renderer-and-main (part of ch06) | 376 | reviewed | 9 |
-| 8 | 07-the-game-loop | 282 | todo | |
+| 8 | 07-the-game-loop | 282 | reviewed | 9 |
 | 9 | 08-flight-and-input | 184 | todo | |
 | 10 | 09-the-camera | 29 | todo | |
 | 11 | 10-gameplay-systems | 329 | todo | |
@@ -83,3 +83,4 @@ work/
 - **Unit 5 done.** ch05: RenderTypes + Mesh in 11 anchored steps (largest 17 lines, was 145); both reconstruct exactly. flat() split into skeleton + per-triangle body. Added prose the chapter lacked: indexed vs non-indexed, CPU-side/upload separation, star & grid budget tuning, and the UInt16 65,536-vertex index ceiling. Canonical Mesh.swift re-wrapped in starfield to match the narrower presentation. Verifier: code%% cap is now inclusive (55 passes).
 - **Unit 6 (06.A) done.** Shaders.swift in 8 anchored steps, reconstructs exactly, 39%% code. Verifier corrected on a point that was distorting every chapter: for diff blocks only ADDED lines count toward the size cap and the code%%, since context lines are navigation rather than new code. Under the corrected rule all units sit at 11-47%% (previously reading 55-60%%). Canonical lookup now walks subdirectories, so the full run compares ECS/ and Render/ files: **8 of 9 match**; the one mismatch is main.swift, correctly, since it stays the throwaway checkpoint version until 06.B and 08 land.
 - **Unit 7 (06.B) done — biggest unit cleared.** Renderer.swift goes from one 283-line paste to ~19 anchored steps and reconstructs exactly; main.swift built to its ch06 state with the throwaway StaticPreview delegate. 50%% code, no block over 20 added lines. Canonical Renderer.swift reordered to put BlendMode above the class so teaching order matches dependency order. Splits chosen at real seams (drawMesh: binding vs draw call) rather than by relaxing the cap.
+- **Unit 8 done.** ch07: Components (6 groups), RenderSystem, MovementSystem+SpinSystem, Game v1, GameView, and the StaticPreview deletion. 49%% code, all blocks in range. **Verifier bug fixed:** the full run replayed each chapter from an empty filesystem, so any chapter patching a file created earlier failed. Replay is now cumulative across chapters, which is the only version of this check that means anything. Full replay: **12 of 15 files match canonical**; the three that don't (Game/GameView/main) are exactly those chs 08-11 still modify.
