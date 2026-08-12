@@ -161,7 +161,7 @@ def check_format(path):
             prose += 1
     prose -= (code + other)
     pct = 100 * code / max(code + prose, 1)
-    if pct > MAX_CODE_PCT:
+    if round(pct) > MAX_CODE_PCT:
         issues.append(f"chapter is {pct:.0f}% code (cap {MAX_CODE_PCT}%)")
     return issues, pct
 

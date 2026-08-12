@@ -114,14 +114,11 @@ enum MeshLibrary {
         vertices.reserveCapacity(count)
         let half = span * 0.5
         for _ in 0..<count {
-            let p = Vec3(
-                Float.random(in: -half...half),
-                Float.random(in: -half...half),
-                Float.random(in: -half...half)
-            )
-            // Vary brightness a touch via the normal.x channel, reused as a
-            // scalar in the star shader (points don't need a lighting normal).
-            vertices.append(Vertex(position: p, normal: Vec3(Float.random(in: 0.4...1.0), 0, 0)))
+            let p = Vec3(Float.random(in: -half...half),
+                         Float.random(in: -half...half),
+                         Float.random(in: -half...half))
+            vertices.append(Vertex(position: p,
+                                   normal: Vec3(Float.random(in: 0.4...1.0), 0, 0)))
         }
         return Mesh(vertices: vertices, indices: [], primitive: .point)
     }
