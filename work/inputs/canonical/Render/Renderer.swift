@@ -11,6 +11,37 @@ private struct StarParams {
 /// Owns the Metal device, the pipeline states, and the GPU copies of every mesh.
 /// Everything GPU-facing lives here; the rest of the game speaks only in
 /// entities, components and `InstanceData`.
+/// Colour-attachment blend presets.
+private enum BlendMode {
+    case opaque    // replace destination
+    case additive  // src + dst — glows and light-on-dark line art
+    case alpha     // standard transparency for the HUD
+
+    func apply(to attachment: MTLRenderPipelineColorAttachmentDescriptor?) {
+        guard let a = attachment else { return }
+        switch self {
+        case .opaque:
+            a.isBlendingEnabled = false
+        case .additive:
+            a.isBlendingEnabled = true
+            a.rgbBlendOperation = .add
+            a.alphaBlendOperation = .add
+            a.sourceRGBBlendFactor = .sourceAlpha
+            a.sourceAlphaBlendFactor = .one
+            a.destinationRGBBlendFactor = .one
+            a.destinationAlphaBlendFactor = .one
+        case .alpha:
+            a.isBlendingEnabled = true
+            a.rgbBlendOperation = .add
+            a.alphaBlendOperation = .add
+            a.sourceRGBBlendFactor = .sourceAlpha
+            a.sourceAlphaBlendFactor = .sourceAlpha
+            a.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            a.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        }
+    }
+}
+
 final class Renderer {
 
     // MARK: Tunables
@@ -247,37 +278,6 @@ final class Renderer {
                                vertexStart: 0,
                                vertexCount: mesh.vertexCount,
                                instanceCount: instances.count)
-        }
-    }
-}
-
-/// Colour-attachment blend presets.
-private enum BlendMode {
-    case opaque    // replace destination
-    case additive  // src + dst — glows and light-on-dark line art
-    case alpha     // standard transparency for the HUD
-
-    func apply(to attachment: MTLRenderPipelineColorAttachmentDescriptor?) {
-        guard let a = attachment else { return }
-        switch self {
-        case .opaque:
-            a.isBlendingEnabled = false
-        case .additive:
-            a.isBlendingEnabled = true
-            a.rgbBlendOperation = .add
-            a.alphaBlendOperation = .add
-            a.sourceRGBBlendFactor = .sourceAlpha
-            a.sourceAlphaBlendFactor = .one
-            a.destinationRGBBlendFactor = .one
-            a.destinationAlphaBlendFactor = .one
-        case .alpha:
-            a.isBlendingEnabled = true
-            a.rgbBlendOperation = .add
-            a.alphaBlendOperation = .add
-            a.sourceRGBBlendFactor = .sourceAlpha
-            a.sourceAlphaBlendFactor = .sourceAlpha
-            a.destinationRGBBlendFactor = .oneMinusSourceAlpha
-            a.destinationAlphaBlendFactor = .oneMinusSourceAlpha
         }
     }
 }
