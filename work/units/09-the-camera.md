@@ -107,13 +107,16 @@ here without doing any correction ourselves.
 system:
 
 ```diff
-         // Chapter 09 replaces this block with a proper CameraSystem.
+-        // Chapter 09 replaces this block with a proper CameraSystem.
          let t = world.get(Transform.self, player) ?? Transform()
 -        let eye = t.position - t.forward * 9 + t.up * 3
 -        let view = Math.lookAt(eye: eye, center: t.position + t.forward * 14, up: Vec3(0, 1, 0))
 +        let (view, eye) = CameraSystem.viewMatrix(world, player: player)
          let projection = Math.perspective(fovyRadians: fieldOfView.radians,
 ```
+
+Delete the "chapter 09 replaces this" comment along with it — it has now come
+true, and a stale forward-reference is worse than no comment.
 
 The `let t` line stays — `update` still needs the transform for
 `playerPosition` in the returned frame data.
