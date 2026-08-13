@@ -15,28 +15,28 @@ topic. ⭐ = start here for that topic.
 | Resource | What it's for |
 |---|---|
 | ⭐ Khronos — **Vulkan Registry & Specification** — https://registry.khronos.org/vulkan/ | The canonical reference for every object in Chapters 02–07: instance, device, swapchain, pipeline, descriptors, sync. The [1.3 HTML spec](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/) is searchable. |
-| ⭐ Khronos — **Vulkan Documentation / Guide** — https://docs.vulkan.org | The official, readable companion to the spec — concept explainers for queues, memory, synchronization and more (Chapters 02, 05, 07). |
+| ⭐ Khronos — **Vulkan Documentation / Guide** — https://docs.vulkan.org | The official, readable companion to the spec — concept explainers for queues, memory, synchronization and more (Chapters 02, 05.A–B, 06). |
 | **Khronos — Vulkan-Samples** — https://github.com/KhronosGroup/Vulkan-Samples | The official one-stop sample collection: dynamic rendering, descriptor indexing, and every performance topic Chapter 14 points at. |
-| **LunarG — Vulkan SDK** — https://vulkan.lunarg.com | The loader, validation layers, `glslc`/shaderc and `vkconfig` (Chapters 01, 06, 14). Install this first. |
-| **Vulkan Synchronization Examples** (Khronos wiki) — https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples | Copy-paste-correct barrier and semaphore/fence recipes — the reference for Chapter 05's sync. |
+| **LunarG — Vulkan SDK** — https://vulkan.lunarg.com | The loader, validation layers, `glslc`/shaderc and `vkconfig` (Chapters 01, 07.A, 14). Install this first. |
+| **Vulkan Synchronization Examples** (Khronos wiki) — https://github.com/KhronosGroup/Vulkan-Docs/wiki/Synchronization-Examples | Copy-paste-correct barrier and semaphore/fence recipes — the reference for Chapter 05.B's sync. |
 
 ## Vulkan — tutorials & books
 
 | Resource | What it's for |
 |---|---|
-| ⭐ **Vulkan Tutorial** (Alexander Overvoorde) — https://vulkan-tutorial.com | The friendliest first pass through instance→triangle; our Chapters 02, 05, 06 cover the same ground more briefly. |
+| ⭐ **Vulkan Tutorial** (Alexander Overvoorde) — https://vulkan-tutorial.com | The friendliest first pass through instance→triangle; our Chapters 02, 05.A–B and 07.A–B cover the same ground more briefly. |
 | ⭐ **vkguide.dev** (Victor Blanco) — https://vkguide.dev | A modern-Vulkan guide built around **dynamic rendering**, VMA and descriptor abstractions — the direction Chapter 14 points toward. |
 | **Sascha Willems — Vulkan examples** — https://github.com/SaschaWillems/Vulkan | The definitive grab-bag of runnable Vulkan techniques (shadows, compute particles, PBR) — a technique index for Chapter 14. |
-| **Arseny Kapoulkine (zeux) — "Writing an efficient Vulkan renderer"** — https://zeux.io/2020/02/27/writing-an-efficient-vulkan-renderer/ | The best single article on the performance decisions behind Chapter 07 (buffers, descriptors) and Chapter 14 (bindless, GPU-driven). |
+| **Arseny Kapoulkine (zeux) — "Writing an efficient Vulkan renderer"** — https://zeux.io/2020/02/27/writing-an-efficient-vulkan-renderer/ | The best single article on the performance decisions behind Chapter 06 (buffers, descriptors) and Chapter 14 (bindless, GPU-driven). |
 
 ## The toolchain
 
 | Resource | What it's for |
 |---|---|
-| **GLFW documentation** — https://www.glfw.org/docs/latest/ | Window, surface and input — the Vulkan surface (Chapter 05) and the `Input` producer (Chapter 10). |
+| **GLFW documentation** — https://www.glfw.org/docs/latest/ | Window, surface and input — the Vulkan surface (Chapters 02, 05.A) and the `Input` producer (Chapter 10). |
 | ⭐ **GLM** — https://github.com/g-truc/glm | The header-only math library: `vec`, `mat`, `quat`, and the `GLM_FORCE_DEPTH_ZERO_TO_ONE` flag central to Chapter 03. |
-| ⭐ **Vulkan Memory Allocator (VMA)** — https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator | AMD's allocator — the whole of Chapter 07's memory management in one header. Read its docs for the budget and defrag APIs (Chapter 14). |
-| **shaderc** (Google) — https://github.com/google/shaderc | `glslc`, the GLSL→SPIR-V compiler CMake runs in Chapter 01, and `libshaderc` for the runtime-compile alternative (Chapter 06). |
+| ⭐ **Vulkan Memory Allocator (VMA)** — https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator | AMD's allocator — the whole of Chapter 06's memory management in one header. Read its docs for the budget and defrag APIs (Chapter 14). |
+| **shaderc** (Google) — https://github.com/google/shaderc | `glslc`, the GLSL→SPIR-V compiler CMake runs in Chapter 01, and `libshaderc` for the runtime-compile alternative (Chapter 07.A). |
 | **CMake documentation** — https://cmake.org/cmake/help/latest/ | The build system and the custom `glslc` step from Chapter 01. |
 
 ## Debugging & profiling
@@ -88,7 +88,7 @@ topic. ⭐ = start here for that topic.
 | Resource | What it's for |
 |---|---|
 | **MoltenVK** — https://github.com/KhronosGroup/MoltenVK | Vulkan-on-Metal for macOS/iOS — how this guide's code runs on Apple hardware (Chapter 14), closing the loop with the Metal sibling guide. |
-| **`VK_KHR_dynamic_rendering`** (spec) — https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_dynamic_rendering.html | The extension that deletes render-pass/framebuffer boilerplate — Chapter 05's note and Chapter 14's first refactor. |
+| **`VK_KHR_dynamic_rendering`** (spec) — https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_dynamic_rendering.html | The extension that deletes render-pass/framebuffer boilerplate — Chapter 05.A's note and Chapter 14's first refactor. |
 
 ## Free 3D assets (for when "simple geometry" ends)
 
