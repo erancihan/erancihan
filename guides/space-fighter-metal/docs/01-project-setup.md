@@ -6,25 +6,44 @@
 >
 > **Files created:** `Package.swift`, `Sources/SpaceFighter/main.swift`
 
-This is a **build-along guide**. You type the code; every file is given in full,
-and every chapter ends with something you can run. Nothing is elided, and there
-is no finished project to download — by chapter 11 you'll have written the whole
-thing.
+This is a **build-along guide**. You type the code; every line is given, but a
+handful at a time, with the reasoning around it. There is no finished project to
+download — by chapter 11 you'll have written the whole thing.
 
 ---
 
 ## How this guide hands you code
 
-Three conventions, so you're never guessing:
+Four conventions. Learn them here and you'll never have to guess where something
+goes.
 
-1. **"Create `path/to/File.swift`" means a complete new file.** Everything
-   between the fences is the entire contents. Paste it, save it, move on.
-2. **Two files grow as the guide goes:** `Game.swift` (the system schedule) and
-   `main.swift` (the wiring). When a chapter changes one, it says so plainly and
-   shows you either the complete new version or the exact method to replace —
-   never a diff you have to reconstruct.
-3. **Every chapter ends with a `Checkpoint`.** Run it. If the output doesn't
-   match, something's wrong *now*, not three chapters later.
+**1. New code arrives in a `swift` block under a location line.** The line above
+the block always names the file, and where in it:
+
+> **`Sources/SpaceFighter/Math.swift`** — new file:
+
+**2. Changes to existing code arrive as a `diff` block** with a few real lines of
+context around them. Lines marked `+` are yours to add, lines marked `-` are
+yours to delete, and unmarked lines are already in your file — they're there to
+show you *where*:
+
+> **`Game.swift`**, in `update` — swap the placeholder camera for the real one:
+>
+> ```diff
+>      let dt = min(max(rawDt, 0), 1.0 / 30.0)
+> -    let eye = t.position - t.forward * 9 + t.up * 3
+> +    let (view, eye) = CameraSystem.viewMatrix(world, player: player)
+> ```
+
+**3. Explanation lives in the prose, not in comments.** The code you write will
+be commented the way real code is — sparingly, for the non-obvious. The *why*
+is in the paragraphs around it. If you want a chapter's reasoning later, reread
+the prose, not the file.
+
+**4. Every chapter ends with a `Checkpoint`** — a command, the output you should
+see, and what to check when you don't. Run it. If it doesn't match, something is
+wrong *now*, not three chapters later. Most build chapters also end with a
+**Challenge**: an extension with no solution given.
 
 Two chapters (02 and 12) are pure concept and create no files; they say so at the
 top.
@@ -41,7 +60,9 @@ $ mkdir SpaceFighter && cd SpaceFighter
 $ swift package init --type executable
 ```
 
-**Replace** the generated `Package.swift` with this:
+That generates a `Package.swift` we're going to overwrite completely.
+
+**`Package.swift`** — replace the generated file with this:
 
 ```swift
 // swift-tools-version:5.9
@@ -50,8 +71,6 @@ import PackageDescription
 let package = Package(
     name: "SpaceFighter",
     platforms: [
-        // Metal and the simd APIs we use predate this, but macOS 13 keeps the
-        // code modern and matches a current Xcode toolchain.
         .macOS(.v13)
     ],
     targets: [
@@ -63,27 +82,31 @@ let package = Package(
 )
 ```
 
-Metal, MetalKit and AppKit are **system frameworks** on macOS, so there are no
-dependencies to declare — `import Metal` just works.
+Two things worth noting. There are **no dependencies** — Metal, MetalKit and
+AppKit are system frameworks on macOS, so `import Metal` just works. And the
+macOS 13 floor isn't strictly required (the APIs we use are older) but it keeps
+the code modern and matches a current Xcode toolchain.
 
-`swift package init` may have created `Sources/SpaceFighter/SpaceFighter.swift`.
-Delete it; we use a `main.swift` entry point instead:
+`swift package init` may also have created a `Sources/SpaceFighter/SpaceFighter.swift`.
+Delete it — we use a `main.swift` entry point instead:
 
 ```console
 $ rm -f Sources/SpaceFighter/SpaceFighter.swift
 ```
 
-Now **create `Sources/SpaceFighter/main.swift`** — a placeholder we replace in
-chapter 06, just so the package has an entry point and builds:
+**`Sources/SpaceFighter/main.swift`** — new file:
 
 ```swift
-// Entry point. A SwiftPM executable runs the top-level code in `main.swift`.
 // Chapter 06 replaces this with a real AppKit window and a Metal view.
 
 import Foundation
 
 print("SpaceFighter: toolchain OK")
 ```
+
+A SwiftPM executable runs the top-level code in `main.swift`, so this three-line
+file is a complete program. It exists only so the package has an entry point and
+builds; you'll throw it away in chapter 06.
 
 ### Checkpoint
 
@@ -92,8 +115,8 @@ $ swift run
 SpaceFighter: toolchain OK
 ```
 
-If you see that line, your toolchain is good and everything from here is just
-adding files.
+If you see that line, your toolchain is good and everything from here is adding
+files.
 
 ---
 
@@ -116,6 +139,10 @@ Keep this table handy — it's the whole project. Every path is relative to
 | 10 | `Systems/WeaponSystem.swift`, `Systems/EnemySystem.swift`, `Systems/LifetimeSystem.swift`, `Systems/CollisionSystem.swift` | **play it** — shoot, get hit, score |
 | 11 | `HUD.swift` | see a reticle and a hull bar |
 | 12 | *(none — roadmap)* | — |
+
+Most files you create once and never touch again. Two grow with the guide:
+`Game.swift`, which accumulates the system schedule, and `main.swift`, which
+accumulates the wiring. Those are the files you'll see `diff` blocks for.
 
 The final layout:
 
@@ -272,8 +299,8 @@ The *code* is identical either way — only the packaging changes.
   or VM without a Metal device; this project needs real Apple hardware.
 - **`swift: command not found`.** Install the toolchain with
   `xcode-select --install`, or open the project in Xcode.
-- **`error: no such module 'Metal'`.** You're not on macOS, or the platform line
-  in `Package.swift` is missing.
+- **`error: no such module 'Metal'`.** You're not on macOS, or the `platforms`
+  line in `Package.swift` is missing.
 
 ---
 

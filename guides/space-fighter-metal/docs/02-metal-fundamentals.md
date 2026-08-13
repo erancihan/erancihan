@@ -49,9 +49,9 @@ are created **fresh every frame**. That split is exactly how chapter 06 is
 organised — `Renderer.init` does all the once-only setup, `Renderer.render` does
 the per-frame recording.
 
-The snippets below are **previews, not files to create** — they're the lines
-you'll write in chapter 06, shown here so the concepts have something concrete
-attached.
+Every snippet in this chapter is a **preview**. None of them carry a location
+line, because you are not creating anything yet — they're lines you'll write in
+chapter 06, shown here so the vocabulary has something concrete attached.
 
 ### Device, queue, library
 
