@@ -2,117 +2,152 @@
 
 > **You'll leave this chapter with:** the placeholder camera replaced by a proper
 > chase rig — one that lets you *feel* a bank without spinning the world — and an
-> understanding of the tuning knobs that change the whole game feel.
+> understanding of the two numbers that change the whole game feel.
 >
 > **Files created:** `Sources/SpaceFighter/Systems/CameraSystem.swift`
 > **Files changed:** `Game.swift`
 
 ---
 
-## A camera is just a view matrix
+## There is no camera
 
-There's no camera object in the world. The "camera" is the **view matrix** we
-feed the shaders (chapter 03), and producing it is one function that runs late in
-the frame, after the ship has moved.
+Nothing in the world is a camera. The "camera" is a **view matrix** we hand the
+shaders once per frame, and producing it is one function that runs late in the
+frame, after the ship has moved.
 
-Right now that logic is three inline lines in `Game.update`. It works, but it
-uses world-up for the camera's up vector, which means **your banks are
-invisible** — roll hard into a turn and the horizon stays stubbornly level. Let's
-extract it and fix that.
+Chapter 07 left three inline lines doing that job in `Game.update`. They work,
+and they're wrong in one specific way that's worth naming before we fix it: they
+use world-up, so **your banking is invisible**. Roll hard into a turn and the
+horizon stays stubbornly level, which makes the ship feel like a cursor being
+dragged rather than an aircraft carving.
 
----
-
-## Create `Sources/SpaceFighter/Systems/CameraSystem.swift`
+**`Sources/SpaceFighter/Systems/CameraSystem.swift`** — new file:
 
 ```swift
 import simd
 
-/// A chase camera that sits behind and slightly above the ship and looks a bit
-/// ahead of it. The "up" is mostly world-up with a touch of the ship's own up
-/// mixed in, so hard banks read on screen without making the whole world spin
-/// (and without turning anyone's stomach).
+/// A chase camera: behind the ship, slightly above, looking a little ahead of it.
 enum CameraSystem {
     static let distanceBack: Float = 9
     static let heightAbove: Float = 3
     static let lookAhead: Float = 14
-
-    static func viewMatrix(_ world: World, player: Entity) -> (view: Mat4, eye: Vec3) {
-        guard let t = world.get(Transform.self, player) else {
-            return (Math.identity, .zero)
-        }
-        let eye = t.position - t.forward * distanceBack + t.up * heightAbove
-        let center = t.position + t.forward * lookAhead
-        let camUp = simd_normalize(Vec3(0, 1, 0) * 0.65 + t.up * 0.35)
-        return (Math.lookAt(eye: eye, center: center, up: camUp), eye)
-    }
 }
 ```
 
-Read each line as a placement:
+Three numbers, and they're the rig. Nine units back is close enough that the ship
+fills a useful part of the frame but far enough that you can see what's about to
+hit you; three units up puts the hull below the centre line so it doesn't cover
+the thing you're aiming at.
 
-- **`eye`** — start at the ship, back off along its `forward` (so we're *behind*
-  it), and rise along its `up`. That's the over-the-shoulder seat. Note it uses
-  the ship's own axes, so the camera follows through rolls and loops.
-- **`center`** — look at a point *ahead* of the ship, not at the ship itself.
-  Aiming past it puts the ship in the lower-middle of frame and shows you where
-  you're going — you fly toward the reticle, not toward the tail you're chasing.
-- **`camUp`** — the interesting one.
+**`CameraSystem.swift`**, in `CameraSystem` — after the tunables:
 
-## The up-vector blend: banking without nausea
-
-What should "up" be for the camera? Two tempting answers, both flawed:
-
-- **World up `(0,1,0)`** — rock steady, but the camera ignores the ship's roll
-  entirely. This is what you have right now: bank hard and the screen doesn't
-  react, so the roll is invisible and the flight feels detached.
-- **Ship up `t.up`** — fully glued to the cockpit, so every roll spins the whole
-  world around you. Immersive for two seconds, then motion sickness.
-
-We blend, weighted toward the world:
-
-```swift
-let camUp = simd_normalize(Vec3(0, 1, 0) * 0.65 + t.up * 0.35)
+```diff
+     static let lookAhead: Float = 14
++
++    static func viewMatrix(_ world: World, player: Entity) -> (view: Mat4, eye: Vec3) {
++        guard let t = world.get(Transform.self, player) else {
++            return (Math.identity, .zero)
++        }
++        let eye = t.position - t.forward * distanceBack + t.up * heightAbove
++        let center = t.position + t.forward * lookAhead
++        let camUp = simd_normalize(Vec3(0, 1, 0) * 0.65 + t.up * 0.35)
++        return (Math.lookAt(eye: eye, center: center, up: camUp), eye)
++    }
+ }
 ```
 
-65% world-up keeps the horizon mostly level and legible; 35% ship-up lets a bank
-*tilt* the view enough that you feel the turn. That single ratio is a real
-game-feel dial — nudge it toward `t.up` for a wilder, cockpit-like ride, or
-toward world-up for a calmer, more readable one.
+Read the three interesting lines as placements.
 
-## Update `Game.swift`
+**`eye`** starts at the ship, backs off along its own `forward`, and rises along
+its own `up`. Using the ship's axes rather than the world's is what keeps the
+camera behind you through a loop — at the top of a loop, "behind the ship" and
+"below the world" are the same place, and only the ship's frame knows that.
 
-Replace the three inline camera lines in `update` — the ones computing `eye` and
-`view` — with a call to the new system:
+**`center`** looks at a point *ahead* of the ship rather than at the ship. Aiming
+past it pushes the hull into the lower-middle of the frame and fills the screen
+with where you're going. You fly toward the reticle, not toward the tail you're
+chasing.
 
-```swift
-        // was: let eye = t.position - t.forward * 9 + t.up * 3
-        //      let view = Math.lookAt(eye: eye, center: ..., up: Vec3(0, 1, 0))
-        let (view, eye) = CameraSystem.viewMatrix(world, player: player)
-```
-
-Everything else in `update` stays as it is. The `let t = ...` line above it is
-still needed for `playerPosition` in the returned `FrameRenderData`.
+**`camUp`** is the fix for the invisible bank, and it deserves its own section.
 
 ---
 
-## Field of view and the projection
+## Banking without nausea
 
-The other half of the camera is the projection, already in `Game.update`:
+What should "up" be for the camera? There are two obvious answers and both are
+wrong.
+
+**World up, `(0,1,0)`** — rock steady, and what chapter 07 used. The camera
+completely ignores the ship's roll, so a hard bank produces no visual change at
+all. The roll is real, the flight model is doing it, and the player cannot see
+it.
+
+**Ship up, `t.up`** — glued to the cockpit. Now every roll spins the entire world
+around the viewer. Immersive for about two seconds and then genuinely
+unpleasant; this is the setting that makes people put the controller down.
+
+So we blend, weighted toward the world:
+
+```
+camUp = normalize( worldUp * 0.65  +  shipUp * 0.35 )
+```
+
+Sixty-five percent world-up keeps the horizon broadly level and readable.
+Thirty-five percent ship-up tilts the frame enough that a bank is unmistakable.
+The ratio is the dial, and it's one of maybe three numbers in this project that
+change how the game *feels* rather than what it does.
+
+`Math.lookAt` then re-orthogonalises whatever we hand it — that's the property
+chapter 03 built in, and it's why we can pass a blended, non-perpendicular vector
+here without doing any correction ourselves.
+
+## Update `Game.swift`
+
+**`Game.swift`**, in `update` — replace chapter 07's inline camera with the
+system:
+
+```diff
+-        // Chapter 09 replaces this block with a proper CameraSystem.
+         let t = world.get(Transform.self, player) ?? Transform()
+-        let eye = t.position - t.forward * 9 + t.up * 3
+-        let view = Math.lookAt(eye: eye, center: t.position + t.forward * 14, up: Vec3(0, 1, 0))
++        let (view, eye) = CameraSystem.viewMatrix(world, player: player)
+         let projection = Math.perspective(fovyRadians: fieldOfView.radians,
+```
+
+Delete the "chapter 09 replaces this" comment along with it — it has now come
+true, and a stale forward-reference is worse than no comment.
+
+The `let t` line stays — `update` still needs the transform for
+`playerPosition` in the returned frame data.
+
+---
+
+## Field of view, and the depth range
+
+The other half of the camera is the projection, already in `Game.update` since
+chapter 07:
 
 ```swift
 Math.perspective(fovyRadians: fieldOfView.radians, aspect: max(aspect, 0.01),
                  near: 0.1, far: 1200)
 ```
 
-- **FOV 65°** is a comfortable middle. Widen it (85°+) and the sense of speed
-  jumps as the periphery streaks past — a cheap, effective boost effect is to
-  lerp FOV up while `Shift` is held. Narrow it and everything feels zoomed and
-  slower.
-- **`aspect`** comes live from the drawable each frame, so resizing the window
-  never stretches the image (chapter 03).
-- **near/far = 0.1 / 1200** is the depth range. Too wide a range wastes depth
-  precision and makes distant surfaces flicker (z-fighting); 1200 comfortably
-  contains the star cube and grid without stretching precision thin.
+**FOV 65°** is a comfortable middle. Widen it toward 85° and the sense of speed
+jumps as the periphery streaks past — which is why a cheap and very effective
+boost effect is to lerp the FOV up while `Shift` is held, rather than actually
+changing speed much. Narrow it and everything feels zoomed and sluggish.
+
+**`aspect`** comes live from the drawable every frame, so resizing the window
+never stretches the image.
+
+**near/far = 0.1 / 1200** is the depth range, and the ratio between them matters
+more than either value. Depth precision is distributed non-linearly and is
+dominated by the *near* plane: pushing `near` down to 0.001 to avoid clipping
+something close will wreck precision across the entire rest of the scene and
+produce z-fighting on distant surfaces. If you need to see closer, move the
+camera, don't move the near plane. 1200 comfortably contains chapter 05's star
+cube and grid without stretching precision thin.
 
 ---
 
@@ -125,47 +160,66 @@ $ swift run
 Fly, and compare against the last chapter:
 
 1. **Yaw left.** The horizon now **tilts** with your bank instead of staying
-   rigidly level. That's the 65/35 blend.
+   rigidly level.
 2. **Roll a full 360°.** The world tips but never fully inverts — the world-up
    term keeps pulling the horizon back toward level.
 3. **Pull into a loop.** The camera stays behind the ship all the way over the
-   top, because `eye` is built from the ship's own `forward` and `up`.
+   top, because `eye` is built from the ship's own axes.
 
-Now go break it on purpose, because this is the fastest way to understand the
-line: set the blend to `Vec3(0,1,0) * 1.0 + t.up * 0.0` and fly — banks become
-invisible again. Then try `* 0.0 + t.up * 1.0` — the entire world spins with
-every roll. Put it back to 0.65/0.35 and you'll never wonder what that line does.
+Then break it deliberately, because this is the fastest way to understand the
+line. Set the blend to `Vec3(0,1,0) * 1.0 + t.up * 0.0` and fly: banks go
+invisible, exactly like chapter 07. Now try `* 0.0 + t.up * 1.0`: the entire
+world spins with every roll and you'll want to stop within seconds. Restore
+0.65/0.35. You will never again wonder what that line is for.
 
 ---
 
 ## Where you'd add smoothing
 
-Our camera is rigidly locked to the ship — `eye` is recomputed exactly each
-frame. It's crisp and predictable, which suits fast arcade play. A cinematic
-camera would **lag** slightly: store the previous eye position and ease it toward
-the target each frame,
+Our camera is rigidly locked — `eye` is recomputed exactly each frame with no
+history. That's crisp and predictable, which suits fast arcade play.
+
+A cinematic camera would **lag** slightly, easing toward the target:
 
 ```
 smoothedEye += (targetEye - smoothedEye) * (1 - exp(-k * dt))
 ```
 
-giving a spring-like trail that softens sharp maneuvers. We leave it rigid on
-purpose — lag trades responsiveness for smoothness, and this game wants
-responsiveness — but the hook is obvious: smooth `eye` (and/or `center`) inside
-`CameraSystem` before building the matrix. The `exp(-k·dt)` form keeps the
-smoothing frame-rate independent, unlike a raw `lerp(a, b, 0.1)` per frame.
+giving a spring-like trail that softens sharp manoeuvres. We leave it rigid on
+purpose — lag trades responsiveness for smoothness and this game wants
+responsiveness — but the hook is obvious: hold state in `CameraSystem` and smooth
+`eye` before building the matrix.
+
+Note the form. The naive version, `lerp(current, target, 0.1)` per frame, is
+frame-rate *dependent*: it smooths twice as fast at 120 Hz as at 60. The
+`1 - exp(-k·dt)` form is the frame-rate-independent equivalent, and it's the
+right habit for any exponential easing — camera, audio fades, difficulty ramps.
 
 ---
 
-## Why the camera reads the world like everything else
+## Why the camera is a plain function
 
-`CameraSystem` is just another function over the `World` — it queries the
-player's `Transform` and returns data. It holds no state, owns nothing, and could
-be pointed at *any* entity by passing a different id. Want a "spectate the enemy"
-mode or a kill-cam? Feed a different entity to the same function. That uniformity
-— camera, flight, collision, all plain functions over components — is the ECS
-paying off again.
+`CameraSystem.viewMatrix` takes a world and an entity and returns data. It holds
+no state, owns nothing, and could be pointed at *any* entity by passing a
+different id. Want a spectate-the-enemy mode, or a kill-cam that watches the
+thing that just destroyed you? Same function, different argument.
+
+That uniformity — camera, flight, collision, rendering, all plain functions over
+components — is the ECS paying off for the fourth time.
 
 ---
 
-**Next:** something to shoot at. → [Chapter 10: Gameplay systems](10-gameplay-systems.md)
+## Challenge
+
+Add a boost FOV kick. While `Player.boosting` is true, ease the field of view
+from 65° toward about 80°, and ease it back when boost releases. Three things to
+work out: `fieldOfView` is currently a `let` on `Game`, so it needs to become
+state that persists across frames; the easing must be frame-rate independent (see
+the `exp` form above, or `Math.moveToward` from chapter 03); and decide where
+this belongs — is it the camera's business or the player's? Both defensible, and
+the argument is the interesting part.
+
+---
+
+**Next:** something to shoot at. →
+[Chapter 10: Gameplay systems](10-gameplay-systems.md)
