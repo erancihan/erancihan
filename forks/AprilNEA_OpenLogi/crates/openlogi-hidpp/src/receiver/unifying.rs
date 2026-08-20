@@ -1,0 +1,504 @@
+//! Implements the Unifying Receiver.
+//!
+//! Unifying is a versatile receiver that can pair up to 6 devices using the
+//! 2.4 GHz eQuad radio protocol. It uses HID++ 1.0 registers for receiver
+//! control; paired devices speak HID++ 2.0 once addressed via their slot index.
+//!
+//! The register layout for device enumeration (`0xB5/0x5N`, `0xB5/0x6N`) is
+//! identical to Bolt's. The device-kind encoding differs from Bolt at values 5+
+//! (see [`DeviceKind`]).
+
+use std::sync::Arc;
+
+use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
+
+use crate::{
+    channel::{HidppChannel, MessageListenerGuard},
+    event::EventEmitter,
+    protocol::v10,
+    receiver::{RECEIVER_DEVICE_INDEX, ReceiverError},
+};
+
+/// All USB vendor & product ID pairs that are known to identify Unifying
+/// receivers.
+///
+/// `046d:c539` is the Lightspeed gaming receiver; `046d:c53f` is the Lightspeed
+/// nano receiver (bundled with G-series wireless mice such as the G305);
+/// `046d:c547` is the Lightspeed receiver bundled with newer G-series devices
+/// such as the G915 keyboard and the G502 X LIGHTSPEED. All answer the same
+/// HID++ 1.0 registers (pairing count, connection state, pairing information)
+/// as Unifying receivers. Callers that surface a user-facing receiver name
+/// label Lightspeed PIDs separately (see `openlogi-hid`).
+/// `0xc53f` was verified against a G305 (paired device wpid `0x4074`);
+/// `0xc547` against a G915 (paired device wpid `0x407c`).
+pub const VPID_PAIRS: &[(u16, u16)] = &[
+    (0x046d, 0xc52b),
+    (0x046d, 0xc532),
+    (0x046d, 0xc539),
+    (0x046d, 0xc53f),
+    (0x046d, 0xc547),
+];
+
+/// All known registers of the Unifying receiver.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, IntoPrimitive, TryFromPrimitive)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[non_exhaustive]
+#[repr(u8)]
+pub enum Register {
+    /// Controls which notifications the receiver emits. Wireless device-arrival
+    /// (`0x41`) events are only re-broadcast while wireless notifications are
+    /// enabled here; see [`Receiver::set_wireless_notifications`].
+    Notifications = 0x00,
+
+    /// Enables or disables wireless device-connection notifications; also used
+    /// to read the pairing count and to trigger device-arrival events.
+    Connections = 0x02,
+
+    /// Provides information about the receiver and paired devices. It uses
+    /// sub-registers, as defined in [`InfoSubRegister`], to differentiate
+    /// between different kinds of information.
+    ReceiverInfo = 0xb5,
+}
+
+/// Represents the known sub-registers of the [`Register::ReceiverInfo`]
+/// register.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, IntoPrimitive, TryFromPrimitive)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[non_exhaustive]
+#[repr(u8)]
+pub enum InfoSubRegister {
+    /// Provides general information about the receiver (serial number, pairing
+    /// slot count).
+    ReceiverInfo = 0x03,
+
+    /// Provides information about a specific paired device. The device index
+    /// (4 bits) must be added to this base address to form the actual
+    /// sub-register: `0x50 | (device_index & 0x0f)`.
+    DevicePairingInformation = 0x50,
+
+    /// Provides the codename of a specific paired device. The device index (4
+    /// bits) must be added: `0x60 | (device_index & 0x0f)`.
+    ///
+    /// NOTE: `0x60` is the *Bolt* base. Wire-verified Unifying receivers store
+    /// names at base `0x40 + (n-1)` instead, so name reads go directly through
+    /// `read_codename_unifying` in `inventory.rs` rather than this constant —
+    /// don't reuse `DeviceCodename` for Unifying name reads.
+    DeviceCodename = 0x60,
+}
+
+/// Implements the Unifying wireless receiver.
+#[derive(Clone)]
+pub struct Receiver {
+    chan: Arc<HidppChannel>,
+    emitter: Arc<EventEmitter<Event>>,
+    _listener: Arc<MessageListenerGuard>,
+}
+
+impl Receiver {
+    /// Tries to initialize a new [`Receiver`] from a raw HID++ channel.
+    ///
+    /// Returns [`ReceiverError::UnknownReceiver`] when the channel's VID/PID
+    /// doesn't match any known Unifying receiver.
+    pub fn new(chan: Arc<HidppChannel>) -> Result<Self, ReceiverError> {
+        if !VPID_PAIRS.contains(&(chan.vendor_id, chan.product_id)) {
+            return Err(ReceiverError::UnknownReceiver);
+        }
+
+        let emitter = Arc::new(EventEmitter::new());
+
+        let listener = chan.add_msg_listener_guarded({
+            let emitter = Arc::clone(&emitter);
+            move |raw, matched| {
+                // A report already matched to an outgoing request is a
+                // response, not a notification.
+                if matched {
+                    return;
+                }
+
+                if let Some(event) = decode_notification(&v10::Message::from(raw)) {
+                    emitter.emit(event);
+                }
+            }
+        });
+
+        Ok(Receiver {
+            _listener: Arc::new(listener),
+            chan,
+            emitter,
+        })
+    }
+
+    /// Creates a new listener for receiving receiver events.
+    #[must_use]
+    pub fn listen(&self) -> async_channel::Receiver<Event> {
+        self.emitter.create_receiver()
+    }
+
+    /// Counts the number of devices currently paired to this receiver.
+    /// Offline (sleeping) devices are included since pairings are persistent.
+    pub async fn count_pairings(&self) -> Result<u8, ReceiverError> {
+        let response = self
+            .chan
+            .read_register(
+                RECEIVER_DEVICE_INDEX,
+                Register::Connections.into(),
+                [0u8; 3],
+            )
+            .await?;
+
+        Ok(response[1])
+    }
+
+    /// Enables or disables wireless device-connection notifications.
+    ///
+    /// The receiver only re-broadcasts `0x41` device-arrival events (the source
+    /// for [`Self::trigger_device_arrival`]) while this is on. With it off the
+    /// trigger write is ACK'd but emits nothing — which is why a paired, online
+    /// device can fail to enumerate. Solaar enables this before listing.
+    ///
+    /// Read-modify-write of just the `WIRELESS` bit so it can't clobber other
+    /// flags already set on register `0x00` — notably `SOFTWARE_PRESENT` (0x08),
+    /// which the pairing flow enables (`pairing.rs` writes `[0x00, 0x09, 0x00]`)
+    /// and a concurrent inventory poll would otherwise drop.
+    pub async fn set_wireless_notifications(&self, enabled: bool) -> Result<(), ReceiverError> {
+        // Notification flags are a 3-byte big-endian word; the receiver-reporting
+        // bits live in byte 1 (WIRELESS = 0x000100, SOFTWARE_PRESENT = 0x000800).
+        const WIRELESS: u8 = 0x01;
+        let mut flags = self
+            .chan
+            .read_register(
+                RECEIVER_DEVICE_INDEX,
+                Register::Notifications.into(),
+                [0; 3],
+            )
+            .await?;
+        if enabled {
+            flags[1] |= WIRELESS;
+        } else {
+            flags[1] &= !WIRELESS;
+        }
+        self.chan
+            .write_register(RECEIVER_DEVICE_INDEX, Register::Notifications.into(), flags)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Triggers device-arrival notifications for all currently connected
+    /// devices. Used to enumerate online devices at startup.
+    pub async fn trigger_device_arrival(&self) -> Result<(), ReceiverError> {
+        self.chan
+            .write_register(
+                RECEIVER_DEVICE_INDEX,
+                Register::Connections.into(),
+                [0x02, 0x00, 0x00],
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Provides general information about the receiver (serial number and
+    /// pairing slot count).
+    pub async fn get_receiver_info(&self) -> Result<ReceiverInfo, ReceiverError> {
+        let response = self
+            .chan
+            .read_long_register(
+                RECEIVER_DEVICE_INDEX,
+                Register::ReceiverInfo.into(),
+                [InfoSubRegister::ReceiverInfo.into(), 0, 0],
+            )
+            .await?;
+
+        Ok(ReceiverInfo {
+            serial_number: hex::encode_upper(&response[1..=4]),
+            pairing_slots: response[6],
+        })
+    }
+
+    /// Retrieves the pairing information for the device at `device_index`
+    /// (1-based slot number).
+    pub async fn get_device_pairing_information(
+        &self,
+        device_index: u8,
+    ) -> Result<DevicePairingInformation, ReceiverError> {
+        let response = self
+            .chan
+            .read_long_register(
+                RECEIVER_DEVICE_INDEX,
+                Register::ReceiverInfo.into(),
+                [
+                    u8::from(InfoSubRegister::DevicePairingInformation) | (device_index & 0x0f),
+                    0x00,
+                    0x00,
+                ],
+            )
+            .await?;
+
+        Ok(DevicePairingInformation {
+            wpid: u16::from_le_bytes([response[2], response[3]]),
+            // Kind is identity-only: an unrecognised nibble folds to
+            // `Unknown` instead of failing the whole pairing-info read.
+            kind: DeviceKind::from(response[1] & 0x0f),
+            encrypted: response[1] & (1 << 4) != 0,
+            online: response[1] & (1 << 6) == 0,
+            unit_id: [response[4], response[5], response[6], response[7]],
+        })
+    }
+
+    /// Provides the unique ID of the receiver (serial number).
+    pub async fn get_unique_id(&self) -> Result<String, ReceiverError> {
+        self.get_receiver_info().await.map(|i| i.serial_number)
+    }
+}
+
+/// The sub-id of the only notification this receiver emits: a paired device
+/// came online.
+const DEVICE_CONNECTION_SUB_ID: u8 = 0x41;
+
+/// Decodes an unsolicited receiver message into the event it carries, or
+/// `None` for a report this crate does not model.
+///
+/// Kept separate from the message listener in [`Receiver::new`] so the wire
+/// layout is reachable from tests without a HID channel behind it.
+fn decode_notification(msg: &v10::Message) -> Option<Event> {
+    let header = msg.header();
+    if header.sub_id != DEVICE_CONNECTION_SUB_ID {
+        return None;
+    }
+    let payload = msg.extend_payload();
+
+    // A connection notification is addressed to the device's own slot, which
+    // is the only place that index is reported.
+    Some(Event::DeviceConnection(DeviceConnection {
+        index: header.device_index,
+        // Kind is identity-only; an unrecognised nibble folds to `Unknown` —
+        // dropping the event would hide the device entirely, since arrival
+        // notifications are the only device source on this path.
+        kind: DeviceKind::from(payload[1] & 0x0f),
+        encrypted: payload[1] & (1 << 4) != 0,
+        online: payload[1] & (1 << 6) == 0,
+        wpid: u16::from_le_bytes([payload[2], payload[3]]),
+    }))
+}
+
+/// Represents some general information about a Unifying receiver.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[non_exhaustive]
+pub struct ReceiverInfo {
+    /// Receiver serial number.
+    pub serial_number: String,
+    /// Number of available pairing slots.
+    pub pairing_slots: u8,
+}
+
+/// Represents information about a paired device as read from the pairing
+/// register.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[non_exhaustive]
+pub struct DevicePairingInformation {
+    /// Wireless product ID of the paired device.
+    pub wpid: u16,
+    /// Device kind reported by the receiver.
+    pub kind: DeviceKind,
+    /// Whether the link is encrypted.
+    pub encrypted: bool,
+    /// Whether the device is currently online.
+    pub online: bool,
+    /// Device unit ID.
+    pub unit_id: [u8; 4],
+}
+
+/// Represents the kind of a device paired to a Unifying receiver.
+///
+/// The encoding matches Bolt for values 1–4; from 5 onwards Unifying uses a
+/// shifted table (Remote=5, Trackball=6, Touchpad=7) while Bolt reserves those
+/// values and places them at 7–9.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, IntoPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[non_exhaustive]
+#[repr(u8)]
+pub enum DeviceKind {
+    /// Unknown device kind — also the fold target for values this crate
+    /// does not model (kind is identity-only and must never drop an event).
+    #[num_enum(default)]
+    Unknown = 0x00,
+    /// Keyboard device.
+    Keyboard = 0x01,
+    /// Mouse device.
+    Mouse = 0x02,
+    /// Numeric keypad device.
+    Numpad = 0x03,
+    /// Presenter device.
+    Presenter = 0x04,
+    /// Remote-control device.
+    Remote = 0x05,
+    /// Trackball device.
+    Trackball = 0x06,
+    /// Touchpad device.
+    Touchpad = 0x07,
+}
+
+/// Represents a device-connection event fired by the receiver when a paired
+/// device comes online (or in response to [`Receiver::trigger_device_arrival`]).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[non_exhaustive]
+pub struct DeviceConnection {
+    /// Slot index (1-based) of the device.
+    pub index: u8,
+    /// Device kind reported by the receiver.
+    pub kind: DeviceKind,
+    /// Whether the link is encrypted.
+    pub encrypted: bool,
+    /// Whether the device is currently online.
+    pub online: bool,
+    /// Wireless product ID of the device.
+    pub wpid: u16,
+}
+
+/// Represents an event emitted by the Unifying receiver.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[non_exhaustive]
+pub enum Event {
+    /// Fired whenever a paired device connects or reconnects, and for all
+    /// online devices in response to [`Receiver::trigger_device_arrival`].
+    DeviceConnection(DeviceConnection),
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "expect/unwrap are idiomatic in tests"
+)]
+mod tests {
+    use super::{DeviceConnection, DeviceKind, Event, decode_notification};
+    use crate::protocol::v10::{Message, MessageHeader};
+
+    /// Builds the long notification the receiver broadcasts, with `payload`
+    /// laid out exactly as the 17 bytes following the header.
+    fn notification(device_index: u8, sub_id: u8, payload: [u8; 17]) -> Message {
+        Message::Long(
+            MessageHeader {
+                device_index,
+                sub_id,
+            },
+            payload,
+        )
+    }
+
+    #[test]
+    fn device_connection_reads_the_slot_from_the_header() {
+        // The header byte is the only place the slot is reported.
+        let mut payload = [0u8; 17];
+        payload[1] = 0x02; // mouse, not encrypted, online
+        payload[2] = 0x74;
+        payload[3] = 0x40;
+
+        assert_eq!(
+            decode_notification(&notification(5, 0x41, payload)).unwrap(),
+            Event::DeviceConnection(DeviceConnection {
+                index: 5,
+                kind: DeviceKind::Mouse,
+                encrypted: false,
+                online: true,
+                wpid: 0x4074,
+            })
+        );
+    }
+
+    #[test]
+    fn encryption_sits_on_bit_4_unlike_bolt() {
+        // Unifying reports link encryption on bit 4; Bolt uses bit 5. Reading
+        // Bolt's bit here would report every encrypted link as plaintext.
+        let connection = |status: u8| {
+            let mut payload = [0u8; 17];
+            payload[1] = status;
+            match decode_notification(&notification(1, 0x41, payload)) {
+                Some(Event::DeviceConnection(connection)) => connection,
+                other => panic!("expected a device connection, got {other:?}"),
+            }
+        };
+
+        assert!(connection(1 << 4).encrypted);
+        assert!(!connection(1 << 5).encrypted);
+    }
+
+    #[test]
+    fn bit_6_is_set_when_the_device_is_offline() {
+        let mut payload = [0u8; 17];
+        payload[1] = 1 << 6;
+
+        let Some(Event::DeviceConnection(connection)) =
+            decode_notification(&notification(1, 0x41, payload))
+        else {
+            panic!("expected a device connection");
+        };
+        assert!(!connection.online);
+    }
+
+    #[test]
+    fn device_kind_uses_the_unifying_table_not_bolts() {
+        // Unifying and Bolt agree up to 4 and diverge from 5 on: `5` is a
+        // remote here but reserved on Bolt, which places its remote at 7.
+        let kind = |nibble: u8| {
+            let mut payload = [0u8; 17];
+            payload[1] = nibble;
+            match decode_notification(&notification(1, 0x41, payload)) {
+                Some(Event::DeviceConnection(connection)) => connection.kind,
+                other => panic!("expected a device connection, got {other:?}"),
+            }
+        };
+
+        assert_eq!(kind(0x05), DeviceKind::Remote);
+        assert_eq!(kind(0x06), DeviceKind::Trackball);
+        assert_eq!(kind(0x07), DeviceKind::Touchpad);
+    }
+
+    #[test]
+    fn unmodelled_device_kind_folds_to_unknown_instead_of_dropping_the_event() {
+        // Losing the event would hide the device from enumeration entirely,
+        // and arrival notifications are the only device source on this path.
+        let mut payload = [0u8; 17];
+        payload[1] = 0x0d;
+
+        let Some(Event::DeviceConnection(connection)) =
+            decode_notification(&notification(1, 0x41, payload))
+        else {
+            panic!("an unknown kind must still produce an event");
+        };
+        assert_eq!(connection.kind, DeviceKind::Unknown);
+    }
+
+    #[test]
+    fn other_sub_ids_are_dropped() {
+        assert_eq!(decode_notification(&notification(1, 0x40, [0u8; 17])), None);
+        assert_eq!(decode_notification(&notification(1, 0x4f, [0u8; 17])), None);
+    }
+
+    #[test]
+    fn short_notifications_decode_from_the_zero_padded_payload() {
+        let short = Message::Short(
+            MessageHeader {
+                device_index: 2,
+                sub_id: 0x41,
+            },
+            [0x00, 0x01, 0x74, 0x40],
+        );
+
+        assert_eq!(
+            decode_notification(&short).unwrap(),
+            Event::DeviceConnection(DeviceConnection {
+                index: 2,
+                kind: DeviceKind::Keyboard,
+                encrypted: false,
+                online: true,
+                wpid: 0x4074,
+            })
+        );
+    }
+}

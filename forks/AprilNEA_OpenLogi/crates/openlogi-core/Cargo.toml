@@ -1,0 +1,34 @@
+[package]
+name = "openlogi-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Core types, config, and paths for OpenLogi. No I/O specifics."
+keywords = ["logitech", "hidpp", "config", "mouse", "hid"]
+categories = ["hardware-support", "config"]
+
+[dependencies]
+serde = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+etcetera = "0.11.0"
+atomic-write-file = { workspace = true }
+num_enum = { workspace = true }
+strum = { version = "0.27", features = ["derive"] }
+toml_edit = "0.22"
+nutype = { version = "0.7.0", features = ["serde"] }
+az = "1.3.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+plist = "1.10.0"
+
+[dev-dependencies]
+tempfile = "3"
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,35 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "OpenLogi repository maintenance tasks."
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+fs-err = "3.3.0"
+# For `brand`: the bundle-identifier family stamped into every Info.plist and
+# advertised by the update manifest. The app reads the same constants at
+# runtime, so what packaging builds and what the app claims cannot diverge.
+openlogi-core = { version = "0.7.1", path = "../crates/openlogi-core" }
+path-absolutize = "3.1.1"
+plist = "1.10.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2_hasher = { version = "0.3.2", features = ["sync"] }
+strum = { version = "0.27", features = ["derive"] }
+# Matching the agent's feature set: only process enumeration, so the dev
+# bundler can stop the leftovers an earlier `cargo run` detached.
+sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
+tempfile = "3.27.0"
+time = { version = "0.3", features = ["formatting"] }
+which = "8.0.4"
+xshell = "0.2.7"
+
+[lints]
+workspace = true

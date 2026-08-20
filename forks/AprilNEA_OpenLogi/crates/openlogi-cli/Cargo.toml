@@ -1,0 +1,26 @@
+[package]
+name = "openlogi-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Implementation library for the OpenLogi CLI (the `openlogi` binary)."
+keywords = ["logitech", "hidpp", "hid", "mouse", "cli"]
+categories = ["command-line-utilities", "hardware-support"]
+
+[dependencies]
+openlogi-core = { path = "../openlogi-core", version = "0.7.1" }
+openlogi-hid = { path = "../openlogi-hid", version = "0.7.1" }
+openlogi-camera = { path = "../openlogi-camera", version = "0.7.1" }
+openlogi-assets = { path = "../openlogi-assets", version = "0.7.1" }
+png = "0.17"
+clap = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
