@@ -24,7 +24,7 @@ account. Separate identity per server.**
 | 7 | **Mobile core = Kotlin Multiplatform** + a narrow **Rust crypto module** (UniFFI), native UI | Bug-prone logic written once in Kotlin; crypto in the one language with a real MLS implementation |
 | 8 | **E2EE is pre-invested, not pre-built** — MLS is the committed direction; v1 ships the envelope, crypto module and seams, not the encryption | Retrofitting E2EE into a plaintext message model is the rewrite we're paying a small tax to avoid |
 | 9 | **Desktop = Tauri** (LiveKit Rust SDK for media), Electron as the fallback | The Rust module gives Tauri the code-reuse rationale it lacked; gated on a measured spike |
-| 10 | **Scale design target = ≤500 registered / ≤50 concurrent voice**, single node | Tiers 1–3 share one architecture, so this is cheap to be wrong about |
+| 10 | **Tune for a small personal island (~10–50), but no architectural ceiling** | Nobody should be obliged to host for strangers; growth should cost a bigger box, never a rewrite |
 | 11 | **Non-profit, community-run, no telemetry** — "no centralization" defined by two tests, not vibes | If the project disappears tomorrow, every island keeps working |
 | 12 | **AGPL-3.0 server · Apache-2.0 clients · CC0 protocol spec** | Copyleft protects the server from closed SaaS forks; GPL-family licenses **cannot** ship in App Store clients |
 
@@ -54,12 +54,16 @@ So exactly one shared relay survives. It is content-free, stateless, published a
 container, and its URL is client-configurable — so ours is a default, not a chokepoint. If
 it dies, iOS loses background wakes and **nothing else**. See [PLAN.md §11](./PLAN.md).
 
-## What it costs to run
+## Scale posture
 
-The whole point of keeping the relay content-free and stateless is that its cost is **flat,
-not per-user**: roughly **$75–175/year** all-in (Apple Developer membership — waivable for
-nonprofits — plus ~$5/mo hosting and a domain). Small enough to be donation-funded, or
-absorbed by one person if donations lapse.
+Your island is meant to be **small** — friends, ~10–50 people, one cheap box. Nobody should
+have to run infrastructure for hundreds of strangers; if others want in, they host their own.
+
+But the *software* must never be the ceiling. Growth should cost a bigger box, not a
+rewrite — enforced from day one by four rules (PLAN.md §6.4): everything through
+`Phoenix.PubSub`, no global in-memory state, every service addressed by config URL, all
+media through the S3 API. Single-node then stays a *deployment* choice, not an
+architectural one.
 
 ## Suggested stack (see PLAN.md for the full catalog)
 
