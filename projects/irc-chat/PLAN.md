@@ -22,11 +22,13 @@ We are building a **self-hostable communications server plus first-class native 
 | 6 | **Server runtime = Elixir/Phoenix** (Channels + Presence + PubSub). Go is the sanctioned fallback. | Presence, fan-out, and multi-device broadcast — the three hardest realtime problems — come for free on a single node with no Redis. |
 | 7 | **Mobile shared core = Kotlin Multiplatform (KMP)**, native UI per platform, **plus a small Rust crypto module (UniFFI) for the future MLS engine.** | Write the bug-prone logic (reconnect, sync, account registry) once in Kotlin; keep every pixel native; keep crypto in the one language that has a real MLS implementation. |
 | 8 | **E2EE is pre-invested, not pre-built.** Still no E2EE in v1, but the message envelope, key-storage seam, and crypto module boundary are designed for MLS from day one. | Retrofitting E2EE into a plaintext message model is the rewrite we are paying a small tax now to avoid. |
-| 9 | **Desktop = Tauri** (LiveKit Rust SDK for media), Electron as the documented fallback. | The Rust crypto module (#7) gives Tauri the code-reuse rationale it previously lacked; the team already has Tauri experience. |
+| 9 | **Desktop = Tauri** (LiveKit Rust SDK for media), Electron as the documented fallback. | The Rust crypto module (#7) gives Tauri the code-reuse rationale it previously lacked; the team already has Tauri experience; and a small binary is cheaper for a donation-funded project to distribute. |
+| 10 | **Non-profit, no central service — defined precisely (§2.1).** No central account, directory, or anything in the data path. The project ships apps and one content-free push relay; it does not run the network. | "Nothing centralized" needs a testable definition or it becomes a slogan. The test is: *if the project disappears tomorrow, every island keeps working.* |
+| 11 | **Licensing: AGPL-3.0 server · Apache-2.0 clients + crypto module · CC0 protocol spec** (§2.2). | Copyleft protects the server from closed SaaS forks; the clients **must not** be GPL/AGPL because those licenses are incompatible with App Store terms — the VLC precedent. |
 
 **What this is NOT:** it is not Matrix (no federation-first design, no portable global `@user:server` identity, no AGPL homeserver baggage). It is not a fork of Discord-alternative platforms (all ship non-native mobile and bend the wrong way for islands). It is not E2EE-by-default (that fights v1's own must-have features).
 
-**The one honest asterisk:** *background push cannot be fully self-hosted on stock mobile.* Waking a killed iOS app requires Apple's APNs; reliable Android background delivery effectively requires Google's FCM. Both bind credentials to the **app**, not the server. So the app publisher (us) must run one small, stateless, content-free push gateway — the single "central-ish" component in an otherwise decentralized system. Section 11 confronts this directly.
+**The one honest asterisk:** *background push cannot be fully self-hosted on stock iOS.* **Android can be made genuinely Google-free** — UnifiedPush with a self-hosted ntfy is the default, and a foreground-service socket is available for people who want zero third parties (§11.2). **iOS cannot.** Waking a killed iOS app requires Apple's APNs, credentials are bound to the *app* rather than the server, and even a self-hosted ntfy must relay iOS wakes through an APNs-connected upstream. So exactly one small, content-free relay survives — and §2.1 defines precisely why that does not make this a centralized system, while §11 confronts the cost and the escape hatches.
 
 ---
 
@@ -39,7 +41,64 @@ We are building a **self-hostable communications server plus first-class native 
 5. **Self-hosting must be humane.** The target operator is a hobbyist with a VPS or a home box, not an SRE. The deployment unit is a curated `docker compose up`, not a pile of manuals.
 6. **Leave clean seams, promise nothing early.** Design the identity namespace as server-scoped, route all cross-node traffic through PubSub, and keep message storage abstracted — so a *future opt-in* federation layer and *future opt-in* E2EE can attach without a rewrite. We build neither in v1, and we do not imply we have.
 
-**Anti-goals:** federation-in-v1, a global account, E2EE-in-v1, cross-platform UI toolkits for mobile, chasing Discord-planet scale (an island is tens to low-thousands of concurrent users), and any hard dependency on a third-party SaaS for a core feature.
+7. **Non-profit and community-run.** There is no company, no revenue, no growth target, and no investor. Every user is expected to self-host, or to join an island someone they know self-hosts. This is a design constraint with teeth: it caps what ongoing infrastructure we are allowed to depend on, and it means **maintainer time is the scarcest resource in the project** — scarcer than CPU, bandwidth, or money. When two designs are close, pick the one with less to operate and less to maintain.
+8. **No telemetry. Ever.** No analytics, no phone-home, no crash reporting to a service we run, not even anonymized. Operators may opt into their *own* self-hosted error reporting (e.g. GlitchTip). This is not a setting to be flipped later; it is a promise the architecture should make it awkward to break.
+9. **The project must be survivable.** Assume the current maintainers eventually stop. Nothing in the design may make the network depend on their continued existence — see the death test in §2.1.
+
+**Anti-goals:** federation-in-v1, a global account, E2EE-in-v1, cross-platform UI toolkits for mobile, chasing Discord-planet scale (an island is tens to low-thousands of concurrent users), any hard dependency on a third-party SaaS for a core feature, and **any component whose ongoing cost scales with the number of users or islands.**
+
+### 2.1 What "no centralization" precisely means
+
+"Nothing centralized" has to be defined or it degrades into a slogan that the push chapter then quietly violates. Two tests decide whether a component is acceptable:
+
+- **The data-path test.** Does user content, identity, social graph, or island directory flow through it? If yes, it is forbidden — no exceptions.
+- **The death test.** If the project and its maintainers vanish tomorrow, does the network keep working? Existing islands must keep running indefinitely, and existing clients must keep talking to them.
+
+Applying both honestly:
+
+| Component | Central? | Verdict |
+|---|---|---|
+| Islands (servers) | No — each fully standalone | The network *is* these, and they are wholly operator-owned |
+| Accounts / identity | No — per-server keypairs, no global ID | Passes both tests |
+| Island directory / discovery | **Does not exist.** You connect by address | Deliberately absent; a directory would be a central chokepoint and a moderation liability |
+| Voice (SFU) | No — every island runs its own | Passes both tests |
+| **iOS push relay** | **Yes — one, unavoidably (§11)** | **Content-free** (no data-path violation) and **not load-bearing** (if it dies, iOS loses background wakes; text, voice, and every island keep working). Passes the data-path test; degrades rather than fails the death test |
+| App binaries + update feed | Yes, in the sense that someone publishes them | Distribution, not network. Old clients keep working; the source is public and forkable |
+
+**The line we are drawing:** the project ships *software* and one *content-free relay*. It does not run *the network*, hold *any user data*, or know *which islands exist*. That is a materially different thing from Discord, from Matrix.org-as-default-homeserver, and even from Signal — and it is the strongest form of "no centralization" that shipping a native iOS app permits. §11 documents the escape hatches for anyone who rejects even this much.
+
+### 2.2 Project model: licensing, governance & sustainability
+
+Being a non-profit is not a vibe; it implies concrete choices that are cheaper to make now than to retrofit.
+
+**Licensing — and one hard external constraint.**
+
+| Component | License | Why |
+|---|---|---|
+| **Server** | **AGPL-3.0** | Strong copyleft is exactly right here: it costs a self-hoster nothing (pointing at the public repo satisfies the source offer) while preventing a company from running a closed SaaS fork of a project built by volunteers. |
+| **Clients** (Android, iOS, desktop) | **Apache-2.0** | **Not a preference — a constraint.** GPL-family licenses are incompatible with the App Store's terms, which is why [VLC](https://www.fsf.org/blogs/licensing/vlc-enforcement) and GNU Go were pulled. An AGPL iOS client is not shippable. |
+| **Rust crypto module** (§8.5) | **Apache-2.0 / MIT** | It links into the iOS client, so it inherits the same constraint. |
+| **Protocol specification** + reference schemas | **CC0 / public domain** | Anyone should be able to write a competing client or server without asking permission. This is the strongest anti-lock-in move available and it costs nothing. |
+
+**The consequence that bites immediately:** **libsignal is AGPL-3.0, so it cannot go in the iOS client.** The "DM-first double-ratchet via libsignal" option from §12.4 is therefore off the table for a store-distributed app. This is not a setback — it removes a fork in the road and confirms **OpenMLS (MIT) or mls-rs (Apache-2.0 OR MIT)** as the E2EE path (§12.5). Check every dependency against this rule before adopting it; the crypto and client dependency trees must stay permissive.
+
+**What the project actually costs to run — the whole tension, quantified.** The reason the push relay is tractable rather than fatal is that its cost is tiny and, critically, **flat**: it does not grow with users or islands, because it forwards content-free wakes and stores nothing.
+
+| Item | Cost | Notes |
+|---|---|---|
+| Apple Developer Program | **$99/yr — waivable** | Apple [waives the fee for nonprofits](https://developer.apple.com/help/account/membership/fee-waivers/), but only for a **legal entity** with nonprofit status in an eligible region, and only if the apps never sell anything. Not available to an individual maintainer. |
+| Push relay hosting | **~$5/mo** | Stateless, content-free, tiny. |
+| Domain | ~$15/yr | For the update feed and relay. |
+| Google Play (optional) | $25 one-time | Skippable — F-Droid is the primary Android channel. |
+| Windows code-signing cert | **$0 or ~$200–400/yr** | The one genuinely awkward cost. Mitigate by distributing via winget/Scoop/Flathub/Homebrew and documenting the unsigned-binary warning, rather than paying. macOS notarization is already covered by the Apple membership. |
+
+**Total unavoidable: roughly $75–175/year.** That is comfortably donation-funded (Open Collective, Liberapay, GitHub Sponsors) and small enough that a single maintainer could absorb it if donations lapsed.
+
+**Governance, chosen for survivability (principle 9):**
+- **Use a fiscal host rather than incorporating.** Open Collective Europe or the Software Freedom Conservancy provide non-profit status, hold funds, and — relevantly — supply the *legal entity* the Apple fee waiver requires, without anyone founding a company.
+- **Never let one person hold everything.** App signing keys, the Apple account, the relay, the domain, and repo admin must be held by **at least three trusted maintainers**, with custody documented in the repo. This is the single highest-value governance decision, because every one of those is unrecoverable if its sole holder disappears.
+- **Publish the relay as a container image** so anyone can run their own; make its URL client-configurable (§11.3) so ours is a default, not a chokepoint.
+- **Clear the project name early.** "Archipelago" is provisional and unchecked. Revolt was forced to rename to Stoat by a cease-and-desist in 2025 (§16) — a trademark search is a cheap hour now and an expensive rebrand later.
 
 ---
 
@@ -235,6 +294,17 @@ docker compose up -d
 - **Upgrades:** image-tag based; **Ecto migrations run automatically on container boot**.
 - **Backups:** a bundled **nightly `pg_dump` + object-store snapshot**, encrypted with **age**, using **restic/BorgBackup**, with a **documented, tested restore** and a short DR runbook. (The most likely real-world breach is a leaked unencrypted backup, not a wire attack — so this is a first-class deliverable, not an afterthought.)
 - **The fiddly part, called out honestly:** LiveKit's UDP port range + TURN/TLS is where novice self-hosters get stuck. The bundle ships sane firewall/port defaults, uses LiveKit's **embedded TURN on 5349** by default (so coturn is optional), and documents TURN-over-TLS on 443 for restrictive networks.
+
+**Reachability — the blocker nobody mentions until it bites.** If the expectation is that *whoever uses this hosts it* (principle 7), then many operators will try to host at home, and a large share of home connections **cannot accept inbound traffic at all** because the ISP puts them behind CGNAT. No amount of TURN fixes this: TURN helps *clients* traverse NAT, but here it is the *server* that is unreachable. Be honest and prescriptive rather than letting people discover it after an hour of port-forwarding:
+
+| Situation | Works? | Guidance |
+|---|---|---|
+| VPS with a public IP | **Yes, fully** | The recommended default. A Tier-1 island fits a cheap VPS (§6.4). |
+| Home + public IPv4 + port forwarding | **Yes** | Add dynamic DNS; document the router steps and the TOFU pinning path for bare IPs (§12.2). |
+| Home + IPv6 only | **Partly** | Fine for IPv6 clients, but breaks IPv4-only mobile networks — so it fails exactly when someone is out of the house. Not sufficient alone. |
+| **Home behind CGNAT** | **No** | Requires an overlay (**Headscale**, the self-hostable Tailscale control server, or plain WireGuard) or a small VPS as a front. Ship a documented recipe; do not suggest a proprietary tunnel, which would reintroduce a central dependency (§2.1). |
+
+The installer should **detect and report reachability up front** — check inbound TCP/UDP and tell the operator plainly "your island is not reachable from the internet, here are your three options" — rather than yielding a server that silently only works on the LAN.
 
 ### 6.4 Sizing: what one island has to carry
 
@@ -445,37 +515,69 @@ Because **the client owns the private key**, a *future* opt-in cross-server proo
 
 This is the sharpest tension with "no central service," so we state the reality without euphemism.
 
-### 11.1 The unavoidable truth
+### 11.1 The constraint — and why the two platforms get different answers
 
-- **iOS gives no supported way to keep a background socket alive.** The only sanctioned wake path is **APNs** (Apple-controlled).
-- **Android *can* run a foreground-service socket, but on OEM battery-killers (Xiaomi/Samsung/Huawei/OnePlus/Oppo) it's unreliable**, so **FCM** (Google-controlled) is the pragmatic default.
-- **APNs and FCM credentials are bound to the APP (bundle ID / signing / Firebase project), not to any server.** Therefore even a perfectly decentralized architecture needs *someone who owns the app's push credentials* to run or proxy a gateway. There is no way around this while shipping through the App Store / Play Store.
+The universal fact: **APNs and FCM credentials are bound to the APP** (bundle ID / signing / Firebase project), **not to any server.** So no amount of decentralization on the server side changes who is allowed to wake a phone. But the two platforms diverge sharply, and lumping them together is what makes this problem look unsolvable:
 
-### 11.2 Decision: the Matrix/Sygnal model, adapted
+- **Android is escapable.** The OS permits a long-lived foreground-service socket, and **UnifiedPush** provides a real standard for user-chosen, self-hostable push distributors. A Google-free Android path genuinely exists.
+- **iOS is not.** There is no supported way to keep a background socket alive; **APNs is the only sanctioned wake path**, and it is Apple-controlled. Even self-hosted ntfy cannot escape it — its own docs are explicit that iOS instant notifications require forwarding `poll_request` messages to an **APNs-connected upstream**. Self-hosting the server does not self-host the wake.
 
-**The app publisher (us) runs ONE small, stateless push gateway keyed to the app's APNs/FCM credentials** — the pattern proven across thousands of self-hosted Matrix homeservers. Concretely:
+Given principle 7 (non-profit) and §2.1 (the death test), this dictates the shape: **make Android fully sovereign by default, and shrink iOS's irreducible dependency to the smallest, most replaceable thing possible.**
 
-1. The client **registers a "pusher"** with each server it joins: `{gateway URL, opaque per-install pushkey}`.
-2. When a server must notify a user, it **POSTs to the publisher gateway** with the pushkey.
-3. The gateway rewrites to APNs/FCM.
-4. **Payloads are content-free** — only "an event is pending on server S for pushkey K", never message text. The client wakes and **pulls the real content over TLS directly from the origin server**.
+### 11.2 Android — sovereign by default, three tiers
 
-This preserves trust-the-host privacy (Apple/Google/our gateway see only wake-metadata, never plaintext), keeps servers isolated (they know only an opaque URL + key, no shared account), and gives us a clean federation seam (the gateway is the one shared piece; federation slots beside it). **We can reuse Sygnal itself** (Apache-2.0) — noting it is now in *low-maintenance mode under Element*, so we plan to be ready to run a Sygnal-equivalent.
+Android is where the vision can be honoured fully, so it should be, even though it costs a little onboarding friction. Ship all three and let the user choose:
 
-### 11.3 Voice calls — the stricter layer
+| Tier | Mechanism | Third parties | Trade-off |
+|---|---|---|---|
+| **1 — UnifiedPush (DEFAULT)** | User's chosen distributor (self-hosted **ntfy**, or their own) holds one socket and fans out to apps | **None** | Requires installing a distributor app — acceptable friction for a self-hosting audience, and the ntfy Android app is both distributor and receiver |
+| **2 — Foreground-service socket** | Our own persistent connection, no intermediary at all | **None** | Battery cost; unreliable on OEM battery-killers (Xiaomi/Samsung/Huawei/OnePlus/Oppo). For enthusiasts who want zero relays |
+| **3 — FCM (opt-in)** | Google, via the project relay | Google + project | Most reliable on stock devices; the convenience option, never the default |
+
+**This choice pays a second dividend: F-Droid.** With UnifiedPush as the default rather than FCM, the Android app is FOSS-clean and ships on **F-Droid without a "NonFreeNet" anti-feature** — which makes F-Droid our *primary* Android channel, with Play Store ($25 one-time) optional and direct APKs always available. A non-profit project distributing through the un-Googled channel by default is coherent in a way that "FCM by default, UnifiedPush hidden in settings" would not be.
+
+### 11.3 iOS — the one irreducible relay, made as small and replaceable as we can
+
+iOS forces exactly one shared component. We accept it, and then spend our effort making it **content-free, stateless, forkable, and non-load-bearing** so it passes §2.1's data-path test and merely degrades the death test rather than failing it.
+
+The mechanism is the Matrix/Sygnal pattern, proven across thousands of self-hosted homeservers:
+
+1. The client **registers a "pusher"** with each island it joins: `{gateway URL, opaque per-install pushkey}`.
+2. When an island must notify a user, it **POSTs to that gateway URL** with the pushkey.
+3. The gateway rewrites to APNs.
+4. **Payloads are content-free** — only "an event is pending on island S for pushkey K", never message text. The client wakes and **pulls the real content over TLS directly from the origin island**.
+
+Islands know only an opaque URL and key; they share no account and never learn about each other. We can reuse **Sygnal** itself (Apache-2.0), noting it is in *low-maintenance mode under Element*, so plan to run a Sygnal-equivalent we are willing to maintain.
+
+**The four things that keep this from being a centralization sin:**
+
+1. **The gateway URL is client-configurable, per island.** Ours is a *default*, not a chokepoint. Anyone running their own relay (with their own app build) points at it in settings.
+2. **We publish the relay as a container image**, so running one is a `docker run`, not a research project.
+3. **It stores nothing and sees nothing** — no accounts, no message content, no island directory. Wake-metadata transits it and is not retained.
+4. **Its cost is flat, not per-user** (§2.2) — roughly $5/mo, which is why a donation-funded project can promise it credibly.
+
+**If it disappears, iOS users lose background wakes and nothing else.** Text, voice, every island, and every other platform keep working. That is the honest boundary of the compromise.
+
+### 11.4 Voice calls — the stricter layer
 
 - **iOS: PushKit VoIP push → CallKit.** Since iOS 13, the VoIP push handler **must report the incoming call to CallKit in the same run loop**, or the OS terminates the app and stops delivering VoIP pushes. So the **call-setup payload (caller identity, call id) must be self-sufficient** in the push (≤ ~5 KB), enabling instant ring with no round-trip.
 - **Android: high-priority FCM data message → full-screen intent + ConnectionService.** Note `USE_FULL_SCREEN_INTENT` is, since 2024, auto-granted only to genuine calling/alarm apps (Play Console declaration required from May 31 2024; from Jan 22 2025 restricted for Android-14+ targets). We qualify as a calling app, but must declare it and **degrade gracefully** to a normal notification if denied.
 
-### 11.4 The de-Googled opt-in path (honest about iOS)
+### 11.5 Escape hatches for those who reject even this
 
-Ship a **second, opt-in path via UnifiedPush + self-hosted ntfy** (ntfy is dual Apache-2.0 / GPLv2): on Android, a user-chosen distributor holds one socket and fans out — **genuinely Google-free**. Be honest that **on iOS this collapses back to APNs** (self-hosted ntfy must relay through `ntfy.sh` → FCM/APNs), because Apple leaves no alternative. Make it a first-class advanced setting, not the default.
+Documented and supported, though not the mainstream path:
 
-**The ultimate escape valve** (documented, not mainstream): an operator who refuses any publisher involvement can rebuild + resign the app with their **own** APNs/FCM credentials (needs a paid Apple Developer account and App Store review). Feasible on Android (sideload/F-Droid), largely blocked on iOS by store gatekeeping.
+- **Android: complete.** Choose tier 1 or 2 (§11.2), or rebuild and self-sign the app entirely. F-Droid and sideloading mean no gatekeeper can stop this. An operator can be fully sovereign today.
+- **iOS: partial, and honestly so.** Rebuilding with your own APNs credentials requires your own Apple Developer membership and App Store review, or TestFlight (90-day builds, capped testers), or — in the EU only — alternative distribution under the DMA. **We ship the build tooling and document the process**, but we will not pretend this is practical for a typical user. It is a genuine option for a determined operator and a genuine dead end for everyone else.
 
-### 11.5 Risks to own
+**What we must not claim:** that iOS users are free of Apple. They are not, we cannot make them so, and saying otherwise would be the kind of privacy theatre this project exists to avoid.
 
-Wake-metadata (which pushkey, roughly when, optionally which server) transits Apple/Google/our gateway even with content-free payloads — TLS-to-origin can't hide it. The gateway is a **single point of failure** across all islands (needs redundancy + monitoring). We maintain APNs keys/FCM accounts indefinitely. **Do not tell iOS users "no Google/Apple"** — it isn't true.
+### 11.6 Risks to own
+
+- **Wake-metadata leaks even with content-free payloads** — which pushkey, roughly when, optionally which island — transiting Apple and our relay. TLS-to-origin cannot hide it. Android tiers 1 and 2 avoid this entirely; iOS cannot.
+- **The relay is a shared dependency for iOS**, so it needs monitoring and more than one person able to redeploy it (§2.2 key custody). It is deliberately *not* a single point of failure for the network — only for iOS background wakes.
+- **Someone must maintain APNs credentials indefinitely**, which for a volunteer project is a continuity commitment, not a technical one. This is the strongest argument for the fiscal-host route in §2.2: an entity can hold the account, a person eventually cannot.
+- **Never tell iOS users "no Google/Apple."** It isn't true. Say plainly, in the app, which push path they are on and who can see the wake.
 
 ---
 
@@ -514,7 +616,11 @@ Because users connect by address, two realities coexist:
 
 ### 12.4 What E2EE costs — and why it is therefore deferred, not dropped
 
-E2EE is a **committed but deferred** layer (see §12.5 for what we pre-invest now): **DMs first** (Signal-style double-ratchet via libsignal, or MLS 1:1), then **MLS (RFC 9420; OpenMLS MIT / mls-rs Apache-or-MIT)** for group channels. The costs below are real, and they are precisely why it is not in v1 — every one of them collides with a v1 must-have:
+E2EE is a **committed but deferred** layer (see §12.5 for what we pre-invest now): **DMs first**, then group channels, both on **MLS (RFC 9420)** via **OpenMLS (MIT)** or **mls-rs (Apache-2.0 OR MIT)**.
+
+**Note the option that licensing already removed:** a Signal-style double ratchet via **libsignal is not available to us** — libsignal is **AGPL-3.0**, and a GPL-family dependency cannot ship in an App Store client (§2.2). MLS is therefore the path for both DMs and groups, which is simpler anyway: one engine, one ciphersuite, one keystore.
+
+The costs below are real, and they are precisely why E2EE is not in v1 — every one of them collides with a v1 must-have:
 
 - **Breaks server-side search** (server sees ciphertext → must move to heavy client-side indexing, à la Matrix's Seshat).
 - **Breaks server-side bots/integrations/bridges** unless the bot becomes an in-room key holder (undermining E2EE).
@@ -572,7 +678,9 @@ Legend — **Build**: our code. **Adopt**: third-party tool named. **Both**: bui
 | Full-text search | Adopt | PostgreSQL FTS (default) / Meilisearch | v1 |
 | Message history / edits / pins | Build | PostgreSQL | v0/v1 |
 | Mentions + notification routing | Build | Phoenix gateway | v1 |
-| **Push delivery** | **Adopt** | **APNs + FCM via publisher gateway (Sygnal-pattern)**; UnifiedPush/ntfy opt-in | v1 |
+| **Push — Android** | **Adopt** | **UnifiedPush + self-hosted ntfy (DEFAULT)**; foreground-service socket; FCM opt-in | v1 |
+| **Push — iOS** | **Adopt** | APNs via the project's content-free relay (Sygnal-pattern), URL client-configurable | v1 |
+| Android distribution | — | **F-Droid (primary)**, Play Store optional, direct APK | v1 |
 | Bots / webhooks / slash commands / bot API | Build | (matterbridge for IRC-spirit bridging) | v2 |
 | Per-server identity & auth | Both | libsodium keypair + SCRAM; Ory Kratos/Keycloak optional | v0 |
 | TLS / reverse proxy | Adopt | Caddy (Traefik/nginx alt) | v0 |
@@ -624,7 +732,11 @@ Legend — **Build**: our code. **Adopt**: third-party tool named. **Both**: bui
 | Keycloak / Authentik | Optional org OIDC/SSO | Apache-2.0 / MIT-core | Yes |
 | **Sygnal (pattern)** | Publisher push gateway → APNs/FCM (content-free) | Apache-2.0 | Yes (publisher) |
 | APNs / FCM | iOS / Android background push | Proprietary | No |
-| ntfy + UnifiedPush | Opt-in de-Googled Android push | Apache-2.0 / GPLv2; open spec | Yes (Android) |
+| **ntfy + UnifiedPush** | **DEFAULT Android push** — self-hostable, no Google (ntfy is dual Apache-2.0 OR GPLv2) | Apache-2.0 / GPLv2; open spec | Yes (Android) |
+| F-Droid | Primary Android distribution channel — clean because push defaults to UnifiedPush | AGPL-3.0 (the platform) | Yes |
+| Headscale / WireGuard | Overlay networking for operators behind CGNAT (§6.3) | BSD-3 / GPL-2.0 | Yes |
+| Open Collective / SFC | Fiscal host — non-profit status without incorporating (§2.2) | — | — |
+| GlitchTip | Optional **self-hosted** error reporting; never a service we run | MIT | Yes |
 | **Kotlin Multiplatform** + Ktor + SQLDelight | Shared mobile core | Apache-2.0 | Yes |
 | LiveKit Swift/Kotlin/JS SDKs | Native voice clients | Apache-2.0 | Yes |
 | **Mozilla UniFFI** | Rust↔Kotlin/Swift bindings for the crypto module (§8.5) | MPL-2.0 | Yes |
@@ -636,7 +748,7 @@ Legend — **Build**: our code. **Adopt**: third-party tool named. **Both**: bui
 | Weblate | Translation management | GPL | Yes |
 | matterbridge | Bridge to IRC/others (IRC-spirit) | Apache-2.0 | Yes |
 | **OpenMLS** / **mls-rs** | MLS (RFC 9420) engine for v3 E2EE — pick one at v3; both are Rust, which is why the crypto module is Rust (§8.5) | MIT / Apache-2.0-or-MIT | Yes |
-| libsignal | Alt double-ratchet for DM-only E2EE | AGPL-3.0 | Yes |
+| ~~libsignal~~ | **UNUSABLE for us** — AGPL-3.0 cannot ship in an App Store client (§2.2). MLS covers DMs instead | AGPL-3.0 | — |
 | Wire **core-crypto** | **Reference architecture only** — Rust MLS engine + encrypted store exposed to Kotlin/Swift via UniFFI; the exact shape we copy. **Study the design, do not link it:** GPL-3.0 would be copyleft-viral into our clients, which is why we build on OpenMLS/mls-rs directly | GPL-3.0 | Yes |
 | Element X / matrix-rust-sdk | **Reference only** (native mobile study) | AGPL-3.0 / Apache-2.0 | — |
 | Stoat (ex-Revolt) | **Reference only** (islands data model) | AGPL-3.0 | Yes |
@@ -650,13 +762,14 @@ Prove **low-latency self-hosted voice** and **native mobile feel** first.
 - Phoenix app server + PostgreSQL + Redis/Valkey; WebSocket gateway with basic auth (keypair challenge-response) and a single always-on LiveKit voice room; coturn; Garage.
 - Android (Compose) + iOS (SwiftUI) on a KMP core doing: connect-by-address, per-server keypair identity, plain text channel, and **join voice**.
 - **E2EE pre-investment (§12.5):** stand up the **Rust crypto module + UniFFI bindings** doing keygen and challenge-response signing, wired into both apps and both CI pipelines; ship the **message envelope** (versioned, with null `key_epoch`/`sender_key_id`) from the very first message the gateway sends.
+- **Project hygiene, cheapest at day zero:** apply the §2.2 licenses to each repo, and add the **CI license check** on the client and crypto dependency trees (§16 risk 17) while the dependency graph is still small.
 - **Milestone:** two phones on two networks hold a clear, low-latency voice call through a self-hosted server, and text arrives in real time. TOFU pinning works against a self-signed cert. **The Rust module builds and runs on both platforms in CI** — proving the boundary before it carries anything hard.
 
 ### v1 — Usable Discord + TeamSpeak replacement
 - **Discord half:** channels/categories/threads; roles + per-channel permission overrides (the model designed in v0); DMs/group DMs; reactions + custom emoji; uploads + transcoding + thumbnails; Postgres-FTS search (permission-filtered); presence/typing/read-state; invites; moderation + audit log + rate-limiting; mentions + notification routing.
 - **TeamSpeak half:** many voice channels; video + screen share on the same SFU; PTT + open-mic; server-enforced mute.
-- **Platform:** publisher push gateway (APNs + PushKit, FCM + full-screen-intent), content-free payloads; i18n scaffolding; baseline a11y.
-- **Ops:** the `docker compose` bundle with Caddy auto-TLS, auto-migrations, encrypted tested backups, DR runbook, and the plain-language privacy page. LiveKit factored as a separately-addressable service so it can move to its own box later (§6.4).
+- **Platform:** push per §11 — **UnifiedPush default on Android** (plus foreground-service and FCM options), content-free iOS relay with a client-configurable URL; **F-Droid listing**; i18n scaffolding; baseline a11y.
+- **Ops:** the `docker compose` bundle with Caddy auto-TLS, auto-migrations, encrypted tested backups, DR runbook, and the plain-language privacy page. LiveKit factored as a separately-addressable service so it can move to its own box later (§6.4). **Installer reachability check** with the CGNAT/overlay/VPS guidance of §6.3.
 - **E2EE pre-investment (§12.5):** client-side search index shipped alongside server FTS; client-side rendering path for previews/notification text; per-device registry with revocation.
 - **Milestone:** a community of ~100 runs its entire text + voice life on one self-hosted island, from two native apps, with reliable background notifications.
 
@@ -688,18 +801,22 @@ The committed direction from §12.5, sequenced so the blast radius grows slowly:
 | # | Risk | Mitigation |
 |---|---|---|
 | 1 | **Voice is the make-or-break subsystem** and the top self-host cost driver (CPU/bandwidth; TURN egress on symmetric NAT). A small VPS won't serve large video rooms. | Adopt LiveKit (don't build); publish capacity guidance; embedded TURN + documented 443 fallback; prove it in v0. |
-| 2 | **Push forces a proprietary, publisher-run dependency** — the one central-ish piece; also a single point of failure across islands. | Content-free payloads; publisher-run redundant Sygnal-pattern gateway with monitoring; UnifiedPush opt-in; state it honestly. |
+| 2 | **iOS push forces one shared, project-run relay** — the only component that fails §2.1's death test (it degrades it). | Android avoids it entirely (UnifiedPush default). For iOS: content-free payloads, client-configurable gateway URL, published container image, flat ~$5/mo cost, and honest in-app disclosure. If it dies, only iOS background wakes die. |
 | 3 | **We own the whole protocol long tail** (sync, read-state, reconnect/resume, moderation, bot API). Under-scoping this is the top schedule risk. | Phoenix removes presence/fan-out; steal IRCv3/Matrix/XMPP patterns; version the API before v2 bots exist; ship reconnect/resume in v0. |
 | 4 | **Three-to-four client codebases will diverge**; the native-feel bar is high. | KMP shared core for the bug-prone logic; keep the core's public API small and Swift-friendly; centralize account/reconnect logic and test hard. |
 | 5 | **Permission model is on every hot path** and easy to get subtly wrong. | Design + test the bitfield/override calculator in v0; cache; consider OpenFGA only if the graph grows. |
 | 6 | **Ecosystem churn already burned common defaults** (MinIO archived; Tenor API dead; Redis relicensed; Revolt→Stoat). | Avoid MinIO (use Garage/SeaweedFS); GIF as operator-optional Klipy/self-curated; Valkey over Redis; re-verify licenses near build time. |
-| 7 | **Copyleft/AGPL** (Garage, mCaptcha, future libsignal) affects redistribution. | Consumed as network services / standalone → copyleft doesn't reach our source; keep S3 API + token-mint boundaries swappable; clear licenses against our distribution model. |
+| 7 | **Copyleft/AGPL in adopted components** (Garage, mCaptcha, Wire core-crypto) affects redistribution differently on server vs. client. | Server side is fine — those are consumed as *separate network services or processes*, so their copyleft does not reach our source, and our server is AGPL-3.0 anyway. Client side is strict: permissive-only, no exceptions (§2.2, risk 17). Keep the S3 API and token-mint boundaries swappable. |
 | 8 | **iOS background execution** (PushKit-must-report-CallKit; no persistent socket) is a hard wall. | Design lifecycle around it from day one; self-sufficient VoIP payloads; correct Keychain accessibility + Keystore usage. |
 | 9 | **Trust-the-host misunderstood** by members joining someone else's island. | Plain-language privacy page at join; loud TOFU warnings; hedge any E2EE roadmap language. |
-| 10 | **BEAM talent pool is smaller** than Go/Node for an OSS project seeking contributors. | Sanctioned Go fallback with Valkey/NATS; keep the app-server surface conventional and documented. |
+| 10 | **BEAM talent pool is smaller** than Go/Node — sharper for a *volunteer* project than a funded one, since contributors are the only labour supply. | Counterweight: Elixir means materially *less code* and *fewer moving parts* to maintain (no Redis for presence/fan-out), and maintainer time is the scarcest resource (principle 7). Keep the surface conventional and heavily documented; the Go fallback stands if a contributor drought becomes real rather than theoretical. |
 | 11 | **Vendor drift** (LiveKit is VC-backed with a Cloud tier). | Self-host path is Apache-2.0 today; isolate behind the token-mint boundary so mediasoup/Janus is a swap, not a rewrite; monitor licensing. |
 | 12 | **KMP↔UniFFI bindings are community forks, not first-party.** Ubique's, Wire's, and Gobley all chase upstream UniFFI releases (an open "upgrade to 0.31" issue as of Feb 2026), and only JVM + Native targets are supported. A stall here blocks the crypto module. | Keep the Rust surface deliberately **small and synchronous** — if a binding generator becomes untenable, a narrow crypto module can be consumed via hand-written per-platform `expect/actual` bindings, which would be impossible for a whole-app Rust core. Track Wire's fork specifically, since they ship this exact stack. Pin generator versions. |
 | 13 | **Tauri desktop may not carry video.** Audio via the LiveKit Rust SDK is clean, but bridging decoded remote video frames into the webview is unproven for us, and macOS WKWebView cannot `getDisplayMedia` at all. | The §9.3 spike has an explicit, pre-agreed go/no-go: if remote-video rendering exceeds roughly a week, ship Electron. The web UI is shared either way, so the fallback costs the shell only. Desktop is v2, so this risk never blocks v1. |
+| 14 | **Project continuity / bus factor.** A volunteer project whose signing keys, Apple account, relay, and domain sit with one person dies with that person's interest — and the iOS app becomes unupdatable, which no fork can fix. | **The highest-value governance work in the plan (§2.2):** distribute custody across ≥3 maintainers, document it in-repo, and use a fiscal host so an *entity* holds the Apple account. Keep total running cost at $75–175/yr so funding never becomes the failure mode. |
+| 15 | **Home self-hosting often simply cannot work** (CGNAT), which collides directly with "whoever uses this hosts it." | Detect and report reachability in the installer; ship documented Headscale/WireGuard overlay and VPS-front recipes (§6.3). Never paper over it with a proprietary tunnel. |
+| 16 | **Distribution costs money we do not have** — Windows code-signing certs especially (~$200–400/yr); unsigned binaries trigger scary OS warnings. | Prefer channels where this matters least: F-Droid (Android), Flathub (Linux), winget/Scoop (Windows), Homebrew (macOS). macOS notarization is covered by the Apple membership. Document the unsigned-binary path rather than paying, unless donations comfortably cover it. |
+| 17 | **License incompatibility creeps in through dependencies** — one AGPL crate in the client tree makes the iOS app unshippable, and it may not be noticed until store review. | The §2.2 rule is absolute for client and crypto trees: permissive only. Add an automated license check to CI from v0, when the dependency tree is small enough that fixing a violation is trivial. |
 
 ---
 
@@ -714,12 +831,18 @@ The committed direction from §12.5, sequenced so the blast radius grows slowly:
 | **MLS ciphersuite** | **X25519/Ed25519**, with the hardware P-256 key wrapping the software keystore (§10.2). |
 | **Desktop** | **Tauri** (LiveKit Rust SDK for media), Electron as fallback, gated on the §9.3 spike. |
 | **Scale target** | **Tier 2** — ≤500 registered / ≤50 concurrent voice, single node (§6.4). Chosen as a default; tiers 1–3 share one architecture, so this is cheap to be wrong about. |
+| **Project model** | **Non-profit, community-run, no telemetry.** "No centralization" defined by the data-path and death tests (§2.1). The project ships software and one content-free iOS relay; it does not run the network. |
+| **Licensing** | **AGPL-3.0 server · Apache-2.0 clients and crypto module · CC0 protocol spec** (§2.2). Client/crypto trees are permissive-only, enforced in CI. |
+| **Push posture** | **Android sovereign by default** (UnifiedPush + self-hosted ntfy; foreground-service and FCM as alternatives), **F-Droid as the primary Android channel**. iOS uses one content-free, client-configurable, forkable relay (§11). |
 
 **Still open before v0 code:**
-1. **Voice UX shape:** always-on persistent voice channels (TeamSpeak style) as the primary model — confirm, since it affects SFU sizing and room-presence semantics.
-2. **Push commitment:** we (the publisher) *will* operate a Sygnal-pattern gateway indefinitely — confirm, and confirm the de-Googled UnifiedPush path is opt-in, and that we also ship rebuild-your-own-credentials tooling for max-sovereignty operators.
-3. **TOFU invite format:** confirm invite links/QR codes embed the server **SPKI fingerprint** for out-of-band first-connect verification.
-4. **Rust-in-CI appetite:** the crypto module puts a Rust toolchain in the mobile build from day one (§16 risk 12). Confirm the team accepts that maintenance tax as the price of the E2EE pre-investment.
+1. **Fiscal host vs. nothing.** The Apple fee waiver needs a *legal entity* with nonprofit status, which a fiscal host (Open Collective Europe, Software Freedom Conservancy) supplies without founding a company. Worth doing early — it also gives key custody an institutional home. Decide whether to pursue it now or run on an individual account and revisit.
+2. **Who holds the keys.** Name the ≥3 maintainers who will hold app signing keys, the Apple account, the relay, and the domain (§16 risk 14). This is not a launch-day task; it is the thing that decides whether the project survives its founders.
+3. **Name and trademark clearance** for "Archipelago" or its replacement — one cheap hour now (§2.2).
+4. **Voice UX shape:** always-on persistent voice channels (TeamSpeak style) as the primary model — confirm, since it affects SFU sizing and room-presence semantics.
+5. **TOFU invite format:** confirm invite links/QR codes embed the server **SPKI fingerprint** for out-of-band first-connect verification.
+6. **Rust-in-CI appetite:** the crypto module puts a Rust toolchain in the mobile build from day one (§16 risk 12). Confirm the team accepts that maintenance tax as the price of the E2EE pre-investment.
+7. **UnifiedPush onboarding friction.** Making it the Android default is right for the vision but costs a "now install a distributor app" step. Decide how hard to smooth this (bundled setup wizard? a recommended distributor? a first-run explainer?) — it is the main UX price of the sovereignty stance.
 
 **First engineering actions (v0 sprint):**
 - Stand up the Docker Compose skeleton: Phoenix + Postgres + LiveKit + Caddy + coturn + Garage, one-command up.
