@@ -44,15 +44,27 @@ no discovery — you connect by address.
 ## The one honest asterisk
 
 **Android can be fully sovereign; iOS cannot.** Android defaults to **UnifiedPush** with a
-self-hosted ntfy (no Google at all), with a foreground-service socket for people who want
-zero intermediaries — which also means the app ships on **F-Droid** without an anti-feature
-flag. But waking a killed **iOS** app requires Apple's APNs, credentials bind to the *app*
-rather than the server, and even self-hosted ntfy must relay iOS wakes through an
-APNs-connected upstream.
+self-hosted ntfy (no Google at all), plus a foreground-service socket for anyone wanting
+zero intermediaries. But waking a killed **iOS** app requires Apple's APNs, credentials bind
+to the *app* rather than the server, and even self-hosted ntfy must relay iOS wakes through
+an APNs-connected upstream.
 
-So exactly one shared relay survives. It is content-free, stateless, published as a
-container, and its URL is client-configurable — so ours is a default, not a chokepoint. If
-it dies, iOS loses background wakes and **nothing else**. See [PLAN.md §11](./PLAN.md).
+So if iOS background delivery is ever wanted, exactly one shared relay survives — content-free,
+stateless, container-published, with a client-configurable URL, so it's a default rather than
+a chokepoint. If it dies, iOS loses background wakes and **nothing else**.
+
+Since publishing is deliberately not a concern yet, **push is built on Android first** and
+iOS runs foreground-only (a free Apple account can't enable push at all). See
+[PLAN.md §11](./PLAN.md).
+
+## Voice: a board, not a call log
+
+Voice channels are **permanent objects that always exist**, like lists on a Trello board —
+not calls you create or invite people to. You see every channel and everyone in it at a
+glance, and move between them by clicking. Moderators can move others.
+
+Consequence: **nothing rings in v1**, which keeps CallKit, PushKit and full-screen intents
+out of v1 entirely — they arrive with direct 1:1 calls in v2.
 
 ## Scale posture
 

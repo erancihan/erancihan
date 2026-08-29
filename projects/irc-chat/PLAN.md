@@ -110,13 +110,22 @@ Most project-model questions (funding, distribution accounts, code-signing, lega
 
 ### 3.2 The TeamSpeak half (real-time voice)
 
+**The model, confirmed: persistent always-on channels — a board, not a call log.**
+
+Voice channels are **permanent objects that always exist**, like the lists on a Trello board. They are not calls you create, schedule, or invite people to. The board is the primary view: **every channel and everyone currently in it is visible at a glance**, without joining anything, and you move yourself between channels by clicking — the TeamSpeak lounge model. Four consequences follow, and they simplify more than they cost:
+
+1. **Nothing rings.** Walking into a lounge does not notify anyone. This removes incoming-call semantics from v1 entirely — which, per §11.4, also removes the PushKit/CallKit work from v1. *Direct 1:1 calls, which do ring, move to v2.*
+2. **Occupancy is global, not per-room.** Every connected client sees who is in every voice channel at all times, so occupancy is broadcast to the whole island rather than only to participants. Cheap (tiny payloads, changes only on join/leave) but it must be designed as island-wide state from the start, not bolted on.
+3. **Channels exist in the database; SFU rooms do not exist until needed.** A voice channel is always a row; its LiveKit room is created lazily on first join and torn down when the last person leaves. Empty channels cost nothing, so an island can offer as many as it likes (§7.2).
+4. **Moving people is a first-class action.** Users drag themselves between channels; moderators with permission can drag *others* — the TeamSpeak "move user" action, and the natural reading of the board metaphor.
+
 **In v1:**
-- **Persistent, always-on voice channels** (the TeamSpeak "lounge" model), low-latency, self-hosted.
+- Persistent always-on voice channels as above, low-latency, self-hosted.
 - **Video and screen-share** on the same media path.
-- **Push-to-talk** (client-side) and open-mic / voice-activity modes; "who's speaking" indicators.
+- **Push-to-talk** (client-side) and open-mic / voice-activity modes; "who's speaking" indicators on the board.
 - Server-side mute/deafen that propagates to the media layer (a moderator timeout kills the offender's audio track at the SFU, not just in the UI).
 
-**In v2+:** optional server-side voice recording (LiveKit Egress), positional/spatial audio niceties.
+**In v2+:** **direct 1:1 calls** (the ringing case — brings PushKit/CallKit and full-screen intents with it), optional server-side recording (LiveKit Egress), positional/spatial audio niceties.
 
 ### 3.3 Deliberately OUT of scope for v1
 
@@ -344,6 +353,11 @@ The **app server is the sole identity/permission authority**. Flow:
 
 The SFU holds **no accounts** — perfect for islands. This is exactly Matrix's `lk-jwt-service` pattern, stolen wholesale. **Future-federation seam:** because the app server already brokers tokens, a home server could later mint a *guest* token to a remote island's SFU — a clean hook we design toward but do not build.
 
+**Room lifecycle under the persistent-channel model (§3.2).** A voice channel is permanent *in the database* but its LiveKit room is **created lazily on first join and destroyed when the last participant leaves**. This is what makes "always-on channels" affordable: an island can expose thirty voice channels and pay for none of them while they sit empty. Two design notes follow:
+
+- **Occupancy state is the app server's, not the SFU's.** The board view (§3.2) must show who is where even for clients that have joined no room at all, so the app server tracks membership from LiveKit webhooks and broadcasts it island-wide over PubSub. Never make the client query the SFU to render the board.
+- **Sizing is driven by concurrent *participants*, not channel count** — so the §6.4 capacity math is unaffected by how many channels an island defines.
+
 ### 7.3 Codecs, screen share, PTT, mobile specifics
 
 - **Audio: Opus** with FEC + DTX (packet-loss resilience + silence suppression); **rnnoise** available for neural noise suppression.
@@ -371,13 +385,13 @@ The SFU holds **no accounts** — perfect for islands. This is exactly Matrix's 
 
 - **Shared KMP core:** Ktor (HTTP + WebSocket), **SQLDelight** as the single cross-platform typed-SQL store, kotlinx.coroutines, the account registry, offline/sync logic, and `expect/actual` wrappers over secure storage and push.
 - **Native UI:** Compose + SwiftUI, no compromise. (Compose Multiplatform for iOS is Stable since 1.8.0 / May 2025, but using it would mean *not* SwiftUI — so it's deliberately excluded to honor the native-feel mandate.)
-- **Voice stays native, not in the core.** LiveKit's SDKs are platform-native, so voice integration is per-platform regardless of code-sharing. **This narrows KMP's advantage** and must be budgeted: CallKit/AVAudioSession (iOS), ConnectionService/foreground service (Android), and the iOS broadcast extension are real work.
+- **Voice stays native, not in the core.** LiveKit's SDKs are platform-native, so voice integration is per-platform regardless of code-sharing. **This narrows KMP's advantage** and must be budgeted: AVAudioSession (iOS), foreground service (Android), and the iOS broadcast extension for screen share are real work. **CallKit and ConnectionService are *not* v1** — they belong to ringing 1:1 calls in v2 (§11.4).
 
 ### 8.3 Secure storage & the multi-server/multi-identity UX
 
 - **Keys/tokens live only in iOS Keychain (+ Secure Enclave for the P-256 device key) and Android Keystore/StrongBox** — never app-readable storage, never silent cloud sync. Use `kSecAttrAccessibleAfterFirstUnlock` on iOS (so a backgrounded/VoIP process can read while locked) and Keystore-wrapped keys on Android. Store **one credential set per (serverAddress, identity)** — there is no global secret.
 - **Multi-identity UX = a mail-client / Mumble-favorites account list.** Each row = `{host:port, display identity, key reference}`. The user adds a server by address, picks or creates an identity there, and the app manages a local credential vault. Centralize all per-island reconnection and "which server am I sending to" logic **in the shared core** and test it hard — a bug that leaks one island's identity to another is catastrophic.
-- **Connection lifecycle vs. OS constraints:** iOS kills background sockets — so text notifications go via APNs data pushes and incoming voice via **PushKit VoIP push → CallKit** (§11); Android uses a foreground service for active calls + FCM data messages to wake. Design each island to reconnect independently on foreground.
+- **Connection lifecycle vs. OS constraints:** iOS kills background sockets, so background delivery there depends on APNs — which is **deferred with publishing** (§11 sequencing note), leaving the iOS client foreground-only for now. Android holds a foreground service while in a voice channel and wakes via the user's chosen push tier (§11.2). Design each island to reconnect independently on foreground, and keep the push layer behind a platform-agnostic interface so iOS slots in later.
 
 ### 8.4 The `matrix-rust-sdk`/Element X lesson
 
@@ -510,6 +524,8 @@ Because **the client owns the private key**, a *future* opt-in cross-server proo
 
 This is the sharpest tension with "no central service," so we state the reality without euphemism.
 
+> **Sequencing note — read before scoping v0.** Because publishing is deliberately deferred (Appendix C), **iOS push is out of scope until an Apple Developer membership exists.** A free personal team [cannot enable the Push Notifications capability](https://developer.apple.com/forums/thread/718388) at all, so there is no way to build or even test it on a free account. This is not a blocker, it is a sequencing fact: **Android push works today with no accounts, no Google, and nothing published** (§11.2), so push gets built and proven on Android first, and the iOS client runs foreground-only until the account question is revisited. Design the client's push layer platform-agnostically so iOS is a later implementation of an existing interface, not a retrofit.
+
 ### 11.1 The constraint — and why the two platforms get different answers
 
 The universal fact: **APNs and FCM credentials are bound to the APP** (bundle ID / signing / Firebase project), **not to any server.** So no amount of decentralization on the server side changes who is allowed to wake a phone. But the two platforms diverge sharply, and lumping them together is what makes this problem look unsolvable:
@@ -553,10 +569,14 @@ Islands know only an opaque URL and key; they share no account and never learn a
 
 **If it disappears, iOS users lose background wakes and nothing else.** Text, voice, every island, and every other platform keep working. That is the honest boundary of the compromise.
 
-### 11.4 Voice calls — the stricter layer
+### 11.4 Ringing calls — deferred to v2, and why that is a real simplification
 
-- **iOS: PushKit VoIP push → CallKit.** Since iOS 13, the VoIP push handler **must report the incoming call to CallKit in the same run loop**, or the OS terminates the app and stops delivering VoIP pushes. So the **call-setup payload (caller identity, call id) must be self-sufficient** in the push (≤ ~5 KB), enabling instant ring with no round-trip.
-- **Android: high-priority FCM data message → full-screen intent + ConnectionService.** Note `USE_FULL_SCREEN_INTENT` is, since 2024, auto-granted only to genuine calling/alarm apps (Play Console declaration required from May 31 2024; from Jan 22 2025 restricted for Android-14+ targets). We qualify as a calling app, but must declare it and **degrade gracefully** to a normal notification if denied.
+**The persistent-channel model (§3.2) means nothing rings in v1.** Walking into an always-on lounge notifies no one, so v1 needs only ordinary content-free message wakes — not the far stricter incoming-call machinery below. That machinery arrives with **direct 1:1 calls in v2**, and it is worth recording now precisely because it is the most constrained platform work in the whole plan:
+
+- **iOS: PushKit VoIP push → CallKit.** Since iOS 13, the VoIP push handler **must report the incoming call to CallKit in the same run loop**, or the OS terminates the app and stops delivering VoIP pushes to it. So the **call-setup payload (caller identity, call id) must be self-sufficient** in the push (≤ ~5 KB), enabling an instant ring with no round-trip.
+- **Android: high-priority data message → full-screen intent + ConnectionService.** `USE_FULL_SCREEN_INTENT` is, since 2024, auto-granted only to genuine calling/alarm apps (Play Console declaration required from May 31 2024; from Jan 22 2025 restricted for Android-14+ targets). A calling app qualifies, but must declare it and **degrade gracefully** to a normal notification if denied.
+
+Deferring this is one of the larger wins from confirming the channel model: v1 ships voice without touching CallKit, PushKit, ConnectionService, or full-screen-intent permissions at all.
 
 ### 11.5 Escape hatches for those who reject even this
 
@@ -755,19 +775,21 @@ Legend — **Build**: our code. **Adopt**: third-party tool named. **Both**: bui
 Prove **low-latency self-hosted voice** and **native mobile feel** first.
 - Phoenix app server + PostgreSQL + Redis/Valkey; WebSocket gateway with basic auth (keypair challenge-response) and a single always-on LiveKit voice room; coturn; Garage.
 - Android (Compose) + iOS (SwiftUI) on a KMP core doing: connect-by-address, per-server keypair identity, plain text channel, and **join voice**.
-- **E2EE pre-investment (§12.5):** stand up the **Rust crypto module + UniFFI bindings** doing keygen and challenge-response signing, wired into both apps and both CI pipelines; ship the **message envelope** (versioned, with null `key_epoch`/`sender_key_id`) from the very first message the gateway sends.
+- **E2EE pre-investment (§12.5):** stand up the **Rust crypto module + UniFFI bindings**, wired into both apps and both CI pipelines; ship the **message envelope** (versioned, with null `key_epoch`/`sender_key_id`) from the very first message the gateway sends.
+  - *The v0 Rust surface is deliberately tiny* — roughly four calls: `generate_identity()`, `public_key()`, `sign_challenge(nonce)`, `wrap_keystore(bytes)`. A few hundred lines. The point is to prove the boundary and the build, not to write cryptography; the module stays this small until MLS arrives in v3.
 - **Project hygiene, cheapest at day zero:** apply the §2.2 licenses to each repo, and add the **CI license check** on the client and crypto dependency trees (§16 risk 14) while the dependency graph is still small.
 - **Milestone:** two phones on two networks hold a clear, low-latency voice call through a self-hosted server, and text arrives in real time. TOFU pinning works against a self-signed cert. **The Rust module builds and runs on both platforms in CI** — proving the boundary before it carries anything hard.
 
 ### v1 — Usable Discord + TeamSpeak replacement
 - **Discord half:** channels/categories/threads; roles + per-channel permission overrides (the model designed in v0); DMs/group DMs; reactions + custom emoji; uploads + transcoding + thumbnails; Postgres-FTS search (permission-filtered); presence/typing/read-state; invites; moderation + audit log + rate-limiting; mentions + notification routing.
-- **TeamSpeak half:** many voice channels; video + screen share on the same SFU; PTT + open-mic; server-enforced mute.
-- **Platform:** push per §11 — **UnifiedPush default on Android** (plus foreground-service and FCM options), content-free iOS relay with a client-configurable URL; **F-Droid listing**; i18n scaffolding; baseline a11y.
+- **TeamSpeak half:** the persistent-channel **board** (§3.2) — many always-on voice channels with island-wide live occupancy, click to move between them, moderator move/mute; video + screen share on the same SFU; PTT + open-mic. **No ringing, so no CallKit/ConnectionService work.**
+- **Platform:** push per §11 — **Android only for now** (UnifiedPush default, foreground-service and FCM as alternatives), behind a platform-agnostic interface so iOS slots in when publishing is revisited; i18n scaffolding; baseline a11y.
 - **Ops:** the `docker compose` bundle with Caddy auto-TLS, auto-migrations, encrypted tested backups, DR runbook, and the plain-language privacy page. LiveKit factored as a separately-addressable service so it can move to its own box later (§6.4). **Installer reachability check** with the CGNAT/overlay/VPS guidance of §6.3.
 - **E2EE pre-investment (§12.5):** client-side search index shipped alongside server FTS; client-side rendering path for previews/notification text; per-device registry with revocation.
-- **Milestone:** a community of ~100 runs its entire text + voice life on one self-hosted island, from two native apps, with reliable background notifications.
+- **Milestone:** a small circle runs its entire text + voice life on one self-hosted island, from two native apps — with reliable background notifications on Android, and a foreground-capable iOS client awaiting the push decision.
 
 ### v2 — Ecosystem & desktop
+- **Direct 1:1 calls** — the ringing case, bringing PushKit/CallKit (iOS) and full-screen intents/ConnectionService (Android) with it (§11.4). Gated on the iOS push decision.
 - Bots + webhooks + slash commands + scoped bot API (once the core API is stable and versioned).
 - Rich embeds/link unfurling (SSRF-hardened); stickers/GIFs (Klipy/Giphy/self-curated); custom statuses; deeper moderation.
 - UnifiedPush/ntfy opt-in push path.
@@ -801,7 +823,7 @@ The committed direction from §12.5, sequenced so the blast radius grows slowly:
 | 5 | **Permission model is on every hot path** and easy to get subtly wrong. | Design + test the bitfield/override calculator in v0; cache; consider OpenFGA only if the graph grows. |
 | 6 | **Ecosystem churn already burned common defaults** (MinIO archived; Tenor API dead; Redis relicensed; Revolt→Stoat). | Avoid MinIO (use Garage/SeaweedFS); GIF as operator-optional Klipy/self-curated; Valkey over Redis; re-verify licenses near build time. |
 | 7 | **Copyleft/AGPL in adopted components** (Garage, mCaptcha, Wire core-crypto) affects redistribution differently on server vs. client. | Server side is fine — those are consumed as *separate network services or processes*, so their copyleft does not reach our source, and our server is AGPL-3.0 anyway. Client side is strict: permissive-only, no exceptions (§2.2, risk 17). Keep the S3 API and token-mint boundaries swappable. |
-| 8 | **iOS background execution** (PushKit-must-report-CallKit; no persistent socket) is a hard wall. | Design lifecycle around it from day one; self-sufficient VoIP payloads; correct Keychain accessibility + Keystore usage. |
+| 8 | **iOS background execution** (no persistent socket; PushKit-must-report-CallKit once ringing exists) is a hard wall. | Largely deferred: v1 has no ringing (§3.2) and iOS push waits on the account question (§11). Still design the client lifecycle around it from day one — platform-agnostic push interface, correct Keychain accessibility — so neither is a retrofit. |
 | 9 | **Trust-the-host misunderstood** by members joining someone else's island. | Plain-language privacy page at join; loud TOFU warnings; hedge any E2EE roadmap language. |
 | 10 | **BEAM talent pool is smaller** than Go/Node — sharper for a *volunteer* project than a funded one, since contributors are the only labour supply. | Counterweight: Elixir means materially *less code* and *fewer moving parts* to maintain (no Redis for presence/fan-out), and maintainer time is the scarcest resource (principle 7). Keep the surface conventional and heavily documented; the Go fallback stands if a contributor drought becomes real rather than theoretical. |
 | 11 | **Vendor drift** (LiveKit is VC-backed with a Cloud tier). | Self-host path is Apache-2.0 today; isolate behind the token-mint boundary so mediasoup/Janus is a swap, not a rewrite; monitor licensing. |
@@ -826,13 +848,17 @@ The committed direction from §12.5, sequenced so the blast radius grows slowly:
 | **Scale posture** | **Tune for Tier 1** (a personal island, ~10–50 people, one cheap box) — **but no architectural ceiling** (§6.4). Enforced by four coding rules from v0, not by building distributed systems now. |
 | **Project model** | **Non-profit, community-run, no telemetry.** "No centralization" defined by the data-path and death tests (§2.1). The project ships software and one content-free iOS relay; it does not run the network. Release logistics parked in Appendix C. |
 | **Licensing** | **AGPL-3.0 server · Apache-2.0 clients and crypto module · CC0 protocol spec** (§2.2). Client/crypto trees are permissive-only, enforced in CI. |
-| **Push posture** | **Android sovereign by default** (UnifiedPush + self-hosted ntfy; foreground-service and FCM as alternatives), **F-Droid as the primary Android channel**. iOS uses one content-free, client-configurable, forkable relay (§11). |
+| **Push posture** | **Android sovereign by default** (UnifiedPush + self-hosted ntfy; foreground-service and FCM as alternatives). iOS uses one content-free, client-configurable, forkable relay when it arrives (§11). |
+| **Voice UX** | **Persistent always-on channels — a board, not a call log** (§3.2). Island-wide live occupancy, click to move, moderators can move others. **Nothing rings in v1**, which defers CallKit/PushKit/ConnectionService to v2 with direct 1:1 calls. |
+| **TOFU invites** | Invite links and QR codes **embed the server's SPKI fingerprint** for out-of-band first-connect verification (§12.2). |
+| **Rust in CI** | Accepted. Kept tolerable by holding the v0 surface to ~4 functions and a documented fallback to hand-written per-platform bindings if the KMP-UniFFI forks stall (§16 risk 12). |
+| **Publishing** | **Not a concern at this stage** (Appendix C). Consequence: **iOS push is out of scope until an Apple membership exists** — free provisioning cannot enable it — so push is built and proven on Android first (§11 sequencing note). |
 
-**Still open before v0 code** (technical only — release logistics are parked in Appendix C):
-1. **Voice UX shape:** always-on persistent voice channels (TeamSpeak style) as the primary model — confirm, since it affects SFU sizing and room-presence semantics.
-2. **TOFU invite format:** confirm invite links/QR codes embed the server **SPKI fingerprint** for out-of-band first-connect verification.
-3. **Rust-in-CI appetite:** the crypto module puts a Rust toolchain in the mobile build from day one (§16 risk 12). Confirm this is an acceptable standing cost for the E2EE pre-investment.
-4. **UnifiedPush onboarding friction.** Making it the Android default is right for the vision but costs a "now install a distributor app" step. Decide how hard to smooth it (setup wizard? recommended distributor? first-run explainer?) — the main UX price of the sovereignty stance.
+**Still open before v0 code:** nothing blocking. The next decisions are made *by writing code*, not by more planning:
+
+1. **Gateway protocol v0** — pin the framing, the auth handshake, and the resume/replay semantics sketched in Appendix B, then freeze them before two clients depend on them.
+2. **Permission calculus** — the role/override resolution order (§13) is on every hot path and is the easiest thing in the plan to get subtly wrong; write it with its test suite first.
+3. **Revisit iOS push** once someone actually wants background delivery on a phone — the design is settled (§11.3), only the account question is open.
 
 **First engineering actions (v0 sprint):**
 - Stand up the Docker Compose skeleton: Phoenix + Postgres + LiveKit + Caddy + coturn + Garage, one-command up.
@@ -915,7 +941,9 @@ The app server is the **sole authority** for identity, permissions, and history;
 
 ## Appendix C — Parked until release
 
-None of this affects what we build, and all of it is cheap to decide later. It is recorded so the research is not lost and so nothing here is a surprise on release day. **Do not let these block v0.**
+**Publishing is explicitly not a concern at this stage.** None of the below affects what we build; it is recorded only so the research is not lost and nothing is a surprise if the project ever ships publicly. **Do not let any of it block v0, and do not spend time on it.**
+
+The one place it leaks into engineering is sequencing, and it is handled: **iOS push needs a paid Apple membership** (free provisioning cannot enable the capability), so push is built on Android first and the push layer is kept behind a platform-agnostic interface — see the §11 sequencing note. Nothing else here has a technical consequence.
 
 **Distribution & accounts.** iOS requires an Apple Developer membership ($99/yr) and App Store review; Apple [waives the fee for nonprofits](https://developer.apple.com/help/account/membership/fee-waivers/), but only for a *legal entity* with nonprofit status in an eligible region, and only if the apps never sell anything — so it is unavailable to an individual maintainer. Android needs none of this: **F-Droid is the primary channel** (clean, because push defaults to UnifiedPush — §11.2), with Play Store ($25 one-time) optional and direct APKs always available. Desktop signing is the awkward one: macOS notarization comes with the Apple membership, but Windows code-signing certificates run ~$200–400/yr — likely routed around via winget/Scoop/Flathub/Homebrew and a documented unsigned-binary path rather than paid for.
 
