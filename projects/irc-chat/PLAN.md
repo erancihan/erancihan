@@ -20,7 +20,9 @@ We are building a **self-hostable communications server plus first-class native 
 | 4 | **Native mobile is a hard requirement:** Kotlin + Jetpack Compose (Android), Swift + SwiftUI (iOS). No React Native, no Flutter for the primary clients. | The user disliked Element/Matrix mobile UX and wants a genuinely native feel. |
 | 5 | **Build the text/community layer; adopt mature OSS for the hard infrastructure.** Foremost: **adopt LiveKit** (Apache-2.0 WebRTC SFU) for voice/video/screen-share — do not build media plumbing. | Reinventing an SFU is a multi-quarter trap; reinventing the islands/identity model is a weekend's schema design. Spend effort where it differentiates. |
 | 6 | **Server runtime = Elixir/Phoenix** (Channels + Presence + PubSub). Go is the sanctioned fallback. | Presence, fan-out, and multi-device broadcast — the three hardest realtime problems — come for free on a single node with no Redis. |
-| 7 | **Mobile shared core = Kotlin Multiplatform (KMP)**, native UI per platform. Rust/UniFFI is the documented alternative if we commit to early E2EE. | Write the bug-prone logic (reconnect, sync, account registry) once; keep every pixel native. |
+| 7 | **Mobile shared core = Kotlin Multiplatform (KMP)**, native UI per platform, **plus a small Rust crypto module (UniFFI) for the future MLS engine.** | Write the bug-prone logic (reconnect, sync, account registry) once in Kotlin; keep every pixel native; keep crypto in the one language that has a real MLS implementation. |
+| 8 | **E2EE is pre-invested, not pre-built.** Still no E2EE in v1, but the message envelope, key-storage seam, and crypto module boundary are designed for MLS from day one. | Retrofitting E2EE into a plaintext message model is the rewrite we are paying a small tax now to avoid. |
+| 9 | **Desktop = Tauri** (LiveKit Rust SDK for media), Electron as the documented fallback. | The Rust crypto module (#7) gives Tauri the code-reuse rationale it previously lacked; the team already has Tauri experience. |
 
 **What this is NOT:** it is not Matrix (no federation-first design, no portable global `@user:server` identity, no AGPL homeserver baggage). It is not a fork of Discord-alternative platforms (all ship non-native mobile and bend the wrong way for islands). It is not E2EE-by-default (that fights v1's own must-have features).
 
@@ -79,7 +81,7 @@ We are building a **self-hostable communications server plus first-class native 
 | Excluded | Why | Where it hooks in later |
 |----------|-----|--------------------------|
 | **Federation / server-to-server** | Contradicts islands; adds enormous complexity (Matrix's whole burden). | Server-scoped ID namespace + PubSub message router are designed now so a future opt-in S2S module attaches without a schema break (§10, §15). |
-| **E2EE (content the host can't read)** | Breaks server-side search, bots, moderation, and rich push — all v1 must-haves. Also fights the trust-the-host model. | DM-first double-ratchet or MLS 1:1, then MLS (RFC 9420) groups. Keep message storage abstracted (§12). |
+| **E2EE (content the host can't read)** | Breaks server-side search, bots, moderation, and rich push — all v1 must-haves. Also fights the trust-the-host model. | **PRE-INVESTED (§12.5).** Not shipped in v1, but the message envelope, crypto-module boundary, and key-storage seam are MLS-shaped from day one. DM-first, then MLS (RFC 9420) groups. |
 | **Central / global account** | The core anti-vision. | A future portable-identity concept could reuse the per-server keypair (§10); not assumed. |
 | **Media E2EE for voice** | SFU must see plaintext to route; Insertable Streams/SFrame is hard and fights recording/moderation. | Documented future; DTLS-SRTP covers hop encryption in v1 (§7, §12). |
 
@@ -149,7 +151,7 @@ flowchart TB
   subgraph Clients["Clients (native)"]
     A["Android<br/>Kotlin + Compose"]
     I["iOS<br/>Swift + SwiftUI"]
-    D["Desktop<br/>Electron (v2)"]
+    D["Desktop<br/>Tauri (v2)"]
   end
 
   subgraph Publisher["App-publisher infra (the ONE shared piece)"]
@@ -234,6 +236,24 @@ docker compose up -d
 - **Backups:** a bundled **nightly `pg_dump` + object-store snapshot**, encrypted with **age**, using **restic/BorgBackup**, with a **documented, tested restore** and a short DR runbook. (The most likely real-world breach is a leaked unencrypted backup, not a wire attack — so this is a first-class deliverable, not an afterthought.)
 - **The fiddly part, called out honestly:** LiveKit's UDP port range + TURN/TLS is where novice self-hosters get stuck. The bundle ships sane firewall/port defaults, uses LiveKit's **embedded TURN on 5349** by default (so coturn is optional), and documents TURN-over-TLS on 443 for restrictive networks.
 
+### 6.4 Sizing: what one island has to carry
+
+**Design target: Tier 2 below.** This is chosen as a deliberate default rather than a measured requirement, and choosing it costs us very little, because **the architecture is identical across all three tiers** — moving up a tier is "buy a bigger box," then "move LiveKit to its own box," both of which are Compose/config changes rather than redesigns. The first change that would genuinely alter the architecture is multi-node Phoenix clustering, which sits beyond Tier 3 and which no self-hosted island is likely to reach.
+
+| Tier | Registered / concurrent voice | Box | Notes |
+|---|---|---|---|
+| **1 — Friends** | ≤50 / ≤10 voice, occasional screen share | 2 vCPU, 4 GB, 80 GB | A cheap VPS or a home box. Comfortable. |
+| **2 — Community (DESIGN TARGET)** | ≤500 / ≤50 voice, 2–3 concurrent screen shares | 4 vCPU, 8 GB, 160 GB + generous transfer | Single node runs everything in the Compose bundle. |
+| **3 — Large** | ≤5,000 / ~200 voice | App box + **separate LiveKit box** | Split media off first; Phoenix still single-node. Add Valkey when presence/rate-limit traffic justifies it. |
+
+**Where the limits actually bite** — the useful part, because the intuition is usually wrong:
+
+- **Text is not the constraint, and it is not close.** Phoenix holds tens of thousands of idle WebSockets on modest hardware; a chat island's message rate is trivial next to that. Message rows are small — roughly a million messages fits in a few hundred MB with indexes. **Uploaded media, not messages, is what fills the disk**, so size storage from attachment retention policy.
+- **Voice is cheap; video is not.** SFU forwarding does no transcoding, so CPU stays low and **bandwidth is the real ceiling.** With Opus at ~32 kbps, a 10-person voice room costs the server roughly `10 × 9 × 32 kbps ≈ 2.9 Mbps` egress, so ~50 concurrent voice users spread across five such rooms is only ~15 Mbps. By contrast **a single 1080p screen share to nine viewers is ~22 Mbps — one screen share costs about as much egress as the entire Tier 2 voice load.** Simulcast/dynacast mitigate this by letting weak clients pull lower layers; capacity planning should still assume video is the expensive case.
+- **TURN relay is the sleeper cost (§7.3).** Participants behind symmetric NAT relay *all* their media through the server, converting a peer's bandwidth into the operator's bandwidth. A self-hoster typically hits their VPS transfer cap long before they hit a CPU limit — so publish guidance in terms of **monthly transfer**, not just cores and RAM.
+
+**Practical consequence:** ship the Compose bundle with LiveKit already factored as a separately-addressable service (its own container, its own config, referenced by URL), so that "move media to its own box" is a one-line change on the day an island outgrows Tier 2. That single piece of foresight is the whole cost of not knowing the target scale up front.
+
 ---
 
 ## 7. Real-time voice/video stack
@@ -271,7 +291,7 @@ The SFU holds **no accounts** — perfect for islands. This is exactly Matrix's 
 
 ## 8. Native mobile clients & the code-sharing decision
 
-**Decision: Kotlin Multiplatform (KMP) shared non-UI core + 100% native UI** — Jetpack Compose (Android), SwiftUI (iOS). This is strategy (b) of four evaluated.
+**Decision: Kotlin Multiplatform (KMP) shared non-UI core + 100% native UI** — Jetpack Compose (Android), SwiftUI (iOS) — **plus a narrow Rust module, bound via UniFFI, that owns cryptography only** (§8.5). This is strategy (b), with the one part of strategy (c) that genuinely earns its keep.
 
 ### 8.1 The four strategies, decided
 
@@ -279,7 +299,7 @@ The SFU holds **no accounts** — perfect for islands. This is exactly Matrix's 
 |---|---|---|
 | (a) Fully separate Kotlin + Swift | nothing | Best native purity, **worst** maintainability — doubles the most bug-prone code (reconnect, sync, account state). Rejected as primary. |
 | **(b) KMP core + native UI** | protocol client, models, reconnect state machine, offline store, **multi-server/multi-identity account registry**, token/key abstractions | **RECOMMENDED.** Write the high-value bug-prone logic once; every pixel stays native. KMP is production-ready and Google-endorsed (Room/DataStore/ViewModel ship KMP). |
-| (c) Rust core via UniFFI | same surface as (b), in Rust | **Documented alternative** — pick *only* if we commit to a bespoke binary protocol and early E2EE and have Rust skills. UniFFI is production-used (Firefox) but pre-1.0, async-across-FFI is the hard part, and CI/cross-compile is the heaviest. Its payoff: one audited crypto core for future MLS. |
+| (c) Rust core via UniFFI | same surface as (b), in Rust | **Rejected as the whole core, adopted for crypto only.** Putting the *entire* core in Rust buys little (async-across-FFI is the weak spot, CI/cross-compile is heaviest) — but crypto is the one domain where Rust is not a preference, it is where the MLS implementations actually live. See §8.5. |
 | (d) Schema-only sharing | wire types | Shares the least valuable code, duplicates the most. Adopt the schema layer *under* (b), not as the strategy. |
 
 ### 8.2 What lives where
@@ -298,27 +318,81 @@ The SFU holds **no accounts** — perfect for islands. This is exactly Matrix's 
 
 Element X *is* genuinely native (element-x-android is ~99% Kotlin/Compose; element-x-ios is SwiftUI) — proof the native bar is reachable and a reference to study for UX, offline sync, and connection handling. We study it; we do not adopt Matrix.
 
+### 8.5 The Rust crypto module — how KMP and E2EE pre-investment coexist
+
+There is a real tension between "KMP core" and "pre-invest in E2EE," and it resolves cleanly: **KMP owns the application, Rust owns the crypto.**
+
+The reason is not taste. **There is no mature pure-Kotlin MLS (RFC 9420) implementation.** Every credible MLS engine is Rust — **OpenMLS** (MIT) and **AWS mls-rs** (Apache-2.0 OR MIT). If we ever want MLS groups, we will be calling Rust; the only question is whether we discover that in year two with a Kotlin crypto layer to unpick, or design for it now.
+
+**The precedent is exact.** Wire's [`core-crypto`](https://github.com/wireapp/core-crypto) is a Rust MLS engine with encrypted persistent storage, exposed to Kotlin, Swift, and WASM via **UniFFI** — shipping in production mobile apps. Wire even maintains [its own fork of the UniFFI Kotlin-Multiplatform bindings](https://github.com/wireapp/uniffi-kotlin-multiplatform-bindings). Our target architecture is the same shape, so we are following a proven path rather than inventing one.
+
+**The boundary (design it in v0, keep it narrow):**
+
+| Layer | Language | Owns |
+|---|---|---|
+| UI | Kotlin/Compose, Swift/SwiftUI | every pixel |
+| App core | **Kotlin (KMP)** | protocol client, reconnect/resume, offline store, account registry, sync |
+| **Crypto module** | **Rust, via UniFFI** | key generation, challenge-response signing, key storage encryption — **and later, the whole MLS engine** |
+| Platform | Kotlin / Swift `expect/actual` | Keystore/Keychain, LiveKit SDK, push |
+
+**What "pre-invest" concretely means in v0/v1 — cheap now, decisive later:**
+
+1. **Ship the Rust crypto module in v0**, even though v0 crypto is trivial (keypair generation + challenge-response signing, §10). The point is that the FFI boundary, the build, and the CI cross-compilation exist and are exercised from day one. Standing this up later, under E2EE deadline pressure, is where projects lose quarters.
+2. **All message content crosses the app↔transport boundary through an envelope**, never as a bare string: `{ envelope_version, content_type, ciphertext_or_plaintext, key_epoch?, sender_key_id? }`. In v1 it carries plaintext and the optional fields are null. E2EE later fills them in — no schema migration, no protocol break.
+3. **Never let the server's plaintext assumptions leak into the client's data model.** Client-side, treat "the server can render this message" as a *capability that may be withdrawn*, so search, previews, and notification text already route through a client-side path that can later become the only path.
+4. **Keep a client-side search index from v1** (even though server FTS is authoritative), because client-side indexing is the thing E2EE forces and the hardest to retrofit (Matrix needed Seshat for exactly this).
+5. **Choose the MLS ciphersuite now** so key material lines up — see §10.2.
+
+**The cost we are accepting:** a Rust toolchain in mobile CI from day one, cross-compilation for both platforms, and dependence on **community KMP-UniFFI binding forks** (Ubique's, Wire's, or Gobley) that chase upstream UniFFI releases rather than being first-party. That is a real maintenance tax and the main risk of this choice (§16). It is bounded by keeping the Rust surface *small* — if the bindings ever become untenable, a narrow crypto module can be consumed through plain per-platform `expect/actual` bindings instead, which is not true of a whole-app Rust core.
+
 ---
 
 ## 9. Desktop client options & recommendation
 
-**Decision: Electron for the v2 desktop client, with all real-time media routed through LiveKit's JS SDK.** Tauri is the documented alternative *iff* we choose the Rust mobile core.
+**Decision: Tauri for the v2 desktop client, with media handled by the LiveKit *Rust* SDK in the Tauri backend rather than in the webview.** Electron is the documented fallback if remote-video rendering proves too costly (§9.2). This reverses an earlier draft recommendation, for two reasons that did not hold before: the project now contains a **Rust crypto module** (§8.5) that Tauri reuses directly, and the team already has **production Tauri experience** on another project.
 
-### 9.1 Why Electron, given the KMP mobile core
+### 9.1 The options
 
 The dominant desktop constraint is **reliable low-latency voice AND screen share on Windows, macOS, and Linux**. That single requirement reshuffles the usual "Tauri is lighter" ranking:
 
 | Option | Voice + screenshare across all 3 OSes | Reuse with our stack | Verdict |
 |---|---|---|---|
-| **Electron** (MIT) | **Uniform, turnkey** — bundled Chromium gives full WebRTC + `desktopCapturer` window/screen picker; **LiveKit ships a JS SDK** | Reuses a web UI; no direct KMP reuse (protocol reimplemented in TS or via a web client) | **RECOMMENDED (v2)** |
-| **Tauri v2** (MIT/Apache) | System webview has **real media gaps** — macOS WKWebView lacks `getDisplayMedia` (hard wall); Linux WebKitGTK has WebRTC only if custom-compiled; Windows WebView2 ≈ Chromium. Must run media natively via **LiveKit Rust SDK** | **Best reuse *iff* mobile core is Rust** | **Alternative** — only coherent with strategy (c) |
+| **Tauri v2** (MIT/Apache) | Webview path has media gaps (macOS WKWebView lacks `getDisplayMedia` — a hard wall; Linux WebKitGTK *does* support WebRTC/`getDisplayMedia` via GStreamer + PipeWire but depends on build config; Windows WebView2 ≈ Chromium). **We bypass all of it by running media in the Rust backend via the LiveKit Rust SDK** (§9.2) | **Reuses the Rust crypto module (§8.5)**; UI is web | **RECOMMENDED (v2)** — pending the §9.3 spike |
+| **Electron** (MIT) | **Uniform, turnkey** — bundled Chromium gives full WebRTC + `desktopCapturer` window/screen picker; **LiveKit ships a JS SDK** | Reuses the same web UI; no Rust/KMP reuse | **Documented fallback** — ship this if remote-video bridging in Tauri proves costly |
 | Compose MP desktop | **Weakest** — no first-class desktop WebRTC; would force JxBrowser (paid) or a bespoke libwebrtc JNI binding; **LiveKit has no JVM/desktop SDK** | Great *iff* mobile is Compose-shared (it isn't) | Rejected for a voice-critical v1/v2 |
 | Flutter desktop | `flutter_webrtc` has decent screen share but **no system-audio capture on Win/mac**; near-zero reuse with Kotlin/Swift | none | Rejected |
 | Qt / native-per-OS | Native but no reuse; Qt's LGPL/commercial friction; native-per-OS triples effort | none | Rejected |
 
-Because our mobile core is **KMP (not Rust)**, Tauri's headline advantage (share the Rust core across mobile + desktop) doesn't apply, and its media-gap engineering cost is real. **Electron is the risk-minimizing coherent choice**: it reuses a web frontend and the mature LiveKit JS SDK, and it makes the isolated-islands "connect by host:port" model a trivial connection dialog + per-server session store. We accept Electron's costs (≈150–250 MB installed, higher idle RAM, DIY `electron-updater` + code signing/notarization).
+### 9.2 The one real risk, stated precisely
 
-**If** the org later decides to adopt the Rust core (strategy c) for early E2EE, the coherent desktop flips to **Tauri + LiveKit Rust SDK** (media in the Rust layer, webview as UI only) — smaller footprint, full core reuse.
+Tauri's media problem is **not** "Tauri can't do WebRTC." It is that there are two paths and each has a distinct cost:
+
+| Path | How | Cost |
+|---|---|---|
+| **A — media in the webview** (JS LiveKit SDK) | Standard web WebRTC inside the system webview | **Hard wall on macOS:** embeddable WKWebView does not expose `getDisplayMedia`, so **screen share cannot work on macOS**. No build flag fixes this. |
+| **B — media in the Rust backend** (LiveKit Rust SDK) ← **our choice** | Media never touches the webview; audio goes straight to the OS audio device | **Audio: clean and elegant.** **Video/screenshare: you must bridge decoded frames from Rust into the UI**, which is the genuinely hard part. |
+
+The decisive observation for *this* product: **we are voice-first** (the TeamSpeak half is the real-time requirement; video/screenshare is the Discord half's nice-to-have). On path B, **audio requires no frame bridging at all** — the Rust SDK captures the mic and plays remote audio through the system device, and the webview only renders UI state ("who's in the channel, who's speaking"). So the hardest, most latency-sensitive requirement is also the one Tauri handles most naturally.
+
+Video and screen share are the part to de-risk, not assume. Note also that LiveKit's Rust SDK **targets native platforms and does not build for `wasm32`**, so path A and path B are genuinely different SDKs — this is an architectural fork, not a config flag.
+
+### 9.3 The performance spike (do this before committing)
+
+Since a head-to-head number is wanted and there is existing Tauri experience to compare against, **v2 opens with a two-week spike, not a decision**: build the same minimal client — connect to an island, join a voice channel, show a channel list — in **both** Tauri (LiveKit Rust SDK) and Electron (LiveKit JS SDK), then measure on the same machine:
+
+| Metric | Why it matters |
+|---|---|
+| Installed size, cold-start time | The headline Tauri claim; verify it rather than repeat it |
+| Idle RSS (app open, not in a call) | The always-running-in-tray case, which is how chat apps actually live |
+| RSS + CPU during a 10-person voice call | The real workload; where the Rust-SDK path should win |
+| Audio round-trip latency, CPU under load | The TeamSpeak-grade requirement |
+| Effort to render one remote video tile | **The go/no-go for Tauri** — if frame bridging is painful here, it will be worse for screen share |
+
+**Decision rule agreed in advance:** if Tauri wins on footprint *and* remote-video rendering costs less than roughly a week of work, ship Tauri. If video bridging turns into a research project, ship Electron and revisit — the UI layer is web in both cases, so the spike is not wasted either way.
+
+Caveat on the footprint comparison so it stays honest: Tauri's famous "3–10 MB" figures are *bundle* sizes and assume the OS webview (WebView2/WKWebView); on Linux the WebKitGTK dependency is substantial and usually uncounted. Electron's ≈150–250 MB installed is a fair figure. Measure effective footprint, not bundle size.
+
+**Either way, desktop remains v2** — after mobile ships. Auto-update runs off a self-hosted update feed we (the publisher) run; this does not violate islands, since operators host the *server* while we host *client updates*, same as the push gateway.
 
 **Desktop is v2**, after mobile ships. Auto-update runs off a **self-hosted update feed we (the publisher) run** — note this does not violate islands: operators host the *server*; we host *client updates*, same as we host the push gateway.
 
@@ -336,7 +410,16 @@ Because our mobile core is **KMP (not Rust)**, Tauri's headline advantage (share
 
 ### 10.2 The load-bearing crypto decision: P-256 device keys
 
-Use **P-256 / ES256 for the device key.** It is the **only curve hardware-bound in both Apple's Secure Enclave and Android StrongBox** today. Ed25519/Curve25519 is hardware-backed only on Android 13+ and **never** in the Secure Enclave. So a P-256 device key can be **non-exportable and biometric-gated on both platforms** — the native-security + native-UX win. (Even on Android 13+, Secure-Element-backed keys fall back to P-256, reinforcing the choice.) Optionally derive an **Ed25519 software "account master key"** (encrypted at rest) if we want one portable identity across a user's devices, chosen with the future MLS ciphersuite in mind.
+Use **P-256 / ES256 for the device key.** It is the **only curve hardware-bound in both Apple's Secure Enclave and Android StrongBox** today. Ed25519/Curve25519 is hardware-backed only on Android 13+ and **never** in the Secure Enclave. So a P-256 device key can be **non-exportable and biometric-gated on both platforms** — the native-security + native-UX win. (Even on Android 13+, Secure-Element-backed keys fall back to P-256, reinforcing the choice.)
+
+**The MLS curve question, settled now (it is a pre-investment decision — §12.5).** The instinct is to align MLS with the hardware curve and pick the P-256 ciphersuite (`MLS_128_DHKEMP256_AES128GCM_SHA256_P256`, one of RFC 9420's defined suites). **Resist it.** MLS requires the library to hold and operate on its own key material — HPKE decapsulation, frequent leaf-key signing, and a continuously ratcheting key schedule — and neither OpenMLS nor mls-rs delegates those operations to Secure Enclave or StrongBox. **MLS keys will live in software no matter which curve we choose,** so the hardware-alignment argument for P-256 buys nothing real.
+
+Given that, pick on cryptographic and ecosystem merit instead:
+
+- **MLS ciphersuite: `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`** — the most widely deployed suite, the best-supported path in both OpenMLS and mls-rs, and RFC 9420 notes that Ed25519 (as specified there) satisfies SUF-CMA while ECDSA satisfies only the weaker EUF-CMA.
+- **The hardware key's job is to protect the software keystore, not to be an MLS key.** The hardware-bound, biometric-gated **P-256 device key wraps the encryption key for the Rust crypto module's persistent keystore** — the same shape as Wire `core-crypto`'s encrypted persistent storage. The device key still does what it is uniquely good at (non-exportable, biometric-gated challenge-response auth, §10.1), and it gates *access* to MLS state without pretending to hold it.
+
+So the two curves coexist deliberately: **P-256 in hardware for authentication and keystore protection; Ed25519/X25519 in software for MLS.** This mixed hierarchy is intentional and documented here so it does not later look like an accident.
 
 ### 10.3 Multi-device, recovery, fallback, orgs
 
@@ -429,9 +512,9 @@ Because users connect by address, two realities coexist:
 - **Anti-spam for open registration:** default to **invite links / registration tokens** (strongest, fits small communities); layer a **self-hostable proof-of-work CAPTCHA — ALTCHA (MIT — note: *not* AGPL) or mCaptcha (AGPL-3.0)** — plus optional email verification and rate limits. Avoid reCAPTCHA/hCaptcha (cloud-only, leak metadata). No cross-server blocklist in v1 (no federation) — each island moderates alone; document the CSAM/illegal-content liability reality for hobbyist operators.
 - **SSRF is the sharpest code-level edge:** link-unfurling and outbound webhooks (v2) fetch attacker-controlled URLs — block internal IPs/metadata endpoints, cap redirects, timeout, sandbox, and make unfurling operator-toggleable.
 
-### 12.4 Where E2EE could land later, and its cost
+### 12.4 What E2EE costs — and why it is therefore deferred, not dropped
 
-E2EE is a documented **future, opt-in** layer, **DMs first** (Signal-style double-ratchet via libsignal, or MLS 1:1), then **MLS (RFC 9420; OpenMLS MIT / mls-rs Apache-or-MIT)** for group channels. The costs are not free and are exactly why it's not v1:
+E2EE is a **committed but deferred** layer (see §12.5 for what we pre-invest now): **DMs first** (Signal-style double-ratchet via libsignal, or MLS 1:1), then **MLS (RFC 9420; OpenMLS MIT / mls-rs Apache-or-MIT)** for group channels. The costs below are real, and they are precisely why it is not in v1 — every one of them collides with a v1 must-have:
 
 - **Breaks server-side search** (server sees ciphertext → must move to heavy client-side indexing, à la Matrix's Seshat).
 - **Breaks server-side bots/integrations/bridges** unless the bot becomes an in-room key holder (undermining E2EE).
@@ -440,6 +523,25 @@ E2EE is a documented **future, opt-in** layer, **DMs first** (Signal-style doubl
 - **Fights moderation** — kicking a member requires group re-keying.
 
 So we **design the message-storage and transport layers to accept opt-in DM E2EE later without a rewrite**, and we hedge roadmap language so users never assume present-day confidentiality they don't have. LiveKit's built-in E2EE is *shared-secret per room*; true per-participant/rotating keys need a custom key provider — noted for any future voice-E2EE ambition.
+
+### 12.5 E2EE pre-investment — what we build in v1 to make E2EE possible later
+
+E2EE is a **committed direction, deliberately not shipped in v1.** The distinction matters: we are not leaving a vague "we could add it someday" note, we are paying a small, specific tax now so that adding it later is a feature, not a rewrite. Retrofitting E2EE into a system whose message model assumes server-readable plaintext is one of the most expensive migrations in this product category.
+
+**What we do in v0/v1 (all cheap now, all very expensive later):**
+
+| # | Pre-investment | Cost now | What it saves |
+|---|---|---|---|
+| 1 | **Rust crypto module + UniFFI boundary exists from v0** (§8.5), even though it only does keygen and challenge-response signing | Rust in mobile CI from day one | The FFI boundary, build, and cross-compilation are proven before MLS lands — the part teams underestimate |
+| 2 | **Every message crosses the wire in an envelope**: `{ envelope_version, content_type, body, key_epoch?, sender_key_id? }` — v1 fills `body` with plaintext and leaves the rest null | A few nullable columns and a version field | No schema migration and no protocol break when ciphertext arrives |
+| 3 | **MLS ciphersuite chosen now** — X25519/Ed25519, with the hardware P-256 key wrapping the software keystore (§10.2) | One decision | Key material and the crypto module's storage layout do not have to be re-derived |
+| 4 | **Client-side search index shipped in v1**, alongside authoritative server FTS | Duplicate indexing work | Client-side search is the single hardest E2EE retrofit (Matrix needed Seshat); having it already working turns E2EE search from a project into a switch |
+| 5 | **Client treats "server can read this" as a withdrawable capability** — previews, search, and notification text already flow through a client-side path | Slight indirection in the client | The client does not have to be re-architected around plaintext assumptions |
+| 6 | **Per-device identity + device registry from v0** (§10.3) | Already required for auth | MLS needs per-device keys and revocation; we get the substrate for free |
+
+**What we explicitly do NOT do in v1:** no double ratchet, no MLS groups, no key backup/cross-signing UX, no encrypted search, and **no claim of confidentiality from the operator**. §12.1's threat model stands exactly as written — the operator can read message content in v1, and the join-time privacy page says so plainly.
+
+**The order when we do build it:** DMs first (smallest blast radius, no bot/moderation entanglement) → private channels → optionally public channels, where the cost/benefit is worst because bots, search, and moderation all matter most there. Group voice E2EE stays out of scope beyond DTLS-SRTP hop encryption (§7.3).
 
 ---
 
@@ -479,9 +581,12 @@ Legend — **Build**: our code. **Adopt**: third-party tool named. **Both**: bui
 | i18n / accessibility | Build + tool | Weblate; native a11y (Compose semantics, SwiftUI Accessibility) | v1 scaffold → v2 |
 | Android client | Build | Kotlin/Compose + KMP core + LiveKit SDK | v0 |
 | iOS client | Build | Swift/SwiftUI + KMP core + LiveKit SDK | v0 |
-| Desktop client | Build | Electron + LiveKit JS (Tauri if Rust core) | v2 |
+| Desktop client | Build | Tauri + LiveKit **Rust** SDK (Electron + LiveKit JS as fallback) | v2, after the §9.3 spike |
+| **Crypto module (Rust/UniFFI)** | Build | libsodium/RustCrypto; UniFFI + a KMP bindings fork | **v0** (keygen/signing) → v3 (MLS) |
+| **Message envelope (E2EE-ready)** | Build | versioned envelope, nullable key fields | **v0** |
+| Client-side search index | Build | SQLDelight/FTS on device | v1 (alongside server FTS) |
 | **Federation (S2S)** | — | seam only | Later / opt-in |
-| **E2EE (DMs → groups)** | — | libsignal → OpenMLS/mls-rs | Later / opt-in |
+| **E2EE (DMs → groups)** | Build on adopted engine | **OpenMLS or mls-rs** (X25519/Ed25519 suite); Wire `core-crypto` as the reference architecture | seam v0 · engine v3 |
 
 ---
 
@@ -522,13 +627,17 @@ Legend — **Build**: our code. **Adopt**: third-party tool named. **Both**: bui
 | ntfy + UnifiedPush | Opt-in de-Googled Android push | Apache-2.0 / GPLv2; open spec | Yes (Android) |
 | **Kotlin Multiplatform** + Ktor + SQLDelight | Shared mobile core | Apache-2.0 | Yes |
 | LiveKit Swift/Kotlin/JS SDKs | Native voice clients | Apache-2.0 | Yes |
-| Mozilla UniFFI | Alt Rust-core bindings (if strategy c) | MPL-2.0 | Yes |
-| Electron / Tauri | Desktop shell (Electron primary) | MIT / MIT-Apache | Yes |
+| **Mozilla UniFFI** | Rust↔Kotlin/Swift bindings for the crypto module (§8.5) | MPL-2.0 | Yes |
+| uniffi-kotlin-multiplatform-bindings (Ubique / Wire / Gobley) | KMP targets for UniFFI — **community forks, pin a version** (§16 risk 12) | Apache-2.0 / MIT (per fork) | Yes |
+| **Tauri** / Electron | Desktop shell (**Tauri primary**, Electron fallback) | MIT-Apache / MIT | Yes |
+| LiveKit Rust SDK | Desktop media in the Tauri backend (native only — no `wasm32`) | Apache-2.0 | Yes |
 | Twemoji / OpenMoji | Emoji assets | CC-BY-4.0 / CC-BY-SA-4.0 | Yes |
 | Klipy / Giphy | GIF search (**Tenor API shut down Jun 30 2026**) | Proprietary | No |
 | Weblate | Translation management | GPL | Yes |
 | matterbridge | Bridge to IRC/others (IRC-spirit) | Apache-2.0 | Yes |
-| OpenMLS / mls-rs / libsignal | **FUTURE** E2EE | MIT / Apache-or-MIT / AGPL-3.0 | Yes |
+| **OpenMLS** / **mls-rs** | MLS (RFC 9420) engine for v3 E2EE — pick one at v3; both are Rust, which is why the crypto module is Rust (§8.5) | MIT / Apache-2.0-or-MIT | Yes |
+| libsignal | Alt double-ratchet for DM-only E2EE | AGPL-3.0 | Yes |
+| Wire **core-crypto** | **Reference architecture only** — Rust MLS engine + encrypted store exposed to Kotlin/Swift via UniFFI; the exact shape we copy. **Study the design, do not link it:** GPL-3.0 would be copyleft-viral into our clients, which is why we build on OpenMLS/mls-rs directly | GPL-3.0 | Yes |
 | Element X / matrix-rust-sdk | **Reference only** (native mobile study) | AGPL-3.0 / Apache-2.0 | — |
 | Stoat (ex-Revolt) | **Reference only** (islands data model) | AGPL-3.0 | Yes |
 
@@ -540,28 +649,37 @@ Legend — **Build**: our code. **Adopt**: third-party tool named. **Both**: bui
 Prove **low-latency self-hosted voice** and **native mobile feel** first.
 - Phoenix app server + PostgreSQL + Redis/Valkey; WebSocket gateway with basic auth (keypair challenge-response) and a single always-on LiveKit voice room; coturn; Garage.
 - Android (Compose) + iOS (SwiftUI) on a KMP core doing: connect-by-address, per-server keypair identity, plain text channel, and **join voice**.
-- **Milestone:** two phones on two networks hold a clear, low-latency voice call through a self-hosted server, and text arrives in real time. TOFU pinning works against a self-signed cert.
+- **E2EE pre-investment (§12.5):** stand up the **Rust crypto module + UniFFI bindings** doing keygen and challenge-response signing, wired into both apps and both CI pipelines; ship the **message envelope** (versioned, with null `key_epoch`/`sender_key_id`) from the very first message the gateway sends.
+- **Milestone:** two phones on two networks hold a clear, low-latency voice call through a self-hosted server, and text arrives in real time. TOFU pinning works against a self-signed cert. **The Rust module builds and runs on both platforms in CI** — proving the boundary before it carries anything hard.
 
 ### v1 — Usable Discord + TeamSpeak replacement
 - **Discord half:** channels/categories/threads; roles + per-channel permission overrides (the model designed in v0); DMs/group DMs; reactions + custom emoji; uploads + transcoding + thumbnails; Postgres-FTS search (permission-filtered); presence/typing/read-state; invites; moderation + audit log + rate-limiting; mentions + notification routing.
 - **TeamSpeak half:** many voice channels; video + screen share on the same SFU; PTT + open-mic; server-enforced mute.
 - **Platform:** publisher push gateway (APNs + PushKit, FCM + full-screen-intent), content-free payloads; i18n scaffolding; baseline a11y.
-- **Ops:** the `docker compose` bundle with Caddy auto-TLS, auto-migrations, encrypted tested backups, DR runbook, and the plain-language privacy page.
+- **Ops:** the `docker compose` bundle with Caddy auto-TLS, auto-migrations, encrypted tested backups, DR runbook, and the plain-language privacy page. LiveKit factored as a separately-addressable service so it can move to its own box later (§6.4).
+- **E2EE pre-investment (§12.5):** client-side search index shipped alongside server FTS; client-side rendering path for previews/notification text; per-device registry with revocation.
 - **Milestone:** a community of ~100 runs its entire text + voice life on one self-hosted island, from two native apps, with reliable background notifications.
 
 ### v2 — Ecosystem & desktop
 - Bots + webhooks + slash commands + scoped bot API (once the core API is stable and versioned).
 - Rich embeds/link unfurling (SSRF-hardened); stickers/GIFs (Klipy/Giphy/self-curated); custom statuses; deeper moderation.
 - UnifiedPush/ntfy opt-in push path.
-- **Electron desktop client** (LiveKit JS), reusing a web UI.
+- **Desktop client — opens with the §9.3 Tauri-vs-Electron spike**, then ships the winner (Tauri + LiveKit Rust SDK expected; Electron the fallback). The web UI layer is shared either way, so the spike is not wasted work.
 - Meilisearch as an opt-in search upgrade.
+
+### v3 — E2EE: cashing in the pre-investment
+The committed direction from §12.5, sequenced so the blast radius grows slowly:
+- **MLS engine lands in the existing Rust crypto module** (OpenMLS or mls-rs, X25519/Ed25519 suite) — the module, its FFI boundary, and its CI have already been in production since v0, so this is new logic inside a proven seam, not new infrastructure.
+- **DMs first** (no bot/moderation entanglement), then private channels. Public channels last, and only if the cost/benefit justifies it.
+- Device verification + key backup UX — budget this properly; it is the part users actually feel, and the part Element is criticised for.
+- The v1 client-side search index becomes the primary index; rich push previews degrade to "new message" for encrypted conversations.
 
 ### Later / opt-in
 - **Federation seam activated:** server-scoped IDs get an opt-in S2S module; the token-broker mints guest tokens to remote SFUs. Nothing before this assumes it exists.
-- **E2EE:** DM-first (libsignal double-ratchet or MLS 1:1) → MLS (OpenMLS) groups, accepting the search/bots/moderation/push/multi-device costs of §12.4.
+- Voice media E2EE (SFrame/Insertable Streams) — still not recommended; conflicts with recording and moderation (§7.3).
 
 ### Suggested tech stack summary
-`Elixir/Phoenix` (app) · `PostgreSQL` (+FTS) · `Redis/Valkey` · `LiveKit` + `coturn` + `Opus` (voice) · `Garage` (media) · `Caddy` (TLS) · `KMP + Ktor + SQLDelight` core · `Compose`/`SwiftUI` UI · `LiveKit` native SDKs · publisher `Sygnal`-pattern gateway + `APNs`/`FCM` · `Electron` desktop (v2) · `libsodium` P-256 keypair identity.
+`Elixir/Phoenix` (app) · `PostgreSQL` (+FTS) · `Redis/Valkey` · `LiveKit` + `coturn` + `Opus` (voice) · `Garage` (media) · `Caddy` (TLS) · `KMP + Ktor + SQLDelight` core **+ Rust crypto module via UniFFI** · `Compose`/`SwiftUI` UI · `LiveKit` native SDKs · publisher `Sygnal`-pattern gateway + `APNs`/`FCM` · `Tauri` desktop (v2, pending spike) · `libsodium` P-256 hardware identity + Ed25519/X25519 MLS suite (v3).
 
 ---
 
@@ -580,18 +698,28 @@ Prove **low-latency self-hosted voice** and **native mobile feel** first.
 | 9 | **Trust-the-host misunderstood** by members joining someone else's island. | Plain-language privacy page at join; loud TOFU warnings; hedge any E2EE roadmap language. |
 | 10 | **BEAM talent pool is smaller** than Go/Node for an OSS project seeking contributors. | Sanctioned Go fallback with Valkey/NATS; keep the app-server surface conventional and documented. |
 | 11 | **Vendor drift** (LiveKit is VC-backed with a Cloud tier). | Self-host path is Apache-2.0 today; isolate behind the token-mint boundary so mediasoup/Janus is a swap, not a rewrite; monitor licensing. |
+| 12 | **KMP↔UniFFI bindings are community forks, not first-party.** Ubique's, Wire's, and Gobley all chase upstream UniFFI releases (an open "upgrade to 0.31" issue as of Feb 2026), and only JVM + Native targets are supported. A stall here blocks the crypto module. | Keep the Rust surface deliberately **small and synchronous** — if a binding generator becomes untenable, a narrow crypto module can be consumed via hand-written per-platform `expect/actual` bindings, which would be impossible for a whole-app Rust core. Track Wire's fork specifically, since they ship this exact stack. Pin generator versions. |
+| 13 | **Tauri desktop may not carry video.** Audio via the LiveKit Rust SDK is clean, but bridging decoded remote video frames into the webview is unproven for us, and macOS WKWebView cannot `getDisplayMedia` at all. | The §9.3 spike has an explicit, pre-agreed go/no-go: if remote-video rendering exceeds roughly a week, ship Electron. The web UI is shared either way, so the fallback costs the shell only. Desktop is v2, so this risk never blocks v1. |
 
 ---
 
 ## 17. Open decisions / immediate next steps
 
-**Decisions to lock before v0 code:**
-1. **Confirm mobile core = KMP** (default) vs. **Rust/UniFFI** (only if we commit to early E2EE and have Rust skills). *This single choice also decides desktop: KMP → Electron; Rust → Tauri.* **Recommendation: KMP.**
-2. **Voice UX shape:** always-on persistent voice channels (TeamSpeak style) is the primary model — confirm, since it affects SFU sizing and room-presence semantics.
-3. **Per-island scale target** (dozens vs. low-thousands concurrent) — confirms single-node Phoenix suffices for v1 and sets SFU capacity math.
-4. **Push commitment:** we (the publisher) *will* operate a Sygnal-pattern gateway indefinitely — confirm, and confirm the de-Googled UnifiedPush path is opt-in, and that we also ship rebuild-your-own-credentials tooling for max-sovereignty operators.
-5. **TOFU invite format:** confirm invite links/QR codes embed the server **SPKI fingerprint** for out-of-band first-connect verification.
-6. **E2EE stance:** DM-only later vs. eventual MLS groups — decide now (it shapes whether we keep the message model MLS-compatible and how we word the roadmap).
+**RESOLVED (locked):**
+
+| Decision | Outcome |
+|---|---|
+| **Mobile core** | **KMP** + a narrow **Rust crypto module** via UniFFI (§8.5). Not a whole-app Rust core. |
+| **E2EE stance** | **Eventual MLS groups, pre-invested from v0** (§12.5) — envelope, crypto module, ciphersuite, client-side index all designed now; nothing shipped in v1. |
+| **MLS ciphersuite** | **X25519/Ed25519**, with the hardware P-256 key wrapping the software keystore (§10.2). |
+| **Desktop** | **Tauri** (LiveKit Rust SDK for media), Electron as fallback, gated on the §9.3 spike. |
+| **Scale target** | **Tier 2** — ≤500 registered / ≤50 concurrent voice, single node (§6.4). Chosen as a default; tiers 1–3 share one architecture, so this is cheap to be wrong about. |
+
+**Still open before v0 code:**
+1. **Voice UX shape:** always-on persistent voice channels (TeamSpeak style) as the primary model — confirm, since it affects SFU sizing and room-presence semantics.
+2. **Push commitment:** we (the publisher) *will* operate a Sygnal-pattern gateway indefinitely — confirm, and confirm the de-Googled UnifiedPush path is opt-in, and that we also ship rebuild-your-own-credentials tooling for max-sovereignty operators.
+3. **TOFU invite format:** confirm invite links/QR codes embed the server **SPKI fingerprint** for out-of-band first-connect verification.
+4. **Rust-in-CI appetite:** the crypto module puts a Rust toolchain in the mobile build from day one (§16 risk 12). Confirm the team accepts that maintenance tax as the price of the E2EE pre-investment.
 
 **First engineering actions (v0 sprint):**
 - Stand up the Docker Compose skeleton: Phoenix + Postgres + LiveKit + Caddy + coturn + Garage, one-command up.
@@ -599,9 +727,11 @@ Prove **low-latency self-hosted voice** and **native mobile feel** first.
 - Implement per-server P-256 keypair identity end-to-end with Secure Enclave / StrongBox + TOFU pinning in both apps.
 - Wire the LiveKit token-mint endpoint (copy the `lk-jwt-service` pattern) and get two phones into one voice room.
 - Prototype the KMP core (Ktor socket + SQLDelight + account registry) consumed by minimal Compose and SwiftUI shells.
+- **Stand up the Rust crypto module and its UniFFI bindings on day one** — keygen + challenge-response signing only, but built and tested from both apps in CI. Evaluate Wire's and Ubique's KMP binding forks and pin one (§16 risk 12).
+- **Ship the versioned message envelope with the first message the gateway ever sends** — nullable `key_epoch`/`sender_key_id` from commit one, so no message in the system's history predates the E2EE-ready shape.
 - Prove the end-to-end push wake (content-free) through a throwaway Sygnal instance on both platforms — this is the riskiest platform integration and should be de-risked early.
 
-**Design-now-build-later seams to keep honest:** server-scoped identity namespace (federation), abstracted message storage (E2EE), token-broker boundary (federated guest voice + SFU swap), and the S3 API boundary (storage swap). Build none of them in v1; make all of them cheap to add.
+**Design-now-build-later seams to keep honest:** server-scoped identity namespace (federation), the versioned message envelope + Rust crypto module (E2EE — actively pre-invested per §12.5, not merely noted), token-broker boundary (federated guest voice + SFU swap), separately-addressable LiveKit service (scale-out per §6.4), and the S3 API boundary (storage swap). Build none of them out in v1; make all of them cheap to add.
 
 ---
 
@@ -621,7 +751,7 @@ Not a final schema — a shared vocabulary to start from. Everything is **per-is
 | `Category` | id, name, position | Channel grouping. |
 | `Channel` | id, category_id, type (`text`/`voice`/`announcement`), name, topic, position, slowmode | Voice channels carry SFU room config. |
 | `PermissionOverride` | channel_id, target (`role`/`account`) id, allow_bits, deny_bits | Discord-style allow/deny calculus resolved at send/read time. |
-| `Message` | id (snowflake), channel_id, author_id, content, created_at, edited_at, reply_to, thread_root_id, pinned | Partition by channel; monotonic IDs for pagination. |
+| `Message` | id (snowflake), channel_id, author_id, **envelope_version, content_type, body, key_epoch (null in v1), sender_key_id (null in v1)**, created_at, edited_at, reply_to, thread_root_id, pinned | Partition by channel; monotonic IDs for pagination. **The envelope columns exist from the first migration (§12.5)** — in v1 `body` holds plaintext and the key fields are null; E2EE later fills them without a migration. |
 | `Attachment` | id, message_id, object_key (S3), mime, width/height/duration, thumb_key | Bytes live in Garage; row holds metadata only. EXIF stripped on ingest. |
 | `Reaction` | message_id, account_id, emoji (unicode or custom_emoji_id) | |
 | `CustomEmoji` | id, name, object_key | Server-uploaded. |
