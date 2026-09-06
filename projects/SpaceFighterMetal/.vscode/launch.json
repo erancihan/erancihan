@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SpaceFighterMetal}",
+            "name": "Debug SpaceFighter",
+            "target": "SpaceFighter",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug SpaceFighter"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SpaceFighterMetal}",
+            "name": "Release SpaceFighter",
+            "target": "SpaceFighter",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release SpaceFighter"
+        }
+    ]
+}
