@@ -24,8 +24,9 @@ full, inline, as you go. You end with a small cross-platform C++ project you
 wrote yourself and build with `cmake`.
 
 - Chapter [01](docs/01-project-setup.md) scaffolds the project (a CMake
-  executable, Vulkan SDK, GLFW, GLM, VMA); each later chapter says which files to
-  create and fills them in.
+  executable, Vulkan SDK, GLFW, GLM, VMA) and chapter
+  [02](docs/02-architecture.md) explains the layout it hands you; each later
+  chapter says which files to create and fills them in.
 - The code is presented and explained where it's introduced — there's no
   separate codebase to cross-reference; the guide *is* the source.
 
@@ -51,8 +52,7 @@ magic, you leave knowing what a *frame actually costs*.
 
 ## Mental model (read this first)
 
-Three ideas carry the whole project. Hold all three and everything else is
-detail.
+Four ideas carry the whole project. Hold all four and everything else is detail.
 
 **1. The ECS separates *data* from *behaviour*.** Nothing is a "Spaceship
 object" with a `fly()` method. Instead an entity (a number) *has* a `Transform`,
@@ -67,7 +67,13 @@ then the renderer packages the survivors and hands the GPU a few instanced draw
 calls. The seam between them is deliberately thin — a map of instance data — so
 neither side knows the other's internals.
 
-**3. Vulkan makes the GPU's contract explicit.** Where Metal (and MetalKit) hid
+**3. The tree has layers, and they only point one way.** `render/` may know about
+geometry and ids; it may never know what a spaceship is. `components/`,
+`systems/`, `archetypes/` and `content/` describe what to draw; they never name a
+`Vk` type. C++ has no way to say that inside one binary, so a test in `tests/`
+says it instead, and it runs in a millisecond (chapter 02).
+
+**4. Vulkan makes the GPU's contract explicit.** Where Metal (and MetalKit) hid
 the swapchain, the depth texture and the frame pacing, Vulkan hands them all to
 you: you choose the device, build the swapchain, author the pipeline's every
 fixed-function knob, allocate the memory, and — the big one — **synchronize the
@@ -89,19 +95,20 @@ flowchart LR
 ```
 
 Each box is one system you'll build; the arrows are the order they run in
-`Game::update` (chapter 09). The last hop — *acquire, record, submit, present* —
-is the Vulkan frame Metal did for us, and chapter 05 is entirely about it.
+`Game::update` (chapter 10). The last hop — *acquire, record, submit, present* —
+is the Vulkan frame Metal did for us, and chapter 06 is entirely about it.
 
 | Idea | One-liner | Chapter |
 | --- | --- | --- |
-| **Entities & components** | Identity is a number; everything it *is* comes from data attached to it | [04](docs/04-designing-the-ecs.md) |
-| **Systems & schedule** | Behaviour is functions over components, run in a fixed order per frame | [04](docs/04-designing-the-ecs.md), [09](docs/09-the-game-loop.md) |
-| **The Vulkan object model** | Instance → device → queues → swapchain → pipeline; you build each by hand | [02](docs/02-vulkan-fundamentals.md), [05](docs/05-swapchain-and-sync.md) |
-| **Synchronization** | Semaphores order GPU↔GPU, fences order GPU↔CPU, frames-in-flight keep both busy | [05](docs/05-swapchain-and-sync.md) |
-| **The graphics pipeline** | Every fixed-function state frozen into one immutable object; SPIR-V shaders | [06](docs/06-the-graphics-pipeline.md) |
-| **Descriptors & memory** | How the GPU is told where the buffers are; VMA does the allocating | [07](docs/07-buffers-memory-descriptors.md) |
-| **Transforms** | Position + a *quaternion* orientation + scale, baked to a matrix | [03](docs/03-the-math-you-need.md), [10](docs/10-flight-and-input.md) |
-| **Instancing** | One mesh, many entities, a single draw call | [06](docs/06-the-graphics-pipeline.md), [07](docs/07-buffers-memory-descriptors.md) |
+| **Layers & seams** | Engine, game and content are separate trees, and a test says so | [02](docs/02-architecture.md) |
+| **Entities & components** | Identity is a number; everything it *is* comes from data attached to it | [05](docs/05-designing-the-ecs.md) |
+| **Systems & schedule** | Behaviour is functions over components, run in a fixed order per frame | [05](docs/05-designing-the-ecs.md), [10](docs/10-the-game-loop.md) |
+| **The Vulkan object model** | Instance → device → queues → swapchain → pipeline; you build each by hand | [03](docs/03-vulkan-fundamentals.md), [06](docs/06-swapchain-and-sync.md) |
+| **Synchronization** | Semaphores order GPU↔GPU, fences order GPU↔CPU, frames-in-flight keep both busy | [06](docs/06-swapchain-and-sync.md) |
+| **The graphics pipeline** | Every fixed-function state frozen into one immutable object; SPIR-V shaders | [07](docs/07-the-graphics-pipeline.md) |
+| **Descriptors & memory** | How the GPU is told where the buffers are; VMA does the allocating | [08](docs/08-buffers-memory-descriptors.md) |
+| **Transforms** | Position + a *quaternion* orientation + scale, baked to a matrix | [04](docs/04-the-math-you-need.md), [11](docs/11-flight-and-input.md) |
+| **Instancing** | One mesh, many entities, a single draw call | [07](docs/07-the-graphics-pipeline.md), [08](docs/08-buffers-memory-descriptors.md) |
 
 ---
 
@@ -121,7 +128,7 @@ A third-person space fighter you fly with the keyboard:
   through a **sparse-set ECS**.
 
 Everything is simple geometry generated in code — exactly the "no fancy shapes
-for now" brief — and chapter [14](docs/14-where-to-go-next.md) maps the road from
+for now" brief — and chapter [15](docs/15-where-to-go-next.md) maps the road from
 here to real models, lighting, audio and netcode.
 
 ---
@@ -131,13 +138,13 @@ here to real models, lighting, audio and netcode.
 - **A desktop with a Vulkan 1.2+ GPU** — any reasonably modern GPU on **Linux or
   Windows** (this guide targets both). Works on macOS too, through
   [MoltenVK](https://github.com/KhronosGroup/MoltenVK), with the portability
-  notes in chapter 14.
+  notes in chapter 15.
 - **The [Vulkan SDK](https://vulkan.lunarg.com)** (LunarG) — the loader,
   validation layers, and `glslc`/shaderc. Chapter 01 installs it.
 - **A C++17 compiler and CMake 3.19+.** GCC, Clang or MSVC.
 - **Some C++** (or another systems language — the ideas port). No prior graphics
   or game-engine experience assumed; that's what the guide is for.
-- **A little comfort with vectors and matrices.** Chapter 03 re-derives what you
+- **A little comfort with vectors and matrices.** Chapter 04 re-derives what you
   need, but if "dot product" and "matrix times vector" ring a bell you're set.
 
 You do **not** need any prior Vulkan, Metal, OpenGL, or ECS knowledge. If you
@@ -155,49 +162,55 @@ space-fighter-vulkan/
 ├── resources.md              ← primary sources & further reading
 └── docs/                     ← the guide, one chapter per file
     ├── 01-project-setup.md
-    ├── 02-vulkan-fundamentals.md
-    ├── 03-the-math-you-need.md
-    ├── 04-designing-the-ecs.md
-    ├── 05-swapchain-and-sync.md
-    ├── 06-the-graphics-pipeline.md
-    ├── 07-buffers-memory-descriptors.md
-    ├── 08-meshes-and-geometry.md
-    ├── 09-the-game-loop.md
-    ├── 10-flight-and-input.md
-    ├── 11-the-camera.md
-    ├── 12-gameplay-systems.md
-    ├── 13-hud-and-feedback.md
-    └── 14-where-to-go-next.md
+    ├── 02-architecture.md
+    ├── 03-vulkan-fundamentals.md
+    ├── 04-the-math-you-need.md
+    ├── 05-designing-the-ecs.md
+    ├── 06-swapchain-and-sync.md
+    ├── 07-the-graphics-pipeline.md
+    ├── 08-buffers-memory-descriptors.md
+    ├── 09-meshes-and-geometry.md
+    ├── 10-the-game-loop.md
+    ├── 11-flight-and-input.md
+    ├── 12-the-camera.md
+    ├── 13-gameplay-systems.md
+    ├── 14-hud-and-feedback.md
+    └── 15-where-to-go-next.md
 ```
 
 The C++ project you build lives wherever you scaffold it in chapter 01 — the
-guide walks you through creating it file by file.
+guide walks you through creating it file by file. Its tree is layered the way an
+engine's is (`core/`, `ecs/`, `render/{types,rhi}/`, `components/`, `systems/`,
+`archetypes/`, `content/{meshes,shaders}/`, `tests/`); chapter 01 lays it out and
+chapter 02 argues for every directory in it.
 
 ---
 
 ## The learning path
 
 Concept chapters (🧠) build understanding; build chapters (🛠️) walk the code that
-uses it. Read 01–09 in order — they assemble the engine and the frame. 10–13 are
-the game on top of it, and 14 is the horizon. The first nine are longer than the
-Metal guide's because **Vulkan asks you to build what MetalKit provided.**
+uses it. Read 01–10 in order — they lay out the project and assemble the engine
+and the frame. 11–14 are the game on top of it, and 15 is the horizon. The engine
+half is longer than the Metal guide's because **Vulkan asks you to build what
+MetalKit provided.**
 
 | # | Chapter | What you'll learn |
 | --- | --- | --- |
 | 01 | 🛠️ [Project setup & toolchain](docs/01-project-setup.md) | What we're building and why Vulkan + ECS; the SDK, GLFW, GLM, VMA and shaderc; the CMake build; the shape of a frame; validation layers on from the start. |
-| 02 | 🧠 [Vulkan fundamentals](docs/02-vulkan-fundamentals.md) | The GPU as a service you configure by hand: instance, physical-device selection, queue families, logical device and queues — and *why* Vulkan is so verbose (and when that pays off). |
-| 03 | 🧠 [The math you need](docs/03-the-math-you-need.md) | Coordinate spaces; model/view/projection; quaternions vs Euler angles; **GLM**, and the three Vulkan gotchas — Y points **down** in NDC (the projection Y-flip), depth is **0..1**, and the std140 padding trap. |
-| 04 | 🛠️ [Designing the ECS](docs/04-designing-the-ecs.md) | Entities, components, systems; array-of-structs vs **sparse set** vs archetypes; our `World` + `ComponentStore` in C++; type-erased stores, and safe deferred destruction. (Same design as the Metal guide.) |
-| 05 | 🛠️ [Swapchain, commands & sync](docs/05-swapchain-and-sync.md) | Surface, **swapchain**, image views; render passes + framebuffers (and a note on dynamic rendering); command pools/buffers; and the thing MetalKit hid — **semaphores, fences and frames-in-flight**. Plus swapchain recreation on resize. |
-| 06 | 🛠️ [The graphics pipeline & SPIR-V](docs/06-the-graphics-pipeline.md) | GLSL → **SPIR-V** with shaderc; the immutable `VkPipeline` and *every* fixed-function state you must name; pipeline layouts; the lit shaders read line by line; instancing via `gl_InstanceIndex`; the frame's draw order. |
-| 07 | 🛠️ [Buffers, memory (VMA) & descriptors](docs/07-buffers-memory-descriptors.md) | **VMA**; staging vs host-visible; vertex/index/uniform/storage buffers; **descriptor set layouts, pools and sets**; **push constants** (vs Metal's `setBytes`); and how uniforms and instancing actually reach the shader. |
-| 08 | 🛠️ [Meshes & simple geometry](docs/08-meshes-and-geometry.md) | Flat shading and face normals; generating the ship, enemy, bolt, endless starfield and grid in code — zero art assets. (Same shapes as the Metal guide; C++/GLM.) |
-| 09 | 🛠️ [The game loop & timing](docs/09-the-game-loop.md) | The GLFW loop; delta time; fixed vs variable timestep; clamping hitches; why system *order* is the logic. |
-| 10 | 🛠️ [Flight & input](docs/10-flight-and-input.md) | Abstracting input from keys with GLFW; the arcade flight model; integrating body-space rotation with quaternions; auto-banking into turns. |
-| 11 | 🛠️ [The camera](docs/11-the-camera.md) | The chase camera; `lookAt`; blending world-up with ship-up so banks read without nausea; field of view and smoothing. |
-| 12 | 🛠️ [Gameplay systems](docs/12-gameplay-systems.md) | Spawning and difficulty; weapons and cooldowns; homing AI; sphere collision, layers and the broad-phase question; health, score, respawn. |
-| 13 | 🛠️ [HUD & feedback](docs/13-hud-and-feedback.md) | Drawing in normalised device coordinates (and the Vulkan Y-down twist); the reticle, hull bar and hit-flash; aspect correction; and how you'd add real text. |
-| 14 | 🧠 [Where to go next](docs/14-where-to-go-next.md) | VMA tuning, pipeline caches, dynamic rendering, bindless/descriptor indexing, RenderDoc, cross-platform (MoltenVK), lighting, physics & a fixed timestep, and netcode. |
+| 02 | 🧠🛠️ [Architecture](docs/02-architecture.md) | Actor–component engines vs ECS; where geometry lives and why `content/` is a sibling of the code; archetypes as Blueprints; why one CMake target rather than ten — and the boundary test that keeps the layers apart without one. |
+| 03 | 🧠 [Vulkan fundamentals](docs/03-vulkan-fundamentals.md) | The GPU as a service you configure by hand: instance, physical-device selection, queue families, logical device and queues — and *why* Vulkan is so verbose (and when that pays off). |
+| 04 | 🧠 [The math you need](docs/04-the-math-you-need.md) | Coordinate spaces; model/view/projection; quaternions vs Euler angles; **GLM**, and the three Vulkan gotchas — Y points **down** in NDC (the projection Y-flip), depth is **0..1**, and the std140 padding trap. |
+| 05 | 🛠️ [Designing the ECS](docs/05-designing-the-ecs.md) | Entities, components, systems; array-of-structs vs **sparse set** vs archetypes; our `World` + `ComponentStore` in C++; type-erased stores, and safe deferred destruction. (Same design as the Metal guide.) |
+| 06 | 🛠️ [Swapchain, commands & sync](docs/06-swapchain-and-sync.md) | Surface, **swapchain**, image views; render passes + framebuffers (and a note on dynamic rendering); command pools/buffers; and the thing MetalKit hid — **semaphores, fences and frames-in-flight**. Plus swapchain recreation on resize. |
+| 07 | 🛠️ [The graphics pipeline & SPIR-V](docs/07-the-graphics-pipeline.md) | GLSL → **SPIR-V** with shaderc; the immutable `VkPipeline` and *every* fixed-function state you must name; pipeline layouts; the lit shaders read line by line; instancing via `gl_InstanceIndex`; the frame's draw order. |
+| 08 | 🛠️ [Buffers, memory (VMA) & descriptors](docs/08-buffers-memory-descriptors.md) | **VMA**; staging vs host-visible; vertex/index/uniform/storage buffers; **descriptor set layouts, pools and sets**; **push constants** (vs Metal's `setBytes`); and how uniforms and instancing actually reach the shader. |
+| 09 | 🛠️ [Meshes & simple geometry](docs/09-meshes-and-geometry.md) | Flat shading and face normals; generating the ship, enemy, bolt, endless starfield and grid in code — zero art assets. (Same shapes as the Metal guide; C++/GLM.) |
+| 10 | 🛠️ [The game loop & timing](docs/10-the-game-loop.md) | The GLFW loop; delta time; fixed vs variable timestep; clamping hitches; why system *order* is the logic. |
+| 11 | 🛠️ [Flight & input](docs/11-flight-and-input.md) | Abstracting input from keys with GLFW; the arcade flight model; integrating body-space rotation with quaternions; auto-banking into turns. |
+| 12 | 🛠️ [The camera](docs/12-the-camera.md) | The chase camera; `lookAt`; blending world-up with ship-up so banks read without nausea; field of view and smoothing. |
+| 13 | 🛠️ [Gameplay systems](docs/13-gameplay-systems.md) | Spawning and difficulty; weapons and cooldowns; homing AI; sphere collision, layers and the broad-phase question; health, score, respawn. |
+| 14 | 🛠️ [HUD & feedback](docs/14-hud-and-feedback.md) | Drawing in normalised device coordinates (and the Vulkan Y-down twist); the reticle, hull bar and hit-flash; aspect correction; and how you'd add real text. |
+| 15 | 🧠 [Where to go next](docs/15-where-to-go-next.md) | VMA tuning, pipeline caches, dynamic rendering, bindless/descriptor indexing, RenderDoc, cross-platform (MoltenVK), lighting, physics & a fixed timestep, and netcode. |
 
 ---
 
@@ -205,19 +218,19 @@ Metal guide's because **Vulkan asks you to build what MetalKit provided.**
 
 - **Build as you read, and run early.** Scaffold the project in chapter 01 and
   build often — every chapter lands harder once you've seen the thing it explains
-  move. Vulkan's first triangle is more work than Metal's, so chapters 01–07 are
-  a climb; 08–09 coast downhill, and the game (10–13) is the fun payoff.
+  move. Vulkan's first triangle is more work than Metal's, so chapters 03–08 are
+  a climb; 09–10 coast downhill, and the game (11–14) is the fun payoff.
 - **Keep validation layers on.** They are the single best Vulkan learning tool —
   most mistakes print an exact, actionable message instead of a black screen.
-  Chapter 01 turns them on and chapter 02 explains what they check.
-- **Follow the schedule.** The heart of the game is `Game::update` (chapter 09):
+  Chapter 01 turns them on and chapter 03 explains what they check.
+- **Follow the schedule.** The heart of the game is `Game::update` (chapter 10):
   the list of systems, in order, is the entire game logic. Keep that chapter
   close.
 - **Change one number.** Halve `spawnInterval`, double a turn rate, tint the ship
   red, drop `MAX_FRAMES_IN_FLIGHT` to 1 and watch the GPU stall. Fast feedback is
   the whole reason to build on something small.
 - **Add one behaviour end-to-end.** A new component, a new system, one line in
-  the schedule. Doing that once makes the ECS click for good — chapter 14 has
+  the schedule. Doing that once makes the ECS click for good — chapter 15 has
   starter ideas.
 
 ---

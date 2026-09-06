@@ -20,7 +20,7 @@ constellation of libraries. Here's the whole kit, and why each is here:
 |---|---|---|
 | **Vulkan SDK** (LunarG) | The loader, headers, **validation layers**, and `glslc`/shaderc. | The core API and — crucially — the layers that turn misuse into readable errors. |
 | **GLFW** | Cross-platform window + input + Vulkan surface creation. | Vulkan has no windowing of its own; GLFW gives us a window, a `VkSurfaceKHR`, and keyboard input on Linux/Windows/macOS. |
-| **GLM** | Header-only vector/matrix/quaternion math, GLSL-shaped. | Our `simd` equivalent — `vec3`, `mat4`, `quat` in GLSL's shapes. (Their *layout* still has rules — the std140 padding trap, chapter 07.) |
+| **GLM** | Header-only vector/matrix/quaternion math, GLSL-shaped. | Our `simd` equivalent — `vec3`, `mat4`, `quat` in GLSL's shapes. (Their *layout* still has rules — the std140 padding trap, chapter 08.) |
 | **VMA** | Vulkan Memory Allocator (AMD). | Real GPU memory management is fiddly; VMA does the allocation/sub-allocation so we don't hand-roll a memory heap. |
 | **shaderc** | GLSL → **SPIR-V** compiler (ships in the SDK). | Vulkan consumes SPIR-V bytecode, not GLSL text. We compile ours at build time. |
 
@@ -47,8 +47,17 @@ tree:
 
 ```console
 $ mkdir SpaceFighter && cd SpaceFighter
-$ mkdir -p src src/ecs src/systems src/render shaders third_party
+$ mkdir -p src/{core,ecs,input,components,systems,archetypes}
+$ mkdir -p src/render/{types,rhi}
+$ mkdir -p src/content/{meshes,shaders}
+$ mkdir -p tests third_party
 ```
+
+Ten empty directories before a line of code is a lot to take on faith, so
+chapter 02 is the argument for each of them. The one-line version: they split
+**engine** from **game** from **content**, and that split is what keeps the
+renderer from ever learning what a spaceship is. If you want the shape without
+the argument, it's the tree further down this chapter.
 
 Vendor VMA's header (it's genuinely one file):
 
@@ -59,7 +68,7 @@ $ curl -L -o third_party/vk_mem_alloc.h \
 
 Now the top-level `CMakeLists.txt`. It finds Vulkan, GLFW and GLM, wires in VMA,
 and — the one Vulkan-specific build step — **compiles every `.vert`/`.frag` in
-`shaders/` to SPIR-V** with `glslc`:
+`src/content/shaders/` to SPIR-V** with `glslc`:
 
 ```cmake
 cmake_minimum_required(VERSION 3.19)   # 3.19+ for the Vulkan::glslc target
@@ -74,9 +83,11 @@ find_package(glm REQUIRED)             # math
 
 add_executable(SpaceFighter
     src/main.cpp
-    # append each new .cpp here as the chapters create them:
-    #   src/Game.cpp  src/Mesh.cpp  src/HUD.cpp
-    #   src/render/VulkanContext.cpp  src/render/Swapchain.cpp  src/render/Renderer.cpp
+    # append each new .cpp here as the chapters create them, grouped by layer:
+    #   engine   src/render/rhi/*.cpp  src/render/Renderer.cpp
+    #            src/render/MeshRegistry.cpp  src/input/Input.cpp
+    #   game     src/Game.cpp  src/systems/*.cpp  src/archetypes/*.cpp
+    #   content  src/content/meshes/*.cpp
 )
 
 target_include_directories(SpaceFighter PRIVATE src third_party)
@@ -84,8 +95,8 @@ target_link_libraries(SpaceFighter PRIVATE Vulkan::Vulkan glfw glm::glm)
 
 # --- Compile GLSL → SPIR-V at build time --------------------------------
 file(GLOB SHADERS CONFIGURE_DEPENDS
-     "${CMAKE_SOURCE_DIR}/shaders/*.vert"
-     "${CMAKE_SOURCE_DIR}/shaders/*.frag")
+     "${CMAKE_SOURCE_DIR}/src/content/shaders/*.vert"
+     "${CMAKE_SOURCE_DIR}/src/content/shaders/*.frag")
 foreach(shader ${SHADERS})
     get_filename_component(name ${shader} NAME)
     set(spv "${CMAKE_BINARY_DIR}/shaders/${name}.spv")
@@ -101,25 +112,39 @@ add_custom_target(shaders DEPENDS ${SPV_FILES})
 add_dependencies(SpaceFighter shaders)
 ```
 
-Two notes on that file. First, it lists only `src/main.cpp` — CMake errors at
+Three notes on that file. First, it lists only `src/main.cpp` — CMake errors at
 configure time on source files that don't exist, so **create a stub now** and the
 project builds from day one:
 
 ```cpp
-// src/main.cpp — replaced wholesale in chapter 09
+// src/main.cpp — replaced wholesale in chapter 10
 int main() { return 0; }
 ```
 
 As later chapters create real files, add each to the `add_executable` list.
-Second, `CONFIGURE_DEPENDS` on the shader glob makes CMake re-scan the folder
-when you *add* a shader file — without it, a new shader is silently ignored until
-you re-run `cmake` by hand.
 
-The shader step is worth pausing on: unlike Metal, where we compiled MSL from a
-string at launch, **Vulkan wants SPIR-V bytecode**, so shaders are compiled
-*ahead of time* by `glslc` and loaded as `.spv` files at runtime (chapter 06).
-That's why they're their own build target with `DEPENDS` — edit a `.frag`, and
-CMake recompiles just that one.
+Second, `target_include_directories(... PRIVATE src ...)` is what makes every
+include in this project read as a path from `src/` — `#include "ecs/World.hpp"`,
+`#include "render/types/Mesh.hpp"`. Never `#include "../../ecs/World.hpp"`.
+Relative includes hide which layer a file depends on inside a pile of `../`, and
+chapter 02's boundary test reads exactly those include lines to enforce the
+layering — so keep them rooted.
+
+Third, `CONFIGURE_DEPENDS` on the shader glob makes CMake re-scan the folder when
+you *add* a shader file — without it, a new shader is silently ignored until you
+re-run `cmake` by hand.
+
+The shader step is worth pausing on twice. Unlike Metal, where we compiled MSL
+from a string at launch, **Vulkan wants SPIR-V bytecode**, so shaders are
+compiled *ahead of time* by `glslc` and loaded as `.spv` files at runtime
+(chapter 07). That's why they're their own build target with `DEPENDS` — edit a
+`.frag`, and CMake recompiles just that one. And note the asymmetry in the paths:
+the GLSL **sources** live under `src/content/shaders/` with the rest of the
+content, but the compiled **output** lands flat in `build/shaders/`. The source
+tree is organised for a reader; the build directory is organised for the loader,
+which just wants a short stable path (chapter 07 loads `shaders/lit.vert.spv`).
+
+This `CMakeLists.txt` grows exactly once more: chapter 02 adds a test target.
 
 Build and run with the usual CMake dance:
 
@@ -130,10 +155,10 @@ $ cd build && ./SpaceFighter
 ```
 
 Run from inside `build/` — the renderer loads its compiled shaders by the
-relative path `shaders/….spv` (the loading code is in chapter 06), and that's
-where the build wrote them. Once the swapchain and frame loop exist (chapter 05)
+relative path `shaders/….spv` (the loading code is in chapter 07), and that's
+where the build wrote them. Once the swapchain and frame loop exist (chapter 06)
 running opens a window cleared to deep space blue; the first ship appears when
-the pipelines and buffers land (chapters 06–07). Until then it just compiles.
+the pipelines and buffers land (chapters 07–08). Until then it just compiles.
 You'll live in this edit–build–run loop for the rest of the guide.
 
 ### The files you'll create
@@ -142,29 +167,114 @@ Each chapter says which files to add under `src/`. Here's the whole map, so you
 can see where things land:
 
 ```
-src/
-├── main.cpp                 window + loop + input glue, the entry point   (ch 09)
-├── Game.hpp / .cpp          the world, and the per-frame system schedule  (ch 09, 12)
-├── Input.hpp                InputState + GLFW key handling                (ch 10)
-├── Math.hpp                 GLM helpers: MVP, projection, the Y-flip      (ch 03)
-├── Components.hpp           every component (pure data structs)           (ch 04)
-├── HUD.hpp / .cpp           crosshair, hull bar, hit-flash geometry       (ch 13)
-├── Mesh.hpp / .cpp          procedural ship / enemy / bolt / stars / grid (ch 08)
-├── ecs/                     Entity, ComponentStore, World                 (ch 04)
-├── systems/                 one file per behaviour                        (ch 09–12)
-└── render/                  VulkanContext, Swapchain, Renderer, RenderTypes (ch 02, 05–07)
-
-shaders/
-├── lit.vert / lit.frag      ship & enemies (directional light)           (ch 06)
-├── unlit.vert / unlit.frag  grid & bolts                                 (ch 06)
-├── star.vert / star.frag    the tiling starfield                         (ch 06, 08)
-└── hud.vert / hud.frag      the 2D overlay                               (ch 06, 13)
+SpaceFighter/
+├── CMakeLists.txt
+├── third_party/
+│   └── vk_mem_alloc.h            VMA, vendored — one header               (ch 01)
+├── src/
+│   ├── main.cpp                  window + loop + input glue, entry point  (ch 10)
+│   ├── Game.hpp / .cpp           the world, and the per-frame schedule    (ch 10, 13)
+│   ├── core/
+│   │   └── Math.hpp              GLM helpers: MVP, projection, the Y-flip (ch 04)
+│   ├── ecs/
+│   │   ├── Entity.hpp
+│   │   ├── ComponentStore.hpp    the sparse set, a template per type
+│   │   └── World.hpp             entities, type-erased stores, deferred destroy (ch 05)
+│   ├── input/
+│   │   └── Input.hpp / .cpp      InputState, and the GLFW producer        (ch 11)
+│   ├── components/
+│   │   ├── Spatial.hpp           Transform, Velocity
+│   │   ├── Rendering.hpp         Renderable
+│   │   ├── Physics.hpp           Collider, Layer
+│   │   └── Gameplay.hpp          Player, Weapon, Enemy, Projectile, Lifetime, … (ch 10, 13)
+│   ├── systems/
+│   │   ├── MovementSystem.hpp / .cpp
+│   │   ├── FlightControlSystem.hpp / .cpp
+│   │   ├── CameraSystem.hpp / .cpp
+│   │   ├── WeaponSystem.hpp / .cpp
+│   │   ├── EnemySystem.hpp / .cpp
+│   │   ├── LifetimeSystem.hpp / .cpp
+│   │   ├── CollisionSystem.hpp / .cpp
+│   │   ├── RenderSystem.hpp / .cpp   walks the world, emits flat draw data
+│   │   └── HUDSystem.hpp / .cpp      reticle, hull bar, hit-flash geometry (ch 10–14)
+│   ├── archetypes/
+│   │   ├── Player.hpp / .cpp     which components a player ship is made of
+│   │   ├── Enemy.hpp / .cpp
+│   │   └── Projectile.hpp / .cpp                                          (ch 10, 13)
+│   ├── render/
+│   │   ├── types/
+│   │   │   ├── GPUContract.hpp   InstanceData, FrameUniforms — mirror the shaders
+│   │   │   ├── Mesh.hpp          Vertex, MeshData — CPU geometry, no Vulkan
+│   │   │   └── HUDVertex.hpp     the 2D overlay vertex                    (ch 08, 09)
+│   │   ├── rhi/
+│   │   │   ├── Context.hpp / .cpp      instance, device, queues, VMA      (ch 03)
+│   │   │   ├── Swapchain.hpp / .cpp    surface, images, depth, framebuffers (ch 06)
+│   │   │   ├── Buffers.hpp / .cpp      Buffer, staging uploads, mapped writes (ch 08)
+│   │   │   ├── Descriptors.hpp / .cpp  set layout, pool, per-frame sets   (ch 08)
+│   │   │   └── Pipelines.hpp / .cpp    shader modules, the five pipelines (ch 07)
+│   │   ├── MeshRegistry.hpp / .cpp  every mesh, uploaded once, keyed by id (ch 09)
+│   │   └── Renderer.hpp / .cpp      the frame, and the passes in order    (ch 06–09)
+│   └── content/
+│       ├── MeshID.hpp            the ids gameplay uses to name art        (ch 09)
+│       ├── meshes/
+│       │   ├── MeshBuilder.hpp / .cpp  flat shading, quads, shared helpers
+│       │   ├── ShipMesh.cpp
+│       │   ├── EnemyMesh.cpp
+│       │   ├── ProjectileMesh.cpp
+│       │   └── SceneryMesh.cpp         the starfield and the ground grid  (ch 09)
+│       └── shaders/
+│           ├── lit.vert / lit.frag      ship & enemies (directional light)
+│           ├── unlit.vert / unlit.frag  grid & bolts
+│           ├── star.vert / star.frag    the tiling starfield
+│           └── hud.vert / hud.frag      the 2D overlay                    (ch 07)
+└── tests/
+    └── BoundaryTest.cpp          keeps the layers from leaking into each other (ch 02)
 ```
+
+Four groups, and the split is the whole architecture:
+
+- **Engine** — `core/`, `ecs/`, `input/`, `render/`. Nothing here knows this is a
+  space game.
+- **Game** — `components/`, `systems/`, `archetypes/`, `Game.cpp`. Everything here
+  knows.
+- **Content** — `content/`. The geometry, the shaders, and the ids that name them.
+  Referenced by the game, owned by neither.
+- **Launch** — `main.cpp`.
+
+Chapter 02 is why those four exist, why `content/` is a sibling of the code
+rather than a subfolder of anything, and what `tests/BoundaryTest.cpp` is for.
+
+### What you'll create, and when
+
+Keep this table handy — it's the whole project. Every path is relative to `src/`
+unless it starts with `tests/`.
+
+| Chapter | Files you create | After it, you can… |
+|---|---|---|
+| 01 | `main.cpp` (stub), `CMakeLists.txt` | build and run a binary |
+| 02 | `tests/BoundaryTest.cpp` | keep the layers honest |
+| 03 | `render/rhi/Context.*` | pick a GPU and open a device |
+| 04 | `core/Math.hpp` | print a transformed point |
+| 05 | `ecs/Entity.hpp`, `ecs/ComponentStore.hpp`, `ecs/World.hpp` | create entities and attach data |
+| 06 | `render/rhi/Swapchain.*`, `render/Renderer.*` | **clear a window to deep space blue** |
+| 07 | `content/shaders/*.vert`, `content/shaders/*.frag`, `render/rhi/Pipelines.*` | compile SPIR-V and build the five pipelines |
+| 08 | `render/types/*.hpp`, `render/rhi/Buffers.*`, `render/rhi/Descriptors.*` | put real memory behind a draw |
+| 09 | `content/MeshID.hpp`, `content/meshes/*`, `render/MeshRegistry.*` | **see a ship on screen** |
+| 10 | `components/*.hpp`, `systems/MovementSystem.*`, `systems/RenderSystem.*`, `archetypes/Player.*`, `Game.*`, `main.cpp` (real) | watch it move, driven by the ECS |
+| 11 | `input/Input.*`, `systems/FlightControlSystem.*` | **fly it** |
+| 12 | `systems/CameraSystem.*` | fly it with a camera that feels right |
+| 13 | `systems/{Weapon,Enemy,Lifetime,Collision}System.*`, `archetypes/Enemy.*`, `archetypes/Projectile.*` | **play it** — shoot, get hit, score |
+| 14 | `render/types/HUDVertex.hpp`, `systems/HUDSystem.*` | see a reticle and a hull bar |
+| 15 | *(none — roadmap)* | — |
+
+Most files you create once and never touch again. Three grow with the guide:
+`Game.cpp`, which accumulates the system schedule; `Renderer.cpp`, which
+accumulates passes; and `CMakeLists.txt`, which accumulates source files.
 
 ### What you're building toward
 
 By the end you'll fly a low-poly fighter with these controls (wired up in
-chapter 10), enemies warping in ahead of you:
+chapter 11), enemies warping in ahead of you:
 
 | Key | Action |
 |---|---|
@@ -175,7 +285,7 @@ chapter 10), enemies warping in ahead of you:
 | `Space` | Fire |
 | `Esc` | Quit |
 
-Score, hull and deaths will show in the **window title** (chapter 13 explains why
+Score, hull and deaths will show in the **window title** (chapter 14 explains why
 text goes there and not on the HUD).
 
 ---
@@ -226,7 +336,7 @@ An **Entity–Component–System** turns the model inside out:
 A "homing shielded splitter" is just an entity holding a `Homing`, a `Shield`
 and a `Splitter` component. New behaviour is a new component plus a new system —
 nothing else changes. And because components of one type live packed together in
-memory, systems iterate them fast and cache-friendly. Chapter 04 builds ours;
+memory, systems iterate them fast and cache-friendly. Chapter 05 builds ours;
 for now, just know *data lives in components, behaviour lives in systems, and
 they meet in the `World`.* (This half of the design is identical to the Metal
 guide — an ECS is renderer-agnostic by construction.)
@@ -235,7 +345,7 @@ guide — an ECS is renderer-agnostic by construction.)
 
 ## The shape of a frame
 
-Here is the whole program in one breath. Our own loop in `main.cpp` (chapter 09)
+Here is the whole program in one breath. Our own loop in `main.cpp` (chapter 10)
 runs until the window closes, and each iteration does two things:
 
 1. **Simulate.** `Game::update` measures the time since the last frame and runs
@@ -265,7 +375,7 @@ sequenceDiagram
 Every chapter zooms into one part of that loop. Keep the picture: **simulate,
 then draw, sixty times a second** — but note that in Vulkan the "then draw" step
 is itself a careful sequence of *acquire, record, submit, present*, guarded by
-sync primitives. Metal did that part for us; chapter 05 is where we do it
+sync primitives. Metal did that part for us; chapter 06 is where we do it
 ourselves.
 
 ---
@@ -279,7 +389,7 @@ and you get undefined behaviour, often a blank window with no clue why. The
 and check *everything*: object lifetimes, correct usage flags, synchronization
 hazards, descriptor mismatches. They print precise, actionable messages.
 
-We enable them from the very first line of Vulkan code (chapter 02), gated on a
+We enable them from the very first line of Vulkan code (chapter 03), gated on a
 build flag so a release build can drop them:
 
 ```cpp
@@ -306,15 +416,15 @@ validation output *first* — nine times in ten it names the mistake.
   launch-time errors) — fix and rebuild.
 - **A window opens, then instantly closes with a validation error.** Read it —
   that's the layers doing their job. The most common early one is a
-  swapchain/format mismatch (chapter 05).
+  swapchain/format mismatch (chapter 06).
 - **`vkCreateInstance` fails with `VK_ERROR_LAYER_NOT_PRESENT`.** The validation
   layers aren't installed. Install the SDK's validation package
   (`vulkan-validationlayers` on Linux), or set `kEnableValidation = false` to
   build without them (not recommended while learning).
 - **The window ignores the keyboard.** GLFW input needs the window focused and
-  the key callback registered — chapter 10. Click the window.
+  the key callback registered — chapter 11. Click the window.
 
 ---
 
-**Next:** the object model — instance, device, queues — and *why* Vulkan makes
-you name every one. → [Chapter 02: Vulkan fundamentals](02-vulkan-fundamentals.md)
+**Next:** why the tree above looks like that, and the one test that keeps it
+honest. → [Chapter 02: Architecture](02-architecture.md)

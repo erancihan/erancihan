@@ -30,7 +30,7 @@ yourself and run with `swift run`.
   not as finished files to paste. Every line is still given; nothing is elided.
 - Every chapter ends with a **checkpoint** (run this, see that, and here's what
   each failure mode means) and most with a **challenge** that has no answer given.
-- You get a ship on screen in chapter 06.B and can fly it by chapter 08.
+- You get a ship on screen in chapter 08 and can fly it by chapter 10.
 - There's no separate codebase to cross-reference; the guide *is* the source.
 
 The skill this builds isn't "type what I typed"; it's **understanding a small,
@@ -70,21 +70,25 @@ flowchart LR
   M --> S[Spin]
   S --> L[Lifetime]
   L --> C[Collision]
-  C --> R[RenderSystem]
+  C --> R[SceneSystem]
   R -->|InstanceData by mesh| G[[Metal Renderer]]
   G -->|lit · unlit · stars · HUD| D[(Drawable)]
 ```
 
 Each box is one system you'll build; the arrows are the order they run in
-`Game.update` (chapter 07). That's the game.
+`Game.update` (chapter 09). That's the game.
 
 | Idea | One-liner | Chapter |
 | --- | --- | --- |
-| **Entities & components** | Identity is a number; everything it *is* comes from data attached to it | [04](docs/04-designing-the-ecs.md) |
-| **Systems & schedule** | Behaviour is functions over components, run in a fixed order per frame | [04](docs/04-designing-the-ecs.md), [07](docs/07-the-game-loop.md) |
-| **The GPU frame** | Command buffer → render pass → pipeline state → draw; depth sorts it | [02](docs/02-metal-fundamentals.md), [06.B](docs/06.B-the-renderer.md) |
-| **Transforms** | Position + a *quaternion* orientation + scale, baked to a matrix | [03](docs/03-the-math-you-need.md), [08](docs/08-flight-and-input.md) |
-| **Instancing** | One mesh, many entities, a single draw call | [06.B](docs/06.B-the-renderer.md) |
+| **Engine, game, content** | Three layers, one target, and a test that keeps them apart | [02](docs/02-architecture.md) |
+| **Assets by reference** | Gameplay names art with an id; only the renderer ever holds a buffer | [02](docs/02-architecture.md), [06](docs/06-meshes-and-geometry.md) |
+| **Entities & components** | Identity is a number; everything it *is* comes from data attached to it | [05](docs/05-designing-the-ecs.md) |
+| **Systems & schedule** | Behaviour is functions over components, run in a fixed order per frame | [05](docs/05-designing-the-ecs.md), [09](docs/09-the-game-loop.md) |
+| **Archetypes** | What an entity is *made of*, in its own file — the Blueprint idea | [09](docs/09-the-game-loop.md), [12](docs/12-gameplay-systems.md) |
+| **The GPU frame** | Command buffer → render pass → pipeline state → draw; depth sorts it | [03](docs/03-metal-fundamentals.md), [08](docs/08-the-renderer.md) |
+| **Transforms** | Position + a *quaternion* orientation + scale, baked to a matrix | [04](docs/04-the-math-you-need.md), [10](docs/10-flight-and-input.md) |
+| **Instancing** | One mesh, many entities, a single draw call | [08](docs/08-the-renderer.md) |
+| **Doing work once** | Compile pipelines on first launch, not every launch | [14](docs/14-shader-caching.md) |
 
 ---
 
@@ -102,7 +106,7 @@ A third-person space fighter you fly with the keyboard:
   pipelines, running through a **sparse-set ECS**.
 
 Everything is simple geometry generated in code — exactly the "no fancy shapes
-for now" brief — and chapter [12](docs/12-where-to-go-next.md) maps the road from
+for now" brief — and chapter [15](docs/15-where-to-go-next.md) maps the road from
 here to real models, lighting, audio and netcode.
 
 ---
@@ -110,10 +114,12 @@ here to real models, lighting, audio and netcode.
 ## Prerequisites
 
 - **A Mac.** Metal is Apple-only; this runs on macOS 13+ with any Metal GPU.
-- **Xcode 15+** or the Swift 5.9+ toolchain (`xcode-select --install`).
+- **Xcode 26+** or the matching Command Line Tools (`xcode-select --install`).
+  The manifest in chapter 01 declares tools-version 6.2, and the tests from
+  chapter 02 on use Swift Testing, which ships with Swift 6.
 - **Some Swift** (or another C-family / systems language — the ideas port). No
   prior graphics or game-engine experience assumed; that's what the guide is for.
-- **A little comfort with vectors and matrices.** Chapter 03 re-derives what you
+- **A little comfort with vectors and matrices.** Chapter 04 re-derives what you
   need, but if "dot product" and "matrix times vector" ring a bell you're set.
 
 You do **not** need any prior Metal, OpenGL, Vulkan, or ECS knowledge.
@@ -128,18 +134,20 @@ space-fighter-metal/
 ├── resources.md              ← primary sources & further reading
 └── docs/                     ← the guide, one chapter per file
     ├── 01-project-setup.md
-    ├── 02-metal-fundamentals.md
-    ├── 03-the-math-you-need.md
-    ├── 04-designing-the-ecs.md
-    ├── 05-meshes-and-geometry.md
-    ├── 06.A-shaders.md
-    ├── 06.B-the-renderer.md
-    ├── 07-the-game-loop.md
-    ├── 08-flight-and-input.md
-    ├── 09-the-camera.md
-    ├── 10-gameplay-systems.md
-    ├── 11-hud-and-feedback.md
-    └── 12-where-to-go-next.md
+    ├── 02-architecture.md
+    ├── 03-metal-fundamentals.md
+    ├── 04-the-math-you-need.md
+    ├── 05-designing-the-ecs.md
+    ├── 06-meshes-and-geometry.md
+    ├── 07-shaders.md
+    ├── 08-the-renderer.md
+    ├── 09-the-game-loop.md
+    ├── 10-flight-and-input.md
+    ├── 11-the-camera.md
+    ├── 12-gameplay-systems.md
+    ├── 13-hud-and-feedback.md
+    ├── 14-shader-caching.md
+    └── 15-where-to-go-next.md
 ```
 
 The Swift project you build lives wherever you scaffold it in chapter 01 — the
@@ -151,24 +159,24 @@ guide walks you through creating it file by file.
 
 Concept chapters (🧠) build understanding; build chapters (🛠️) hand you code to
 write. Go in order — each chapter's checkpoint depends on the last one working.
-Chapter 06 is split in two because the renderer is the largest piece of the
-project: 06.A is the GPU side, 06.B the Swift that drives it.
 
 | # | Chapter | What you'll learn | You'll have |
 | --- | --- | --- | --- |
-| 01 | 🛠️ [Project setup](docs/01-project-setup.md) | Why Metal + ECS; scaffolding the SwiftPM package; the shape of a frame; turning it into a real `.app`. | a binary that runs |
-| 02 | 🧠 [Metal fundamentals](docs/02-metal-fundamentals.md) | The GPU as a service: device, command queue, command buffer, render pass, pipeline state, `MTKView`, the vertex→fragment pipeline, and the depth buffer. | *(concepts)* |
-| 03 | 🧠🛠️ [The math you need](docs/03-the-math-you-need.md) | Coordinate spaces; model/view/projection; why we orient with *quaternions* not Euler angles; `simd`. Write `Math.swift`. | matrices you can verify |
-| 04 | 🛠️ [Designing the ECS](docs/04-designing-the-ecs.md) | Entities, components, systems; dictionary vs **sparse set** vs archetypes; generations; safe deferred destruction. Write the `World`. | entities + components |
-| 05 | 🛠️ [Meshes & simple geometry](docs/05-meshes-and-geometry.md) | The CPU↔GPU struct contract and the `float3` alignment trap; flat shading and face normals; generating ship, enemy, bolt, starfield and grid in code. | geometry you can print |
-| 06.A | 🛠️ [Shaders](docs/06.A-shaders.md) | Writing MSL; the pull-vertex model; `[[instance_id]]`; the buffer-index contract; the normal matrix; the starfield wrap. | four shader pairs |
-| 06.B | 🛠️ [The renderer](docs/06.B-the-renderer.md) | Pipelines and depth states; blend modes; uploading meshes; **instancing**; the five passes; the AppKit window. | **a ship on screen** |
-| 07 | 🛠️ [The game loop & timing](docs/07-the-game-loop.md) | Every component; the ECS→renderer seam; the `MTKViewDelegate` heartbeat; delta time; fixed vs variable timestep; why system *order* is the logic. | it moves |
-| 08 | 🛠️ [Flight & input](docs/08-flight-and-input.md) | Abstracting input from keys; the arcade flight model; body-space rotation with quaternions; auto-banking into turns. | **you can fly it** |
-| 09 | 🛠️ [The camera](docs/09-the-camera.md) | The chase camera; `lookAt`; blending world-up with ship-up so banks read without nausea; field of view; smoothing. | it feels right |
-| 10 | 🛠️ [Gameplay systems](docs/10-gameplay-systems.md) | Spawning and difficulty; weapons and cooldowns; homing AI; sphere collision, layers and the broad-phase question; health, score, respawn. | **a game** |
-| 11 | 🛠️ [HUD & feedback](docs/11-hud-and-feedback.md) | Drawing in normalised device coordinates; the reticle, hull bar and hit-flash; aspect correction; how you'd add real text. | the finished thing |
-| 12 | 🧠 [Where to go next](docs/12-where-to-go-next.md) | Real models (Model I/O, glTF/USD); lighting & shadows; particles; audio; physics; multiplayer; and the performance work a shipping game needs. | *(roadmap)* |
+| 01 | 🛠️ [Project setup](docs/01-project-setup.md) | Why Metal + ECS; scaffolding the SwiftPM package; the directory layout; the shape of a frame; turning it into a real `.app`. | a binary that runs |
+| 02 | 🧠🛠️ [Architecture](docs/02-architecture.md) | Actor-component vs ECS; how Unreal, Unity and Godot all reference art by id; `Source/` vs `Content/`; archetypes as Blueprints; why one SwiftPM target and not ten; a test that enforces the layers. | the layout, defended |
+| 03 | 🧠 [Metal fundamentals](docs/03-metal-fundamentals.md) | The GPU as a service: device, command queue, command buffer, render pass, pipeline state, `MTKView`, the vertex→fragment pipeline, and the depth buffer. | *(concepts)* |
+| 04 | 🧠🛠️ [The math you need](docs/04-the-math-you-need.md) | Coordinate spaces; model/view/projection; why we orient with *quaternions* not Euler angles; `simd`. Write `Core/Math.swift`. | matrices you can verify |
+| 05 | 🛠️ [Designing the ECS](docs/05-designing-the-ecs.md) | Entities, components, systems; dictionary vs **sparse set** vs archetypes; generations; safe deferred destruction. Write the `World`. | entities + components |
+| 06 | 🛠️ [Meshes & simple geometry](docs/06-meshes-and-geometry.md) | The CPU↔GPU struct contract and the `float3` alignment trap; flat shading and face normals; ship, enemy, bolt, starfield and grid in code; the asset registry the compiler keeps honest. | geometry you can print |
+| 07 | 🛠️ [Shaders](docs/07-shaders.md) | Writing MSL; the pull-vertex model; `[[instance_id]]`; the buffer-index contract; the normal matrix; the starfield wrap; shipping `.metal` files as package resources. | four shader pairs, compiling |
+| 08 | 🛠️ [The renderer](docs/08-the-renderer.md) | The RHI split; pipelines and depth states; blend modes; uploading meshes; **instancing**; the five passes; the AppKit window. | **a ship on screen** |
+| 09 | 🛠️ [The game loop & timing](docs/09-the-game-loop.md) | Every component, grouped by who reads it; archetypes; the ECS→renderer seam; the `MTKViewDelegate` heartbeat; delta time; why system *order* is the logic. | it moves |
+| 10 | 🛠️ [Flight & input](docs/10-flight-and-input.md) | Abstracting input from keys; the arcade flight model; body-space rotation with quaternions; auto-banking into turns. | **you can fly it** |
+| 11 | 🛠️ [The camera](docs/11-the-camera.md) | The chase camera; `lookAt`; blending world-up with ship-up so banks read without nausea; field of view; smoothing. | it feels right |
+| 12 | 🛠️ [Gameplay systems](docs/12-gameplay-systems.md) | Spawning and difficulty; weapons and cooldowns; homing AI; sphere collision, layers and the broad-phase question; health, score, respawn. | **a game** |
+| 13 | 🛠️ [HUD & feedback](docs/13-hud-and-feedback.md) | Drawing in normalised device coordinates; the reticle, hull bar and hit-flash; aspect correction; how you'd add real text. | the finished thing |
+| 14 | 🛠️ [Caching the compiled shaders](docs/14-shader-caching.md) | The two stages of shader compilation and which one macOS already caches; `MTLBinaryArchive`; atomic cache writes; recovering from a corrupt cache; where this stops scaling. | a launch that doesn't recompile |
+| 15 | 🧠 [Where to go next](docs/15-where-to-go-next.md) | Real models (Model I/O, glTF/USD); lighting & shadows; particles; audio; physics; multiplayer; and the performance work a shipping game needs. | *(roadmap)* |
 
 ---
 
@@ -177,13 +185,13 @@ project: 06.A is the GPU side, 06.B the Swift that drives it.
 - **Build as you read, and run early.** Scaffold the project in chapter 01 and
   `swift run` often — every chapter lands harder once you've seen the thing it
   explains move.
-- **Follow the schedule.** The heart of the game is `Game.update` (chapter 07):
+- **Follow the schedule.** The heart of the game is `Game.update` (chapter 09):
   the list of systems, in order, is the entire game logic. Keep that chapter
   close.
 - **Change one number.** Halve `spawnInterval`, double a turn rate, tint the
   ship red. Fast feedback is the whole reason to build on something small.
 - **Add one behaviour end-to-end.** A new component, a new system, one line in
-  the schedule. Doing that once makes the ECS click for good — chapter 12 has
+  the schedule. Doing that once makes the ECS click for good — chapter 15 has
   starter ideas.
 
 ---
