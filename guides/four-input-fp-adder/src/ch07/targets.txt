@@ -1,0 +1,25 @@
+# Build-and-run manifest for chapter 7.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run
+#           to completion with no FAIL anywhere in its output
+#   warn  - must compile successfully but WITH compiler output; a deliberate
+#           warning demonstration whose diagnostic the chapter quotes
+#   xfail - must FAIL to compile; a deliberate teaching example
+#
+# There is no warn or xfail target in this chapter. Everything it teaches
+# about the format is a value-level fact, and everything it teaches about the
+# toolchain (assignment does not round, sNaN quiets on a round-trip, the two
+# NaN signs, the %h integer conversion, the -2.0**128 precedence trap)
+# compiles silently and misbehaves only at runtime -- which is exactly why
+# tb_lab.v pins each one with a known-answer check instead.
+#
+# No target writes a file. Lines starting with # are comments. The runner is
+# ../run_all.sh.
+
+run   : fp32_class.v tb_class.v
+run   : fp32_fields.v tb_fields.v
+run   : tb_encode.v
+run   : tb_lab.v

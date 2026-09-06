@@ -1,0 +1,44 @@
+# Build-and-run manifest for chapter 12 -- the complete four-input adder.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run
+#           to completion with no FAIL anywhere in its output
+#   warn  - must compile successfully but WITH compiler output
+#   xfail - must FAIL to compile
+#
+# This chapter's targets reach into SIX earlier chapters, deliberately
+# (precedent: ch06 and every chapter since). fp32_add4 is chapter 9's seven
+# stage modules inside chapter 11's fp32_add2_p2 register banks inside
+# chapter 10's tree shape -- ZERO datapath lines are new, and that claim is
+# only real while the regression compiles those exact files next to this
+# one. ../ch10/fp32_add4_tree.v is tb_add4_stream's oracle and tb_d9wit's
+# DUT; ../ch08/fp32_add_alg.v + ../ch10/ref_add4.v are tb_add4_gold's
+# order-faithful golden chain.
+#
+# Convention extension, stated once: this directory also holds .vh include
+# files (compiled sources -- the runner compiles in place, so `include
+# resolves here) and the four .py files that GENERATE and PIN them. The
+# .vh files are checked in and byte-stable; the .py files are the
+# independent second implementation of every corner expectation and every
+# coverage-bin definition (the M18 guard). They are sources, not build
+# artifacts; the harness never runs python. To audit:
+#   python3 corner_gen.py && python3 cov_gen.py && git diff --stat
+#
+# Both streaming targets ship at NPR=12000 (~61k quads, 34-36 s here), NOT
+# at the 101k headline size: ch11's identical 101k workload measured 36.7 s
+# when recorded and 56.0 s on the same machine during this chapter's
+# research session. Wall-clock is load-dependent; a target sized to 93% of
+# the 60 s SIM_TIMEOUT on one day is a coin flip on another. The 101k runs
+# are quoted in the chapter and reproduced with -DNPR=20000 out of harness.
+#
+# There is no warn or xfail target: every bug class this chapter guards
+# against compiles in total silence (that is the point), and each lives in
+# the README's mutation record instead.
+
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch11/fp32_add2_p2.v fp32_add4.v tb_corners12.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch10/fp32_add4_tree.v tb_d9wit.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch11/fp32_add2_p2.v fp32_add4.v tb_cov4.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch10/fp32_add4_tree.v ../ch11/fp32_add2_p2.v fp32_add4.v tb_add4_stream.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch08/fp32_add_alg.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch10/ref_add4.v ../ch11/fp32_add2_p2.v fp32_add4.v tb_add4_gold.v

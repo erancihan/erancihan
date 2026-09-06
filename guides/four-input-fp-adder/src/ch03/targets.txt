@@ -1,0 +1,36 @@
+# Build-and-run manifest for chapter 3.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run to completion
+#   warn  - must compile successfully but WITH compiler output; a deliberate
+#           warning demonstration whose diagnostic the chapter quotes
+#   xfail - must FAIL to compile; this is a deliberate teaching example
+#
+# Files named bad_*.v are deliberately wrong. They still self-check, but they
+# assert the WRONG answer, so PASS from a bad_* target means "the trap still
+# reproduces on this simulator".
+#
+# Lines starting with # are comments. The runner is ../run_all.sh.
+
+run   : sel_mux.v bad_latch.v tb_latch.v
+run   : flop_templates.v tb_flop_templates.v
+run   : shift3.v bad_shift3.v tb_shift3.v
+run   : tb_swap.v
+run   : tb_regions.v
+run   : tb_delta.v
+run   : bad_race.v tb_race.v
+run   : bad_sens.v tb_sens.v
+run   : fsm.v tb_fsm.v
+run   : flop_templates.v reset_sync.v tb_reset_sync.v
+run   : tb_regwire.v
+run   : tb_xprop.v
+run   : bad_clkinit.v
+run   : flop_templates.v bad_tbedge.v
+run   : bad_combdelay.v
+run   : bad_multidrive.v
+warn  : bad_arraysens.v
+run   : bad_edge.v
+warn  : bad_svalways.v
+xfail : bad_zerodelay.v

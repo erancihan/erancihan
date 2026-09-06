@@ -1,0 +1,27 @@
+# Build-and-run manifest for chapter 6.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run to completion with
+#           no FAIL anywhere in its output
+#   xfail - must FAIL to compile; a deliberate teaching example
+#
+# There is no xfail target in this chapter, and that is the chapter's finding:
+# every signedness and width trap it teaches compiles clean under
+# iverilog -g2012 -Wall (measured; see tb_signtraps.v), so none of them can
+# be pinned by a compile failure. Only known-answer testbenches catch them.
+#
+# The first two targets deliberately reach into ../ch02: the claim they prove
+# is that chapter 2's OWN ripple4 - the same file, not a copy - subtracts and
+# reports signed overflow. The runner compiles from this directory, so the
+# relative paths resolve.
+#
+# No target writes a file. Lines starting with # are comments. The runner is
+# ../run_all.sh.
+
+run   : ../ch02/ripple4.v ../ch02/full_adder.v tb_sub4.v
+run   : ../ch02/ripple4.v ../ch02/full_adder.v tb_ovf4.v
+run   : satq44.v tb_satq44.v
+run   : fixmul44.v tb_fixmul44.v
+run   : tb_signtraps.v

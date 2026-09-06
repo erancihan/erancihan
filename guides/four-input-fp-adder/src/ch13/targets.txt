@@ -1,0 +1,55 @@
+# Build-and-run manifest for chapter 13 -- the SystemVerilog transition.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with ZERO iverilog output and the testbench must run
+#           to completion with no FAIL anywhere in its output
+#   warn  - must compile successfully but WITH compiler output; a deliberate
+#           diagnostic demonstration whose text the chapter quotes
+#   xfail - must FAIL to compile; a deliberate teaching example
+#
+# CONVENTION EXTENSION, stated once (precedent: chapter 12's .py/.vh note).
+# This directory holds .sv files as well as .v. Icarus does NOT switch
+# language level on the extension -- measured: `iverilog -g2005 fp32_pkg.sv`
+# fails exactly as the same text in a .v file does -- so the suffix is
+# documentation for humans and other tools, not a compiler switch. It is used
+# here because every file in this directory is SystemVerilog by intent, and a
+# chapter about the transition should not disguise that. The F2 artifact
+# check must allow .sv under ch13/. Chapter 5's two SystemVerilog xfail
+# targets predate this convention and stay named .v where they are.
+#
+# The manifest reaches into four earlier chapters, deliberately (precedent:
+# ch06 and every chapter since). Every rewrite here is proven against the
+# SHIPPED original by compiling that original, unmodified, beside it:
+# ../ch07/fp32_fields.v for the packed-struct decode, ../ch09/fp32_normalize.v
+# for the always_comb stage, and chapter 11's real fp32_add2_p2 with its whole
+# chapter 7 / chapter 9 module tree for the interface and queue testbenches.
+#
+# NOT expressible in this manifest, and therefore in README.md instead
+# (precedent: chapter 4's $dumpvars-on-a-memory case): anything needing a
+# different -g level or an assertion flag. tb_assert_live.sv is a `run` target
+# under the default flags and goes RED under -gno-assertions; that second
+# build is a README reproduction line, not a target.
+#
+# Sizing: tb_norm_equiv ships at 250,420 vectors (~16 s here), not the 500,420
+# the research ran (32 s) -- chapter 12's timing-drift lesson, a target sized
+# near the 60 s SIM_TIMEOUT is a flake generator. The larger sweep is a README
+# reproduction line.
+
+run   : ../ch07/fp32_fields.v fp32_pkg.sv fp32_fields_sv.sv tb_fields_equiv.sv
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch11/fp32_add2_p2.v fp_bundles.sv tb_if_stream.sv
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch11/fp32_add2_p2.v tb_q_stream.sv
+run   : tb_assert_live.sv
+run   : tb_selfstart.sv
+
+warn  : ../ch07/fp32_fields.v fp32_pkg.sv fp32_fields_svc.sv tb_fields_comb.sv
+warn  : ../ch09/fp32_normalize.v fp32_normalize_sv.sv tb_norm_equiv.sv
+warn  : fp32_pkg.sv fp32_class_flags_sv.sv tb_unique_case.sv
+
+xfail : bad_if_port.sv
+xfail : bad_enum_cast.sv
+xfail : bad_assoc.sv
+xfail : bad_qstruct.sv
+xfail : bad_comb_delay.sv
+xfail : cg_cov4.sv

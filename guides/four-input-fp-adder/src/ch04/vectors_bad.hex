@@ -1,0 +1,7 @@
+// The same vectors laid out the way a human wants to read them, in columns.
+// This is NOT what $readmemh reads: each token becomes its own memory word.
+// bad_readmem.v loads this file and measures the damage.
+01 02 03
+0f 01 10
+ff 01 00
+80 80 00

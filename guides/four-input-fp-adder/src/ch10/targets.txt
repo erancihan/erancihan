@@ -1,0 +1,31 @@
+# Build-and-run manifest for chapter 10.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run
+#           to completion with no FAIL anywhere in its output
+#   warn  - must compile successfully but WITH compiler output
+#   xfail - must FAIL to compile
+#
+# This chapter's targets reach into FOUR earlier chapters, deliberately
+# (precedent: ch06/ch08/ch09 manifests do the same). fp32_add4_tree and
+# fp32_add4_seq are pure compositions of ch09's fp32_add2, which does not
+# elaborate without ch07's fp32_fields/fp32_class and ch02's align_sticky
+# -- so the full ch09 source set rides along. ../ch08/fp32_add_alg.v is the
+# chained-golden reference (ref_add4.v wires three of them in each DUT's
+# own order); the order-faithful equivalence claim is only real while the
+# regression compiles that exact file next to these.
+#
+# tb_equiv4 defaults to 24,000 quadruples (6,000 per regime) to stay
+# inside the harness's 60 s SIM_TIMEOUT; the chapter's 240,000-quadruple
+# headline run is the same source at -DNQ=60000, re-run out of harness.
+#
+# There is no warn or xfail target: every composition trap this chapter
+# teaches (cross-wired instance ports, an order-unfaithful reference, a
+# dropped flag OR) compiles in total silence -- that is the point -- and
+# each lives in the README's mutation record instead.
+
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch08/fp32_add_alg.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v fp32_add4_tree.v fp32_add4_seq.v ref_add4.v tb_equiv4.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v fp32_add4_tree.v fp32_add4_seq.v tb_corners4.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v fp32_add4_tree.v fp32_add4_seq.v tb_reach4.v

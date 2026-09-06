@@ -1,0 +1,39 @@
+# Build-and-run manifest for chapter 2.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run to completion
+#   warn  - must compile successfully but WITH compiler output; a deliberate
+#           warning demonstration whose diagnostic the chapter quotes
+#   xfail - must FAIL to compile; this is a deliberate teaching example
+#
+# Lines starting with # are comments. The runner is ../run_all.sh.
+
+run   : half_adder.v tb_half_adder.v
+run   : adder_ansi.v tb_adder_ansi.v
+run   : adder_ansi.v adder_1995.v tb_port_styles.v
+run   : full_adder.v ripple4.v adder_ansi.v tb_ripple4.v
+run   : mux2.v tb_mux2.v
+run   : comb_max.v tb_comb_max.v
+run   : tb_drivers.v
+run   : align_sticky.v tb_align_sticky.v
+xfail : align_sticky.v bad_align_shw.v
+run   : round_ne.v tb_round_ne.v
+run   : byte_select.v tb_byte_select.v
+run   : lzc8.v tb_lzc8.v
+run   : mant_add.v bad_mant_add.v tb_mant_add.v
+run   : tb_widths.v
+run   : tb_signedness.v
+warn  : tb_literals.v
+run   : tb_operators.v
+warn  : tb_partsel.v
+run   : tb_systasks.v
+run   : tb_procedural.v
+warn  : adder_ansi.v bad_positional.v
+warn  : bad_implicit.v
+xfail : bad_nettype_none.v
+warn  : bad_carry_always.v
+run   : bad_begin_end.v
+run   : bad_casex.v
+run   : bad_recursion.v

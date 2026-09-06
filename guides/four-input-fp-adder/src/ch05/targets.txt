@@ -1,0 +1,33 @@
+# Build-and-run manifest for chapter 5.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run to completion with
+#           no FAIL anywhere in its output
+#   xfail - must FAIL to compile; a deliberate teaching example
+#
+# Files named bad_*.v are deliberately wrong teaching examples. The two xfail
+# ones are the SystemVerilog constructs Icarus cannot parse; the two run ones
+# self-check, so PASS from a bad_* target means "the trap still reproduces on
+# this simulator".
+#
+# Every target here runs with no plusargs, which is the mode that is supposed
+# to be green. The interesting failures are behind plusargs and -D flags and
+# are listed in README.md: +mode=ch04, +gen=uniform, +gen=narrow, -DBREAK_WRAP.
+#
+# No target writes a file. Lines starting with # are comments. The runner is
+# ../run_all.sh.
+
+run   : adder8.v adder8_mut.v tb_directed.v
+run   : adder8.v adder8_mut.v tb_random.v
+run   : adder8.v adder8_mut.v tb_exhaustive.v
+run   : adder8.v adder8_mut.v tb_scoreboard.v
+run   : tb_seed.v
+run   : tb_fpref.v
+run   : tb_covfp.v
+run   : counter6.v tb_assert.v
+run   : bad_srchain.v
+run   : bad_tolerance.v
+xfail : bad_sva.v
+xfail : bad_covergroup.v

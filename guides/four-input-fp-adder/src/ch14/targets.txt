@@ -1,0 +1,41 @@
+# Build-and-run manifest for chapter 14 -- the research-frontier chapter.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run
+#           to completion with no FAIL anywhere in its output
+#   warn  - must compile successfully but WITH compiler output
+#   xfail - must FAIL to compile
+#
+# Chapter 14 is a literature chapter and ships exactly ONE target, on
+# purpose. Its subject is other people's architectures, formats and
+# standards, none of which this project built or can run, so almost
+# everything in the chapter is citation rather than measurement. The one
+# exception is a question the fetched literature poses and this guide's own
+# artifact is the right shape to answer:
+#
+#   Fasi, Higham, Mikaitis & Pranesh (MIMS EPrint 2020.10) measured a real
+#   five-term tensor-core accumulator behaving NON-monotonically, and
+#   Mikaitis (arXiv:2304.01407) generalized the effect to n >= 4 in units
+#   that skip intermediate normalization. Chapter 12's adder is n = 4 and
+#   normalizes every intermediate. So it SHOULD be monotonic -- and until
+#   this target existed, "should" was an inference the chapter was not
+#   allowed to state as a result.
+#
+# No new RTL. The DUT is chapter 10's fp32_add4_tree, which chapter 12's
+# tb_add4_stream proves bit-identical to the shipped pipelined fp32_add4;
+# the monotonicity result transfers along that proven equivalence rather
+# than by assumption. The format-census models that produce the chapter's
+# bfloat16/FP16/TF32/FP8/posit tables are illustrative python printed in
+# the chapter text, NOT shipped targets -- they compute from field widths
+# alone and there is no Verilog in them to compile.
+#
+# Shipped size is NT=2500 trials per regime (10,000 trials, 39,605 ordered
+# comparisons, ~7 s here). The chapter's headline run is the same binary at
+# -DNT=25000: 396,225 one-ulp increases, 0 non-monotonic, 68 s.
+#
+# There is no warn or xfail target: nothing in this chapter is a deliberate
+# diagnostic demonstration.
+
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch10/fp32_add4_tree.v tb_mono4.v

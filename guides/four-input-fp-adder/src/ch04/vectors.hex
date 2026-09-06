@@ -1,0 +1,14 @@
+// tb_vectors.v test vectors for adder8.
+// One 32-bit word per line, packed as
+// { a[7:0], b[7:0], expected_sum[7:0], 7'b0, expected_cout }.
+// $readmemh reads one memory word per whitespace-separated token, so the
+// packing has to be done here, not by laying the fields out in columns.
+// // and /* */ comments are allowed in the data file.
+01020300
+0f011000
+ff010001
+80800001
+7f018000
+80ff7f01
+00000000
+fffffe01

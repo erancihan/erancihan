@@ -1,0 +1,38 @@
+# Build-and-run manifest for chapter 11.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run
+#           to completion with no FAIL anywhere in its output
+#   warn  - must compile successfully but WITH compiler output
+#   xfail - must FAIL to compile
+#
+# The manifest reaches into four earlier chapters, deliberately (precedent:
+# ch06/ch08/ch09/ch10 do the same). The pipelined adders instantiate ch09's
+# seven stage modules UNMODIFIED -- pipelining here is wiring plus register
+# banks, and that claim is only real while the regression compiles those
+# exact files next to these. ch09's fp32_add2 is also the streaming oracle;
+# ch10's fp32_add4_tree is the oracle for the pipelined tree.
+#
+# stream_cfg_p4.v ahead of tb_stream.v / tb_reset.v retargets the same
+# harness source at the 4-stage pipeline (`define carries across files in
+# command-line order) -- the manifest equivalent of -DDUT=fp32_add2_p4.
+#
+# Both streaming sweeps ship at FULL headline size (100k+ streamed
+# transactions; ~10 s and ~37 s here) -- unlike ch10's 240k headline run,
+# they fit the 60 s SIM_TIMEOUT with margin.
+#
+# There is no warn or xfail target: every pipeline trap this chapter
+# teaches (a forgotten stage register, blocking in a bank, a combinational
+# flag OR, a full datapath reset) compiles in total silence -- that is the
+# point -- and each lives in the README's mutation record instead.
+
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v fp32_add2_p2.v tb_stream.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v stream_cfg_p4.v fp32_add2_p4.v tb_stream.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v ../ch10/fp32_add4_tree.v fp32_add2_p2.v fp32_add4_tree_p.v tb_stream4.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v fp32_add2_p2.v tb_single.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v fp32_add2_p2.v tb_reset.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v stream_cfg_p4.v fp32_add2_p4.v tb_reset.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v fp32_add2_p2.v tb_xinj.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch09/fp32_unpack.v ../ch09/fp32_screen.v ../ch09/fp32_swap.v ../ch09/fp32_align.v ../ch09/fp32_addsub.v ../ch09/fp32_normalize.v ../ch09/fp32_round_pack.v ../ch09/fp32_add2.v fp32_add2_p2.v fp32_add2_p4.v tb_wave.v

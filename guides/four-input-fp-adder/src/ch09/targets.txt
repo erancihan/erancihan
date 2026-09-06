@@ -1,0 +1,34 @@
+# Build-and-run manifest for chapter 9.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run
+#           to completion with no FAIL anywhere in its output
+#   warn  - must compile successfully but WITH compiler output; a deliberate
+#           warning demonstration whose diagnostic the chapter quotes
+#   xfail - must FAIL to compile; a deliberate teaching example
+#
+# This chapter's targets reach into THREE earlier chapters, deliberately:
+# ../ch07/fp32_fields.v and ../ch07/fp32_class.v are instantiated by
+# fp32_unpack/fp32_screen (chapter 7's contract, cashed), ../ch02/
+# align_sticky.v is the core of fp32_align (as it was the core of chapter
+# 8's step 4), and ../ch08/fp32_add_alg.v is the GOLDEN REFERENCE that
+# tb_equiv compares the split design against, bit for bit. The equivalence
+# claim is only real if the regression compiles that exact file next to
+# this design -- precedent: chapters 6 and 8 do the same.
+#
+# There is no warn or xfail target: every trap this chapter teaches -- the
+# benign-vs-catastrophic port-width narrowing, the misspelled 1-bit net,
+# the inferred latch, the double-driven result -- compiles silently or is
+# quoted from scratch probes in the chapter's prose. The zero-output rule
+# on the run targets below is itself the regression guard the chapter
+# argues for. Lines starting with # are comments. The runner is
+# ../run_all.sh.
+
+run   : ../ch02/align_sticky.v fp32_align.v tb_align_u.v
+run   : fp32_addsub.v tb_addsub_u.v
+run   : fp32_normalize.v fp32_round_pack.v tb_normround_u.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v ../ch08/fp32_add_alg.v fp32_unpack.v fp32_screen.v fp32_swap.v fp32_align.v fp32_addsub.v fp32_normalize.v fp32_round_pack.v fp32_add2.v tb_equiv.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v fp32_unpack.v fp32_screen.v fp32_swap.v fp32_align.v fp32_addsub.v fp32_normalize.v fp32_round_pack.v fp32_add2.v tb_corners_split.v
+run   : ../ch02/align_sticky.v ../ch07/fp32_fields.v ../ch07/fp32_class.v fp32_unpack.v fp32_screen.v fp32_swap.v fp32_align.v fp32_addsub.v fp32_normalize.v fp32_round_pack.v fp32_add2.v tb_short.v

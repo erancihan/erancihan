@@ -1,0 +1,27 @@
+# Build-and-run manifest for chapter 8.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run
+#           to completion with no FAIL anywhere in its output
+#   warn  - must compile successfully but WITH compiler output; a deliberate
+#           warning demonstration whose diagnostic the chapter quotes
+#   xfail - must FAIL to compile; a deliberate teaching example
+#
+# Every target deliberately reaches into ../ch02: step 4 of the algorithm IS
+# chapter 2's align_sticky at W = 24, and the chapter's claim that the
+# alignment machine was built two chapters early is only true if the
+# regression compiles that exact file into this datapath. (Precedent:
+# chapter 6's manifest does the same for ripple4/full_adder.)
+#
+# There is no warn or xfail target: every trap this chapter teaches -- a
+# dropped sticky contributor, a guard-only rounder, a missing renormalize --
+# compiles silently and misbehaves only at runtime, which is exactly why the
+# corner library and the mutation record exist. Lines starting with # are
+# comments. The runner is ../run_all.sh.
+
+run   : ../ch02/align_sticky.v fp32_add_alg.v tb_walk.v
+run   : ../ch02/align_sticky.v fp32_add_alg.v tb_corners.v
+run   : ../ch02/align_sticky.v fp32_add_alg.v tb_refmodel.v
+run   : ../ch02/align_sticky.v fp32_add_alg.v tb_random.v

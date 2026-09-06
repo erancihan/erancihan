@@ -1,0 +1,37 @@
+# Build-and-run manifest for chapter 4.
+#
+# Format, one target per line:
+#   <expect> : <source files ...>
+# where <expect> is
+#   run   - must compile with zero iverilog output and the testbench must run to completion with
+#           no FAIL anywhere in its output
+#   xfail - must FAIL to compile; a deliberate teaching example
+#
+# Chapter 4 has no xfail target. Its two hard errors - $dumpvars on a memory
+# array, and a literal seed passed to $random - are both rejected by vvp when
+# it LOADS the program, not by iverilog, so neither fits either row. See the
+# README.
+#
+# Files named bad_*.v are deliberately wrong teaching examples. They still
+# self-check, so PASS from a bad_* target means "the trap still reproduces on
+# this simulator".
+#
+# No target writes a file. Waveform dumping is behind a +dump= plusarg in
+# every testbench that supports it, so a regression run leaves the tree clean.
+#
+# Lines starting with # are comments. The runner is ../run_all.sh.
+
+run   : counter4.v tb_anatomy.v
+run   : tb_period.v
+run   : adder8.v tb_stimulus.v
+run   : adder8.v tb_vectors.v
+run   : bad_readmem.v
+run   : tb_random.v
+run   : tb_print.v
+run   : dff.v tb_strobe.v
+run   : bad_monitor.v
+run   : bad_severity.v
+run   : adder8.v bad_adder8.v tb_check.v
+run   : dff.v pipe2.v tb_dump.v
+run   : bad_dumparray.v
+run   : tb_plusargs.v
