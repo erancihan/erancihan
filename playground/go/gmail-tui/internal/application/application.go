@@ -2,6 +2,7 @@ package application
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,9 +22,16 @@ var (
 	unreadStyle   = lipgloss.NewStyle().Bold(true)
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(lipgloss.Color("57"))
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	checkStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("78"))
+	labelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("180"))
+	modalStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
 )
 
-const unreadMark = "●"
+const (
+	unreadMark  = "●"
+	checkMark   = "✓"
+	senderWidth = 18 // sender column in the flat list
+)
 
 // --- MODEL ---
 type mode int
@@ -40,23 +48,32 @@ type cacheKey struct {
 }
 
 type dayData struct {
+	emails []email // newest first
 	groups []group
-	total  int
 	failed int
 }
 
-// row is one line of the day list: a sender header (mail == -1) or a mail inside a group.
+func newDayData(emails []email, failed int) dayData {
+	slices.SortStableFunc(emails, func(a, b email) int { return b.Time.Compare(a.Time) })
+	return dayData{emails: emails, groups: groupBySender(emails), failed: failed}
+}
+
+// row is one line of the day list. In the flat list group is -1 and mail
+// indexes dayData.emails; in the grouped list mail is -1 for a sender header
+// and otherwise indexes the group's mails.
 type row struct {
 	group int
 	mail  int
 }
 
 type model struct {
-	service *gmail.Service
-	mode    mode
-	width   int
-	height  int
-	status  string
+	service      *gmail.Service
+	settings     Settings
+	settingsPath string
+	mode         mode
+	width        int
+	height       int
+	status       string
 
 	// day view
 	day       time.Time // local midnight
@@ -64,6 +81,7 @@ type model struct {
 	cache     map[cacheKey]dayData
 	data      dayData
 	collapsed map[string]bool // sender address -> folded; kept across days
+	selected  map[string]bool // message id -> selected for bulk actions
 	rows      []row
 	cursor    int
 	offset    int
@@ -73,22 +91,32 @@ type model struct {
 	bodies     map[string]*message // message id -> loaded mail
 	stats      stats
 	statsCache map[statsKey]statsData
+
+	modal          modal
+	settingsCursor int
+	confirm        confirmState
+	picker         labelPicker
+	labels         []label // nil until loaded
+	labelsErr      error
 }
 
 // --- CONSTRUCTOR ---
-func NewApplication(srv *gmail.Service) model {
+func NewApplication(srv *gmail.Service, settings Settings, settingsPath string) model {
 	return model{
-		service:    srv,
-		day:        today(),
-		scope:      scopeReceived,
-		cache:      map[cacheKey]dayData{},
-		collapsed:  map[string]bool{},
-		bodies:     map[string]*message{},
-		statsCache: map[statsKey]statsData{},
-		stats:      stats{days: statsRanges[0]},
-		width:      80,
-		height:     24,
-		loading:    true,
+		service:      srv,
+		settings:     settings,
+		settingsPath: settingsPath,
+		day:          today(),
+		scope:        scopeReceived,
+		cache:        map[cacheKey]dayData{},
+		collapsed:    map[string]bool{},
+		selected:     map[string]bool{},
+		bodies:       map[string]*message{},
+		statsCache:   map[statsKey]statsData{},
+		stats:        stats{days: statsRanges[0]},
+		width:        80,
+		height:       24,
+		loading:      true,
 	}
 }
 
@@ -113,7 +141,7 @@ type statusMsg string
 
 // --- INIT ---
 func (m model) Init() tea.Cmd {
-	return fetchDay(m.service, m.day, m.scope)
+	return tea.Batch(fetchDay(m.service, m.day, m.scope), fetchLabels(m.service))
 }
 
 // --- UPDATE ---
@@ -129,6 +157,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
+		}
+		if m.modal != modalNone {
+			return m.updateModal(msg)
+		}
+		switch msg.String() {
+		case ",":
+			m.modal = modalSettings
+			return m, nil
+		case "?":
+			m.modal = modalHelp
+			return m, nil
 		}
 		switch m.mode {
 		case modeReader:
@@ -149,12 +188,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		d := dayData{groups: groupBySender(msg.emails), total: len(msg.emails), failed: msg.failed}
+		d := newDayData(msg.emails, msg.failed)
 		m.cache[msg.key] = d
 		if msg.key == m.key() {
 			m.loading = false
 			m.show(d)
 		}
+
+	case labelsLoadedMsg:
+		m.labels, m.labelsErr = msg.labels, msg.err
+
+	case actionDoneMsg:
+		return m.actionDone(msg)
 
 	case messageLoadedMsg:
 		return m.messageLoaded(msg)
@@ -222,10 +267,26 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.rebuild()
 
+	// Selection and bulk actions
+	case "x":
+		m.toggleSelect()
+		m.move(1)
+	case "A":
+		m.toggleSelectAll()
+	case "esc":
+		clear(m.selected)
+	case "d":
+		return m.confirmTrash(m.targets()), nil
+	case "m":
+		return m, m.toggleRead(m.targets())
+	case "L":
+		return m.openLabels(m.targets())
+
 	// Links
 	case "u":
-		if g, ok := m.selectedGroup(); ok {
-			return m, openUnsubscribe(g.name, g.unsubscribe())
+		name, link := m.currentUnsubscribe()
+		if name != "" {
+			return m, openUnsubscribe(name, link)
 		}
 	case "o":
 		if e, ok := m.selectedEmail(); ok {
@@ -243,6 +304,7 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) open(day time.Time, s scope, refresh bool) (tea.Model, tea.Cmd) {
 	m.day, m.scope = day, s
 	m.cursor, m.offset = 0, 0
+	clear(m.selected)
 	if d, ok := m.cache[m.key()]; ok && !refresh {
 		m.loading = false
 		m.show(d)
@@ -262,9 +324,16 @@ func (m *model) show(d dayData) {
 	m.rebuild()
 }
 
-// rebuild recomputes the visible rows from the groups and fold state.
+// rebuild recomputes the visible rows from the mails, grouping and fold state.
 func (m *model) rebuild() {
 	m.rows = nil
+	if !m.settings.GroupBySender {
+		for i := range m.data.emails {
+			m.rows = append(m.rows, row{group: -1, mail: i})
+		}
+		m.move(0)
+		return
+	}
 	for gi, g := range m.data.groups {
 		m.rows = append(m.rows, row{group: gi, mail: -1})
 		if m.collapsed[g.key] {
@@ -275,6 +344,17 @@ func (m *model) rebuild() {
 		}
 	}
 	m.move(0)
+}
+
+// cursorTo puts the cursor on the row of the given mail, if it is visible.
+func (m *model) cursorTo(id string) {
+	for i, r := range m.rows {
+		if e, ok := m.rowEmail(r); ok && e.ID == id {
+			m.cursor = i
+			break
+		}
+	}
+	m.scroll()
 }
 
 func (m *model) toggleFold() {
@@ -294,19 +374,45 @@ func (m *model) toggleFold() {
 	m.scroll()
 }
 
+// selectedGroup returns the sender group under the cursor (grouped list only).
 func (m model) selectedGroup() (group, bool) {
-	if m.cursor >= len(m.rows) {
+	if m.cursor >= len(m.rows) || m.rows[m.cursor].group < 0 {
 		return group{}, false
 	}
 	return m.data.groups[m.rows[m.cursor].group], true
 }
 
 func (m model) selectedEmail() (email, bool) {
-	if m.cursor >= len(m.rows) || m.rows[m.cursor].mail < 0 {
+	if m.cursor >= len(m.rows) {
 		return email{}, false
 	}
-	r := m.rows[m.cursor]
+	return m.rowEmail(m.rows[m.cursor])
+}
+
+func (m model) rowEmail(r row) (email, bool) {
+	switch {
+	case r.group < 0:
+		return m.data.emails[r.mail], true
+	case r.mail < 0:
+		return email{}, false
+	}
 	return m.data.groups[r.group].emails[r.mail], true
+}
+
+// currentUnsubscribe returns the sender and opt-out link for the cursor row.
+func (m model) currentUnsubscribe() (name, link string) {
+	addr := ""
+	if e, ok := m.selectedEmail(); ok {
+		name, addr = e.FromName, e.FromAddr
+	} else if g, ok := m.selectedGroup(); ok {
+		name, addr = g.name, g.key
+	}
+	for _, g := range m.data.groups {
+		if g.key == addr {
+			return name, g.unsubscribe()
+		}
+	}
+	return name, ""
 }
 
 // stepEmail moves the cursor to the next (dir=1) or previous (dir=-1) mail row.
@@ -344,13 +450,41 @@ func (m model) listHeight() int {
 
 // --- VIEW ---
 func (m model) View() string {
+	var v string
 	switch m.mode {
 	case modeReader:
-		return m.viewReader()
+		v = m.viewReader()
 	case modeStats:
-		return m.viewStats()
+		v = m.viewStats()
+	default:
+		v = m.viewDay()
 	}
-	return m.viewDay()
+	if m.modal != modalNone {
+		v = overlay(v, m.viewModal(), m.width, m.height)
+	}
+	return v
+}
+
+// overlay draws box centered on top of base.
+func overlay(base, box string, width, height int) string {
+	lines := strings.Split(base, "\n")
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	boxLines := strings.Split(box, "\n")
+	bw := lipgloss.Width(box)
+	x := max(0, (width-bw)/2)
+	y := max(0, (len(lines)-len(boxLines))/2)
+	for i, bl := range boxLines {
+		if y+i >= len(lines) {
+			break
+		}
+		l := lines[y+i]
+		left := ansi.Truncate(l, x, "")
+		left += strings.Repeat(" ", max(0, x-ansi.StringWidth(left)))
+		lines[y+i] = left + bl + ansi.TruncateLeft(l, x+bw, "")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m model) viewDay() string {
@@ -360,7 +494,10 @@ func (m model) viewDay() string {
 	if m.day.Equal(today()) {
 		title += " (today)"
 	}
-	meta := fmt.Sprintf("  %s · %d mails · %d senders", m.scope, m.data.total, len(m.data.groups))
+	meta := fmt.Sprintf("  %s · %d mails · %d senders", m.scope, len(m.data.emails), len(m.data.groups))
+	if n := len(m.selected); n > 0 {
+		meta += fmt.Sprintf(" · %d selected", n)
+	}
 	b.WriteString(ansi.Truncate(titleStyle.Render(title)+dimStyle.Render(meta), m.width, "…") + "\n\n")
 
 	h := m.listHeight()
@@ -383,7 +520,7 @@ func (m model) viewDay() string {
 	} else {
 		b.WriteString(m.footerStatus())
 	}
-	b.WriteString(m.help("h/l day · t today · enter read · space/z fold · s senders · u unsub · o web · tab scope · r refresh · q quit"))
+	b.WriteString(m.help("? keys · h/l day · enter read · x select · d trash · m read · L label · s senders · , settings · q quit"))
 	return b.String()
 }
 
@@ -398,36 +535,85 @@ func (m model) help(text string) string {
 	return dimStyle.Render(ansi.Truncate(" "+text, m.width, "…"))
 }
 
-func (m model) renderRow(r row, selected bool) string {
-	g := m.data.groups[r.group]
+// check renders the selection column.
+func (m model) check(selected bool, cursor bool) string {
+	switch {
+	case !selected:
+		return " "
+	case cursor:
+		return checkMark
+	}
+	return checkStyle.Render(checkMark)
+}
 
-	if r.mail < 0 {
+func (m model) renderRow(r row, cursor bool) string {
+	if r.group >= 0 && r.mail < 0 {
+		g := m.data.groups[r.group]
+		all := true
+		for _, e := range g.emails {
+			all = all && m.selected[e.ID]
+		}
 		arrow := "▾"
 		if m.collapsed[g.key] {
 			arrow = "▸"
 		}
 		count := fmt.Sprintf(" (%d)", len(g.emails))
-		if selected {
-			return selectedStyle.Width(m.width).Render(ansi.Truncate(arrow+" "+g.name+count, m.width, "…"))
+		if cursor {
+			return selectedStyle.Width(m.width).Render(ansi.Truncate(m.check(all, true)+arrow+" "+g.name+count, m.width, "…"))
 		}
-		return ansi.Truncate(arrow+" "+senderStyle.Render(g.name)+dimStyle.Render(count), m.width, "…")
+		return ansi.Truncate(m.check(all, false)+arrow+" "+senderStyle.Render(g.name)+dimStyle.Render(count), m.width, "…")
 	}
 
-	e := g.emails[r.mail]
+	e, _ := m.rowEmail(r)
 	mark := " "
 	if e.Unread {
 		mark = unreadMark
 	}
-	prefix := "   " + e.Time.Format("15:04") + " " + mark + " "
-	if selected {
-		line := prefix + e.Subject + " — " + e.Snippet
+	indent := " "
+	if r.group >= 0 {
+		indent = "   "
+	}
+	prefix := indent + e.Time.Format("15:04") + " " + mark + " "
+	sender := ""
+	if r.group < 0 {
+		sender = ansi.Truncate(e.FromName, senderWidth, "…")
+		sender += strings.Repeat(" ", senderWidth-ansi.StringWidth(sender)) + "  "
+	}
+	chips := m.labelChips(e)
+	snippet := ""
+	if e.Snippet != "" {
+		snippet = " — " + e.Snippet
+	}
+
+	if cursor {
+		line := m.check(m.selected[e.ID], true) + prefix + sender + e.Subject + chips + snippet
 		return selectedStyle.Width(m.width).Render(ansi.Truncate(line, m.width, "…"))
 	}
 	subject := e.Subject
 	if e.Unread {
 		subject = unreadStyle.Render(subject)
 	}
-	return ansi.Truncate(prefix+subject+dimStyle.Render(" — "+e.Snippet), m.width, "…")
+	if sender != "" {
+		sender = senderStyle.Render(sender)
+	}
+	return ansi.Truncate(m.check(m.selected[e.ID], false)+prefix+sender+subject+labelStyle.Render(chips)+dimStyle.Render(snippet), m.width, "…")
+}
+
+// labelChips lists a mail's star and user labels, e.g. " ★ [Work]".
+func (m model) labelChips(e email) string {
+	var b strings.Builder
+	if slices.Contains(e.Labels, "STARRED") {
+		b.WriteString(" ★")
+	}
+	for _, l := range m.labels {
+		if !strings.HasPrefix(l.ID, "Label_") {
+			continue // system label
+		}
+		if slices.Contains(e.Labels, l.ID) {
+			b.WriteString(" [" + l.Name + "]")
+		}
+	}
+	return b.String()
 }
 
 // --- COMMANDS ---

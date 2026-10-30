@@ -34,7 +34,9 @@ func press(t *testing.T, m model, keys ...string) model {
 
 func loaded(t *testing.T) model {
 	t.Helper()
-	m := NewApplication(nil)
+	s := defaultSettings()
+	s.GroupBySender = true
+	m := NewApplication(nil, s, "")
 	m.width, m.height = 90, 14
 	t0 := today().Add(9 * time.Hour)
 	next, _ := m.Update(dayLoadedMsg{key: m.key(), emails: []email{

@@ -29,10 +29,14 @@ func (m model) openReader(e email) (tea.Model, tea.Cmd) {
 	m.status = ""
 	m.reader = reader{email: e, msg: m.bodies[e.ID]}
 	m.reader.layout(m.width, m.readerHeight())
-	if m.reader.msg != nil {
-		return m, nil
+	var cmds []tea.Cmd
+	if m.reader.msg == nil {
+		cmds = append(cmds, fetchMessage(m.service, e.ID))
 	}
-	return m, fetchMessage(m.service, e.ID)
+	if m.settings.MarkReadOnOpen && e.Unread {
+		cmds = append(cmds, modifyCmd(m.service, []string{e.ID}, nil, []string{"UNREAD"}, ""))
+	}
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) messageLoaded(msg messageLoadedMsg) (tea.Model, tea.Cmd) {
@@ -129,6 +133,14 @@ func (m model) updateReader(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, openUnsubscribe(m.reader.email.FromName, link)
 	case "o":
 		return m, openLink(gmailLink(m.reader.email.ID))
+
+	// Actions on this mail
+	case "d":
+		return m.confirmTrash([]email{m.reader.email}), nil
+	case "m":
+		return m, m.toggleRead([]email{m.reader.email})
+	case "L":
+		return m.openLabels([]email{m.reader.email})
 	}
 	return m, nil
 }
@@ -143,7 +155,7 @@ func (m model) viewReader() string {
 	}
 	b.WriteString(strings.Repeat("\n", max(0, r.height-(end-r.offset))))
 	b.WriteString(m.footerStatus())
-	b.WriteString(m.help("j/k scroll · space/b page · n/p next/prev mail · u unsubscribe · o open in Gmail · q back"))
+	b.WriteString(m.help("q back · j/k scroll · space/b page · n/p next/prev · d trash · m read · L label · u unsub · o web"))
 	return b.String()
 }
 

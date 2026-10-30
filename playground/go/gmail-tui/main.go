@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("Unable to read client secret file: %v\nPlace credentials.json in %s (see README).", err, dir)
 	}
 
-	config, err := google.ConfigFromJSON(b, gmail.GmailReadonlyScope)
+	config, err := google.ConfigFromJSON(b, gmail.GmailModifyScope)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file: %v", err)
 	}
@@ -53,8 +53,15 @@ func main() {
 		log.Fatalf("Unable to retrieve Gmail client: %v", err)
 	}
 
-	// 2. Run Bubble Tea Program
-	m := application.NewApplication(srv)
+	// 2. Load settings
+	settingsPath := filepath.Join(dir, "settings.json")
+	settings, err := application.LoadSettings(settingsPath)
+	if err != nil {
+		log.Fatalf("Unable to read settings: %v", err)
+	}
+
+	// 3. Run Bubble Tea Program
+	m := application.NewApplication(srv, settings, settingsPath)
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)

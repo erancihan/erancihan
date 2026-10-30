@@ -1,7 +1,8 @@
 # gmail-tui
 
-Terminal Gmail viewer that shows mail one day at a time, grouped by sender.
-Access is read-only (`gmail.readonly` scope).
+Terminal Gmail client that shows mail one day at a time. It can move mail to
+Trash, mark it read or unread, and add or remove labels, one mail at a time or in
+bulk. It uses the `gmail.modify` scope; it cannot delete mail permanently.
 
 ## Setup (Google Cloud)
 - Create a Project: Go to the Google Cloud Console and create a new project.
@@ -21,7 +22,10 @@ Place `credentials.json` in the first of these that applies:
 2. `./secrets/`, if it already holds `credentials.json` (gitignored).
 3. `~/.config/gmail-tui/`.
 
-The login token is saved next to it as `token.json`. On first run the app opens a
+The login token is saved next to it as `token.json`, and settings as
+`settings.json`. When the app needs different permissions than the saved login
+has (for example after an upgrade from the read-only version), it asks you to log
+in again. On first run the app opens a
 browser for login (it prints the link too). While the consent screen is in
 "Testing" mode, Google expires the login after 7 days; the app then asks you to
 log in again.
@@ -32,6 +36,7 @@ go run .
 ```
 
 ## Keys
+Press `?` in the app for this list.
 
 Day view
 | Key | Action |
@@ -40,16 +45,33 @@ Day view
 | `t` | today |
 | `j` / `k`, `g` / `G`, `pgup` / `pgdn` | move |
 | `enter` | read mail (on a sender: fold) |
-| `space` / `z` | fold sender / fold all (folds are kept across days) |
+| `x` | select mail (on a sender: the whole group) |
+| `A` | select all mail of the day, or clear |
+| `esc` | clear selection |
+| `d` | move to Trash (asks first) |
+| `m` | mark read; if all are read already, mark unread |
+| `L` | label picker: type to filter, `enter` adds the label (or removes it if all have it), a new name creates it |
 | `u` | open the sender's unsubscribe link |
 | `o` | open the mail in Gmail |
 | `s` | sender stats |
 | `tab` | switch between all received mail and inbox only |
+| `space` / `z` | fold sender / fold all (grouped view) |
+| `,` | settings |
 | `r` | reload the day |
 | `q` | quit |
 
-Reader: `j`/`k` scroll, `space`/`b` page, `n`/`p` next/previous mail, `u` unsubscribe, `o` open in Gmail, `q` back.
+`d`, `m` and `L` act on the selected mails, or on the mail under the cursor when
+nothing is selected. Removing the Inbox label archives a mail.
+
+Reader: `j`/`k` scroll, `space`/`b` page, `n`/`p` next/previous mail, `d`, `m`,
+`L`, `u`, `o` as above, `q` back.
 
 Sender stats: senders ranked by mail count over 7, 30 or 90 days ending at the
 current day (`tab` cycles). `u` opens the selected sender's unsubscribe link,
 `r` reloads, `q` back. At most 2000 mails are counted per range.
+
+## Settings
+| Setting | Default |
+| --- | --- |
+| Group by sender | off: one list, newest first |
+| Mark as read when opened | on |

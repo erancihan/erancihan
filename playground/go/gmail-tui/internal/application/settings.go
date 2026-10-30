@@ -1,0 +1,51 @@
+package application
+
+import (
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
+)
+
+// Settings are user preferences, saved as JSON next to the login token.
+type Settings struct {
+	GroupBySender  bool `json:"group_by_sender"`
+	MarkReadOnOpen bool `json:"mark_read_on_open"`
+}
+
+func defaultSettings() Settings {
+	return Settings{GroupBySender: false, MarkReadOnOpen: true}
+}
+
+// LoadSettings reads settings from path; missing fields keep their defaults.
+func LoadSettings(path string) (Settings, error) {
+	s := defaultSettings()
+	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return s, nil
+	}
+	if err != nil {
+		return s, err
+	}
+	return s, json.Unmarshal(b, &s)
+}
+
+func (s Settings) save(path string) error {
+	if path == "" {
+		return nil
+	}
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(b, '\n'), 0600)
+}
+
+// settingItems are the rows of the settings modal.
+var settingItems = []struct {
+	name  string
+	field func(*Settings) *bool
+}{
+	{"Group by sender", func(s *Settings) *bool { return &s.GroupBySender }},
+	{"Mark as read when opened", func(s *Settings) *bool { return &s.MarkReadOnOpen }},
+}

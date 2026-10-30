@@ -54,7 +54,8 @@ type email struct {
 	FromAddr    string
 	Subject     string
 	Snippet     string
-	Unsubscribe string // best List-Unsubscribe target, if any
+	Unsubscribe string   // best List-Unsubscribe target, if any
+	Labels      []string // Gmail label ids
 	Time        time.Time
 	Unread      bool
 }
@@ -185,6 +186,7 @@ func parseEmail(m *gmail.Message) email {
 		Snippet: html.UnescapeString(m.Snippet),
 		Time:    time.UnixMilli(m.InternalDate).Local(),
 		Unread:  slices.Contains(m.LabelIds, "UNREAD"),
+		Labels:  m.LabelIds,
 		Subject: "(no subject)",
 	}
 	for _, h := range m.Payload.Headers {

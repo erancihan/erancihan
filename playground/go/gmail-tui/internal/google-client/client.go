@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"time"
 
 	"gmail-tui/internal/browser"
@@ -17,19 +18,30 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// savedToken is the token file format; it records the scopes the token was
+// granted so a scope change triggers a new login.
+type savedToken struct {
+	oauth2.Token
+	Scopes []string `json:"scopes,omitempty"`
+}
+
 // --- GOOGLE AUTH ---
 // GetClient loads the cached token from tokFile, refreshing it or running the
 // browser login when it is missing or no longer valid.
 func GetClient(ctx context.Context, config *oauth2.Config, tokFile string) (*http.Client, error) {
-	tok, err := tokenFromFile(tokFile)
-	if err == nil {
+	tok, scopes, err := tokenFromFile(tokFile)
+	switch {
+	case err != nil:
+		tok = nil
+	case !sameScopes(scopes, config.Scopes):
+		fmt.Println("The app needs different permissions now, logging in again.")
+		tok = nil
+	default:
 		// Refresh tokens of apps in "Testing" expire after 7 days; detect that up front.
 		if _, err := config.TokenSource(ctx, tok).Token(); err != nil {
 			fmt.Printf("Saved login is no longer valid (%v), logging in again.\n", err)
 			tok = nil
 		}
-	} else {
-		tok = nil
 	}
 
 	if tok == nil {
@@ -37,32 +49,39 @@ func GetClient(ctx context.Context, config *oauth2.Config, tokFile string) (*htt
 		if err != nil {
 			return nil, err
 		}
-		if err := saveToken(tokFile, tok); err != nil {
+		if err := saveToken(tokFile, tok, config.Scopes); err != nil {
 			return nil, err
 		}
 	}
 	return config.Client(ctx, tok), nil
 }
 
-func tokenFromFile(file string) (*oauth2.Token, error) {
+func tokenFromFile(file string) (*oauth2.Token, []string, error) {
 	f, err := os.Open(file)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
-	tok := &oauth2.Token{}
-	err = json.NewDecoder(f).Decode(tok)
-	return tok, err
+	var saved savedToken
+	err = json.NewDecoder(f).Decode(&saved)
+	return &saved.Token, saved.Scopes, err
 }
 
-func saveToken(path string, token *oauth2.Token) error {
+func sameScopes(a, b []string) bool {
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
+}
+
+func saveToken(path string, token *oauth2.Token, scopes []string) error {
 	fmt.Printf("Saving credential file to: %s\n", path)
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("unable to cache oauth token: %w", err)
 	}
 	defer f.Close()
-	return json.NewEncoder(f).Encode(token)
+	return json.NewEncoder(f).Encode(savedToken{Token: *token, Scopes: scopes})
 }
 
 // tokenFromWeb runs the OAuth loopback flow: a one-shot server on a free local
