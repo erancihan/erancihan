@@ -103,9 +103,7 @@ func TestTrashConfirmAndRemove(t *testing.T) {
 
 func TestInboxScopeFiltersLocally(t *testing.T) {
 	m := flat(t)
-	s := m.days[dayKey(m.day)]
-	s.Emails[0].Labels = []string{"INBOX"}
-	m.days[dayKey(m.day)] = s
+	setLabels(&m, 0, []string{"INBOX"})
 	m = press(t, m, "tab")
 	if m.scope != scopeInbox || len(m.data.emails) != 1 || m.loading {
 		t.Fatalf("inbox view: scope=%v mails=%d loading=%v", m.scope, len(m.data.emails), m.loading)
@@ -124,9 +122,7 @@ func TestInboxScopeFiltersLocally(t *testing.T) {
 func TestLabelPicker(t *testing.T) {
 	m := flat(t)
 	m.labels = []label{{"INBOX", "Inbox"}, {"Label_1", "Work"}, {"Label_2", "Receipts"}}
-	s := m.days[dayKey(m.day)]
-	s.Emails[0].Labels = []string{"Label_1"}
-	m.days[dayKey(m.day)] = s
+	setLabels(&m, 0, []string{"Label_1"})
 	m.refreshView()
 	m = press(t, m, "L")
 	if m.modal != modalLabels {
@@ -230,9 +226,7 @@ func TestUnreadCounts(t *testing.T) {
 
 func TestArchiveToggle(t *testing.T) {
 	m := flat(t)
-	s := m.days[dayKey(m.day)]
-	s.Emails[0].Labels = []string{"INBOX"} // 3 in inbox, 2 archived
-	m.days[dayKey(m.day)] = s
+	setLabels(&m, 0, []string{"INBOX"}) // 3 in inbox, 2 archived
 	m.refreshView()
 	m = press(t, m, "x", "x")
 	if !slices.ContainsFunc(m.targets(), inInbox) {
@@ -278,4 +272,12 @@ func TestRememberView(t *testing.T) {
 	if r := NewApplication(nil, Options{Settings: s}); r.scope != scopeReceived {
 		t.Errorf("restored view although the setting is off")
 	}
+}
+
+// setLabels sets the labels of the i-th (newest first) stored mail of the shown day.
+func setLabels(m *model, i int, labels []string) {
+	id := m.days[dayKey(m.day)].IDs[i]
+	e := m.mails[id]
+	e.Labels = labels
+	m.mails[id] = e
 }

@@ -31,8 +31,11 @@ browser for login (it prints the link too). While the consent screen is in
 log in again.
 
 ## Caching
-Each day is fetched once and saved to `cache.json` (next to `token.json`, last
-60 days), so past days open instantly, also after a restart. Mail cannot arrive
+Each mail is stored once, in `cache.json` (next to `token.json`); days and the
+all-mail list refer to mails by id. Each day is fetched once (the last 60 days
+are kept on disk), so past days open instantly, also after a restart. The
+all-mail list asks Gmail which mails match, but only downloads mails that are
+not stored yet. Mail cannot arrive
 in the past, so days are never listed again. Changes still happen to known mail
 (read in another client, labelled, trashed), and new mail arrives for today:
 every minute the app asks Gmail's History API for changes since the last check
@@ -53,6 +56,7 @@ Day view
 | `h` / `l`, `←` / `→` | previous / next day |
 | `t` | today |
 | `c` | calendar |
+| `a` | all mail list (see below) |
 | `j` / `k`, `g` / `G`, `pgup` / `pgdn` | move |
 | `enter` | read mail (on a sender: fold) |
 | `x` | select mail (on a sender: the whole group) |
@@ -90,6 +94,15 @@ length, `tab` cycles the length (7, 30, 90 days), `t` makes it end today, and
 are counted at once; others are fetched once (at most 2000 mails), and the
 fetched days are added to the cache. `u` opens the selected sender's
 unsubscribe link, `r` reloads, `q` goes back.
+
+All mail (`a`): one list across all dates, newest first, to work through old
+mail without going day by day. It starts filtered to unread mail; `f` switches
+between Unread and All, `/` adds any Gmail query (`from:github`,
+`older_than:1y`, `label:work`, …), and `tab` switches All received / Inbox.
+It loads 100 mails at a time and loads more as you scroll to the end. Mails you
+read or archive stay in the list (shown as read / faint) until `r` reloads it,
+like in Gmail. Selection, actions and the reader work as in the day view;
+`a` or `esc` goes back to the day view.
 
 Calendar (`c`): the month of the shown day, with each day's mail and unread
 count in the current view. Cached days are counted from the cache; other past

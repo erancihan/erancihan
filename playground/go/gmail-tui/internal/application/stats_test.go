@@ -49,13 +49,13 @@ func TestStatsFromCacheAndFill(t *testing.T) {
 	next, _ = m.Update(statsLoadedMsg{key: m.stats.key, from: from, to: today(),
 		emails: []email{{ID: "old", FromAddr: "a@x", Time: from.Add(time.Hour)}}})
 	m = next.(model)
-	if len(m.days[dayKey(from)].Emails) != 1 || len(m.days[dayKey(from.AddDate(0, 0, 1))].Emails) != 0 {
+	if len(m.dayMails(dayKey(from))) != 1 || len(m.dayMails(dayKey(from.AddDate(0, 0, 1)))) != 0 {
 		t.Errorf("days not filled: %v", m.days)
 	}
 	if _, ok := m.days[dayKey(from.AddDate(0, 0, 1))]; !ok {
 		t.Errorf("empty day not cached")
 	}
-	if len(m.days[dayKey(today())].Emails) != 3 {
+	if len(m.dayMails(dayKey(today()))) != 3 {
 		t.Errorf("cached today overwritten")
 	}
 	// now the range is all cached

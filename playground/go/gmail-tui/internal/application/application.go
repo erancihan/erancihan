@@ -81,10 +81,13 @@ type model struct {
 	height       int
 	status       string
 
-	// day view
+	// mail list: one day, or all mail (see all.go)
+	list        listKind
+	all         allList
 	day         time.Time // local midnight
 	scope       scope
-	days        map[string]dayStore // day key -> all received mail; see sync.go
+	mails       map[string]email    // id -> the one stored copy of each mail; see store.go
+	days        map[string]dayStore // day key -> ids of all received mail; see sync.go
 	pending     map[string]bool     // day keys being fetched
 	historyID   uint64              // Gmail history id the cache is current to
 	syncing     bool
@@ -106,6 +109,7 @@ type model struct {
 	settingsCursor int
 	confirm        confirmState
 	rangeIn        rangeInput
+	searchIn       string
 	cal            calendar
 	counts         map[countKey]dayCount // per-day counts of days that are not cached
 	countPending   map[countKey]bool
@@ -130,6 +134,7 @@ func NewApplication(srv *gmail.Service, opts Options) model {
 		cachePath:    opts.CachePath,
 		day:          today(),
 		scope:        scopeReceived,
+		mails:        map[string]email{},
 		days:         map[string]dayStore{},
 		pending:      map[string]bool{},
 		counts:       map[countKey]dayCount{},
@@ -147,7 +152,7 @@ func NewApplication(srv *gmail.Service, opts Options) model {
 		m.scope = scopeInbox
 	}
 	if opts.CachePath != "" {
-		m.days, m.historyID = loadCache(opts.CachePath)
+		m.mails, m.days, m.historyID = loadCache(opts.CachePath)
 	}
 	if _, ok := m.days[dayKey(m.day)]; !ok {
 		m.pending[dayKey(m.day)] = true
@@ -233,6 +238,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case syncedMsg:
 		return m.synced(msg)
 
+	case allLoadedMsg:
+		return m.allLoaded(msg)
+
 	case countsMsg:
 		return m.countsLoaded(msg)
 
@@ -258,9 +266,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.list == listAll {
+		if next, cmd, ok := m.updateAll(msg); ok {
+			return next, cmd
+		}
+	}
 	switch msg.String() {
 	case "q":
 		return m, tea.Quit
+	case "a":
+		return m.openAll(false)
 
 	// Day navigation
 	case "h", "left":
@@ -286,16 +301,19 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// List movement
 	case "j", "down":
 		m.move(1)
+		return m, m.loadMoreIfNeeded()
 	case "k", "up":
 		m.move(-1)
 	case "pgdown", "ctrl+d":
 		m.move(m.listHeight())
+		return m, m.loadMoreIfNeeded()
 	case "pgup", "ctrl+u":
 		m.move(-m.listHeight())
 	case "g", "home":
 		m.move(-len(m.rows))
 	case "G", "end":
 		m.move(len(m.rows))
+		return m, m.loadMoreIfNeeded()
 
 	// Read a mail, or fold its sender
 	case "enter":
@@ -367,6 +385,7 @@ func (m *model) rememberView() {
 // open switches to the given day and scope. Cached days show at once; refresh
 // fetches the day again.
 func (m model) open(day time.Time, s scope, refresh bool) (tea.Model, tea.Cmd) {
+	m.list = listDay
 	m.day, m.scope = day, s
 	m.cursor, m.offset = 0, 0
 	m.status = ""
@@ -397,8 +416,7 @@ func (m model) dayLoaded(msg dayLoadedMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	slices.SortStableFunc(msg.emails, func(a, b email) int { return b.Time.Compare(a.Time) })
-	m.days[msg.day] = dayStore{Emails: msg.emails, Failed: msg.failed}
+	m.storeDay(msg.day, msg.emails, msg.failed)
 	if m.historyID == 0 {
 		m.historyID = msg.historyID
 	}
@@ -437,9 +455,13 @@ func (m *model) prefetch() tea.Cmd {
 func (m *model) refreshView() {
 	cur, hasCur := m.selectedEmail()
 	var es []email
-	for _, e := range m.days[dayKey(m.day)].Emails {
-		if m.scope.match(e) {
-			es = append(es, e)
+	if m.list == listAll {
+		es = m.resolve(m.all.ids) // already filtered by Gmail
+	} else {
+		for _, e := range m.dayMails(dayKey(m.day)) {
+			if m.scope.match(e) {
+				es = append(es, e)
+			}
 		}
 	}
 	m.data = newDayData(es, 0)
@@ -620,6 +642,12 @@ func (m model) viewDay() string {
 	if m.day.Equal(today()) {
 		title += " (today)"
 	}
+	if m.list == listAll {
+		title = "All mail · " + m.all.filter.String()
+		if m.all.search != "" {
+			title += " · “" + m.all.search + "”"
+		}
+	}
 	unread := 0
 	for _, e := range m.data.emails {
 		if e.Unread {
@@ -627,6 +655,9 @@ func (m model) viewDay() string {
 		}
 	}
 	meta := fmt.Sprintf("  %s · %s · %d unread · %s", m.scope, plural(len(m.data.emails)), unread, count(len(m.data.groups), "sender"))
+	if m.list == listAll {
+		meta = fmt.Sprintf("  %s · %d of ≈%d loaded · %d unread", m.scope, len(m.data.emails), max(m.all.estimate, int64(len(m.data.emails))), unread)
+	}
 	if m.inboxUnread >= 0 {
 		meta += fmt.Sprintf(" │ Inbox: %d unread", m.inboxUnread)
 	}
@@ -639,19 +670,28 @@ func (m model) viewDay() string {
 			}
 		}
 		if other := n - here; other > 0 {
-			meta += fmt.Sprintf(" (%d on other days)", other)
+			where := "on other days"
+			if m.list == listAll {
+				where = "not listed"
+			}
+			meta += fmt.Sprintf(" (%d %s)", other, where)
 		}
 	}
 	b.WriteString(ansi.Truncate(titleStyle.Render(title)+dimStyle.Render(meta), m.width, "…") + "\n")
 	b.WriteString(m.columnHeader() + "\n")
 
 	h := m.listHeight()
+	loading := m.loading
+	empty := " No mail on this day."
+	if m.list == listAll {
+		loading, empty = m.all.loading, " No mail matches."
+	}
 	switch {
-	case len(m.rows) == 0 && m.loading:
+	case len(m.rows) == 0 && loading:
 		b.WriteString(" Loading…\n")
 		h--
 	case len(m.rows) == 0:
-		b.WriteString(dimStyle.Render(" No mail on this day.") + "\n")
+		b.WriteString(dimStyle.Render(empty) + "\n")
 		h--
 	}
 	end := min(m.offset+h, len(m.rows))
@@ -660,10 +700,20 @@ func (m model) viewDay() string {
 	}
 	b.WriteString(strings.Repeat("\n", max(0, h-(end-m.offset))))
 
-	if m.loading {
+	switch {
+	case m.list == listDay && m.loading:
 		b.WriteString(" Loading " + m.scope.String() + "…\n")
-	} else {
+	case m.list == listAll && m.all.err != nil:
+		b.WriteString(" " + errorStyle.Render("Error: "+m.all.err.Error()) + " (r to retry)\n")
+	case m.list == listAll && m.all.loading && len(m.rows) > 0:
+		b.WriteString(" Loading more…\n")
+	default:
 		b.WriteString(m.footerStatus())
+	}
+	if m.list == listAll {
+		b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"a", "day view"}, keyHelp{"f", "filter"}, keyHelp{"/", "search"},
+			keyHelp{"enter", "read"}, keyHelp{"x", "select"}, keyHelp{"e", "archive"}, keyHelp{"d", "trash"}, keyHelp{"m", "read/unread"}))
+		return b.String()
 	}
 	b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"h/l", "day"}, keyHelp{"enter", "read"}, keyHelp{"x", "select"},
 		keyHelp{"e", "archive"}, keyHelp{"d", "trash"}, keyHelp{"m", "read/unread"}, keyHelp{"L", "label"}, keyHelp{"q", "quit"}))
@@ -715,7 +765,7 @@ func (m model) renderRow(r row, cursor bool) string {
 	if r.group >= 0 {
 		indent = "   "
 	}
-	prefix := indent + e.Time.Format("15:04") + " " + mark + " "
+	prefix := indent + pad(m.timeText(e), m.timeWidth()) + " " + mark + " "
 	labels := pad(m.labelText(e), labelWidth) + "  "
 	sender := ""
 	if r.group < 0 {
@@ -750,11 +800,36 @@ func (m model) columnHeader() string {
 	if m.settings.GroupBySender {
 		indent = "    "
 	}
-	h := indent + pad("Time", 5) + "   " + pad("Labels", labelWidth) + "  "
+	col := "Time"
+	if m.list == listAll {
+		col = "Date"
+	}
+	h := indent + pad(col, m.timeWidth()) + "   " + pad("Labels", labelWidth) + "  "
 	if !m.settings.GroupBySender {
 		h += pad("Sender", senderWidth) + "  "
 	}
 	return dimStyle.Render(ansi.Truncate(h+"Subject", m.width, "…"))
+}
+
+// timeWidth is the width of the time column: a time in the day list, a date
+// in the all-mail list.
+func (m model) timeWidth() int {
+	if m.list == listAll {
+		return len(time.DateOnly)
+	}
+	return 5
+}
+
+// timeText is a mail's time column: "15:04" in the day list; in the all-mail
+// list "15:04" for today, "Jan 02" for this year, else "2006-01-02".
+func (m model) timeText(e email) string {
+	switch {
+	case m.list != listAll || dayKey(e.Time) == dayKey(today()):
+		return e.Time.Format("15:04")
+	case e.Time.Year() == today().Year():
+		return e.Time.Format("Jan 02")
+	}
+	return e.Time.Format(time.DateOnly)
 }
 
 // pad truncates or pads s to exactly w cells.

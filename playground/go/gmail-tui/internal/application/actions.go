@@ -93,11 +93,9 @@ func (m *model) toggleSelectAll() {
 // cachedEmails returns the cached mails with the given ids, newest first.
 func (m model) cachedEmails(set map[string]bool) []email {
 	var out []email
-	for _, s := range m.days {
-		for _, e := range s.Emails {
-			if set[e.ID] {
-				out = append(out, e)
-			}
+	for id := range set {
+		if e, ok := m.mails[id]; ok {
+			out = append(out, e)
 		}
 	}
 	slices.SortStableFunc(out, func(a, b email) int { return b.Time.Compare(a.Time) })
@@ -222,29 +220,13 @@ func (m model) actionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
 	return m, save
 }
 
-// mutate updates the given mails in every cached day; trashed mails, and mails
-// that no longer count as received (e.g. moved to spam), are dropped.
+// mutate applies an action's result to the stored mails: trashed mails are
+// removed, others updated with fn.
 func (m *model) mutate(set map[string]bool, trash bool, fn func(*email)) {
-	for d, s := range m.days {
-		changed := false
-		var kept []email
-		for _, e := range s.Emails {
-			if set[e.ID] {
-				changed = true
-				if trash {
-					continue
-				}
-				fn(&e)
-				if !receivable(e) {
-					continue
-				}
-			}
-			kept = append(kept, e)
-		}
-		if changed {
-			s.Emails = kept
-			m.days[d] = s
-		}
+	if trash {
+		m.removeMails(set)
+	} else {
+		m.updateMails(set, fn)
 	}
 	clear(m.statsCache) // counts are stale now
 	m.refreshView()
@@ -282,6 +264,7 @@ const (
 	modalHelp
 	modalRange
 	modalCalendar
+	modalSearch
 )
 
 type confirmState struct {
@@ -351,6 +334,9 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case modalCalendar:
 		return m.updateCalendar(msg)
+
+	case modalSearch:
+		return m.updateSearch(msg)
 
 	case modalConfirm:
 		switch k {
@@ -435,6 +421,9 @@ func (m model) viewModal() string {
 
 	case modalCalendar:
 		return modalStyle.Render(m.viewCalendar())
+
+	case modalSearch:
+		return modalStyle.Render(m.viewSearch())
 
 	case modalConfirm:
 		lines = []string{titleStyle.Render(m.confirm.text), "", m.keyLine(keyHelp{"y", "confirm"}, keyHelp{"n", "cancel"})}

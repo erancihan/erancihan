@@ -2,7 +2,6 @@ package application
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -97,7 +96,7 @@ func (m model) cachedRange(from, to time.Time, s scope) ([]email, bool) {
 		if !ok || store.Failed > 0 {
 			return nil, false
 		}
-		for _, e := range store.Emails {
+		for _, e := range m.dayMails(dayKey(d)) {
 			if s.match(e) {
 				es = append(es, e)
 			}
@@ -143,9 +142,7 @@ func (m *model) fillDays(msg statsLoadedMsg) bool {
 		if _, ok := m.days[k]; ok {
 			continue
 		}
-		es := byDay[k]
-		slices.SortStableFunc(es, func(a, b email) int { return b.Time.Compare(a.Time) })
-		m.days[k] = dayStore{Emails: es}
+		m.storeDay(k, byDay[k], 0)
 		filled = true
 	}
 	return filled

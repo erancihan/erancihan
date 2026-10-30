@@ -117,7 +117,10 @@ func (m model) updateReader(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		if m.stepEmail(1) {
 			e, _ := m.selectedEmail()
-			return m.openReader(e)
+			next, cmd := m.openReader(e)
+			nm := next.(model)
+			more := nm.loadMoreIfNeeded()
+			return nm, tea.Batch(cmd, more)
 		}
 	case "p":
 		if m.stepEmail(-1) {

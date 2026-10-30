@@ -58,7 +58,7 @@ func (m model) openCalendar() (tea.Model, tea.Cmd) {
 func (m model) dayCount(day time.Time) (dayCount, bool) {
 	if s, ok := m.days[dayKey(day)]; ok && s.Failed == 0 {
 		var c dayCount
-		for _, e := range s.Emails {
+		for _, e := range m.dayMails(dayKey(day)) {
 			if m.scope.match(e) {
 				c.total++
 				if e.Unread {

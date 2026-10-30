@@ -79,6 +79,28 @@ func (m model) helpSections() []helpSection {
 			}},
 		}
 	}
+	if m.list == listAll {
+		return []helpSection{
+			{"All mail", []keyHelp{
+				{"f", "filter: unread / all"},
+				{"/", "search (Gmail query)"},
+				{"tab", "all received / inbox"},
+				{"r", "reload"},
+				{"a/esc", "back to day view"},
+			}},
+			{"Move", []keyHelp{
+				{"j/k", "up / down (more loads at the end)"},
+				{"g/G", "top / bottom"},
+				{"pgup/pgdn", "page"},
+				{"enter", "read mail"},
+			}},
+			{"Select", []keyHelp{
+				{"x", "mail (on sender: group)"},
+				{"X", "clear selection"},
+			}},
+			actionSection,
+		}
+	}
 	return []helpSection{
 		{"Move", []keyHelp{
 			{"h/l", "previous / next day"},
@@ -96,6 +118,7 @@ func (m model) helpSections() []helpSection {
 		actionSection,
 		{"View", []keyHelp{
 			{"enter", "read mail"},
+			{"a", "all mail (unread first)"},
 			{"tab", "all received / inbox"},
 			{"space/z", "fold sender / all"},
 			{"s", "senders over a range"},

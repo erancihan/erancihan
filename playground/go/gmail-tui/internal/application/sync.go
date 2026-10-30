@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,39 +19,67 @@ import (
 // tracking; Gmail's History API reports both since a saved history id.
 
 const (
-	cacheVersion = 1
+	cacheVersion = 2
 	syncInterval = time.Minute
 )
 
-// dayStore is every received mail of one day, newest first.
-type dayStore struct {
-	Emails []email
-	Failed int // mails that failed to load; such days are not saved to disk
+// diskCache is the cache.json format: every mail once, days as id lists.
+type diskCache struct {
+	Version   int                 `json:"version"`
+	HistoryID uint64              `json:"history_id"`
+	Mails     map[string]email    `json:"mails"`
+	Days      map[string][]string `json:"days"`
 }
 
-// diskCache is the cache.json format.
-type diskCache struct {
-	Version   int                `json:"version"`
+// diskCacheV1 is the earlier format, where each day held full mail copies.
+type diskCacheV1 struct {
 	HistoryID uint64             `json:"history_id"`
 	Days      map[string][]email `json:"days"`
 }
 
-// loadCache reads the cached days; a missing, unreadable or outdated file
-// yields an empty cache.
-func loadCache(path string) (map[string]dayStore, uint64) {
-	days := map[string]dayStore{}
+// loadCache reads the cache file; version 1 files are converted. A missing,
+// unreadable or unknown file yields an empty cache.
+func loadCache(path string) (mails map[string]email, days map[string]dayStore, historyID uint64) {
+	mails, days = map[string]email{}, map[string]dayStore{}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return days, 0
+		return mails, days, 0
 	}
-	var dc diskCache
-	if json.Unmarshal(b, &dc) != nil || dc.Version != cacheVersion {
-		return days, 0
+	var head struct {
+		Version int `json:"version"`
 	}
-	for d, es := range dc.Days {
-		days[d] = dayStore{Emails: es}
+	if json.Unmarshal(b, &head) != nil {
+		return mails, days, 0
 	}
-	return days, dc.HistoryID
+	switch head.Version {
+	case 1:
+		var v1 diskCacheV1
+		if json.Unmarshal(b, &v1) != nil {
+			return mails, days, 0
+		}
+		for d, es := range v1.Days {
+			ids := make([]string, len(es))
+			for i, e := range es {
+				mails[e.ID] = e
+				ids[i] = e.ID
+			}
+			days[d] = dayStore{IDs: ids}
+		}
+		return mails, days, v1.HistoryID
+	case cacheVersion:
+		var dc diskCache
+		if json.Unmarshal(b, &dc) != nil {
+			return map[string]email{}, days, 0
+		}
+		for d, ids := range dc.Days {
+			days[d] = dayStore{IDs: ids}
+		}
+		if dc.Mails != nil {
+			mails = dc.Mails
+		}
+		return mails, days, dc.HistoryID
+	}
+	return mails, days, 0
 }
 
 var (
@@ -61,20 +88,30 @@ var (
 	lastWritten uint64
 )
 
-// saveCache snapshots complete days of the last keepDays days and writes them
-// in the background. Writes
-// are atomic, and a snapshot older than one already written is dropped.
+// saveCache snapshots complete days of the last keepDays days, the mails they
+// reference and the mails of the all-mail list, and writes them in the
+// background. Writes are atomic, and a snapshot older than one already
+// written is dropped.
 func (m model) saveCache() tea.Cmd {
 	if m.cachePath == "" {
 		return nil
 	}
-	dc := diskCache{Version: cacheVersion, HistoryID: m.historyID, Days: map[string][]email{}}
+	dc := diskCache{Version: cacheVersion, HistoryID: m.historyID, Mails: map[string]email{}, Days: map[string][]string{}}
+	keep := func(ids []string) {
+		for _, id := range ids {
+			if e, ok := m.mails[id]; ok {
+				dc.Mails[id] = e
+			}
+		}
+	}
 	oldest := dayKey(today().AddDate(0, 0, -keepDays))
 	for d, s := range m.days {
 		if s.Failed == 0 && d >= oldest {
-			dc.Days[d] = s.Emails
+			dc.Days[d] = s.IDs
+			keep(s.IDs)
 		}
 	}
+	keep(m.all.ids)
 	b, err := json.Marshal(dc)
 	seq := saveSeq.Add(1)
 	path := m.cachePath
@@ -126,12 +163,11 @@ func syncTick() tea.Cmd {
 	return tea.Tick(syncInterval, func(time.Time) tea.Msg { return syncTickMsg{} })
 }
 
+// knownIDs is the set of stored mail ids.
 func (m model) knownIDs() map[string]bool {
-	known := map[string]bool{}
-	for _, s := range m.days {
-		for _, e := range s.Emails {
-			known[e.ID] = true
-		}
+	known := make(map[string]bool, len(m.mails))
+	for id := range m.mails {
+		known[id] = true
 	}
 	return known
 }
@@ -202,13 +238,15 @@ func (m model) startSync() (model, tea.Cmd) {
 	return m, syncCmd(m.service, m.historyID, m.knownIDs())
 }
 
-// synced applies history changes to the cached days. Mails are only added to
-// days that are already cached; other days get them when first loaded.
+// synced applies history changes to the stored mails. New mails are added to
+// days that are already cached; other days get them when first loaded, and
+// the all-mail list when reloaded.
 func (m model) synced(msg syncedMsg) (tea.Model, tea.Cmd) {
 	m.syncing = false
 	switch {
 	case msg.expired:
-		m.days = map[string]dayStore{}
+		m.mails, m.days = map[string]email{}, map[string]dayStore{}
+		m.all = allList{filter: m.all.filter, search: m.all.search}
 		m.historyID = 0
 		m.status = "Cache was too old to update, reloading."
 		next, cmd := m.open(m.day, m.scope, true)
@@ -218,29 +256,27 @@ func (m model) synced(msg syncedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	known := m.knownIDs()
 	gone := map[string]bool{}
 	for _, id := range msg.deleted {
 		gone[id] = true
 	}
-	for _, e := range msg.updated {
-		gone[e.ID] = true // removed here, re-added below at its current state
-	}
-	known := m.knownIDs()
-	m.dropMails(gone)
-
 	added := 0
 	for _, e := range msg.updated {
-		d := e.Time.Format(time.DateOnly)
-		s, ok := m.days[d]
-		if !ok || !receivable(e) {
-			continue
-		}
-		s.Emails = insertByTime(s.Emails, e)
-		m.days[d] = s
-		if !known[e.ID] {
-			added++
+		switch {
+		case !receivable(e):
+			gone[e.ID] = true
+		case known[e.ID]:
+			m.mails[e.ID] = e
+			m.addToDay(e)
+		default:
+			if _, ok := m.days[dayKey(e.Time)]; ok && m.addToDay(e) {
+				added++
+			}
 		}
 	}
+	m.removeMails(gone)
+
 	if msg.historyID != 0 {
 		m.historyID = msg.historyID
 	}
@@ -252,21 +288,4 @@ func (m model) synced(msg syncedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.refreshView()
 	return m, tea.Batch(m.saveCache(), fetchInboxUnread(m.service))
-}
-
-// dropMails removes the given ids from every cached day.
-func (m *model) dropMails(ids map[string]bool) {
-	for d, s := range m.days {
-		kept := slices.DeleteFunc(slices.Clone(s.Emails), func(e email) bool { return ids[e.ID] })
-		if len(kept) != len(s.Emails) {
-			s.Emails = kept
-			m.days[d] = s
-		}
-	}
-}
-
-// insertByTime inserts e into a newest-first slice, returning a new slice.
-func insertByTime(es []email, e email) []email {
-	i, _ := slices.BinarySearchFunc(es, e, func(a, b email) int { return b.Time.Compare(a.Time) })
-	return slices.Insert(slices.Clone(es), i, e)
 }
