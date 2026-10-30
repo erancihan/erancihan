@@ -227,3 +227,27 @@ func TestUnreadCounts(t *testing.T) {
 		t.Errorf("title:\n%s", v)
 	}
 }
+
+func TestArchiveToggle(t *testing.T) {
+	m := flat(t)
+	s := m.days[dayKey(m.day)]
+	s.Emails[0].Labels = []string{"INBOX"} // 3 in inbox, 2 archived
+	m.days[dayKey(m.day)] = s
+	m.refreshView()
+	m = press(t, m, "x", "x")
+	if !slices.ContainsFunc(m.targets(), inInbox) {
+		t.Fatal("setup: expected an inbox mail among targets")
+	}
+	next, _ := m.Update(actionDoneMsg{ids: []string{"3", "2"}, remove: []string{"INBOX"}, verb: "Archived:"})
+	m = next.(model)
+	if slices.ContainsFunc(m.data.emails, inInbox) || m.status != "Archived: 2 mails" || len(m.selected) != 0 {
+		t.Errorf("not archived: status=%q selected=%v", m.status, m.selected)
+	}
+	if len(m.data.emails) != 3 {
+		t.Errorf("archived mail left the All received view")
+	}
+	m = press(t, m, "tab")
+	if len(m.data.emails) != 0 {
+		t.Errorf("inbox view still lists %d", len(m.data.emails))
+	}
+}

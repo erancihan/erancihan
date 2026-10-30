@@ -139,6 +139,8 @@ func (m model) updateReader(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.confirmTrash([]email{m.reader.email}), nil
 	case "m":
 		return m, m.toggleRead([]email{m.reader.email})
+	case "e":
+		return m, m.toggleArchive([]email{m.reader.email})
 	case "L":
 		return m.openLabels([]email{m.reader.email})
 	}
@@ -155,7 +157,7 @@ func (m model) viewReader() string {
 	}
 	b.WriteString(strings.Repeat("\n", max(0, r.height-(end-r.offset))))
 	b.WriteString(m.footerStatus())
-	b.WriteString(m.help("q back · j/k scroll · space/b page · n/p next/prev · d trash · m read · L label · u unsub · o web"))
+	b.WriteString(m.help("q back · j/k scroll · space/b page · n/p next/prev · e archive · d trash · m read · L label · u unsub · o web"))
 	return b.String()
 }
 

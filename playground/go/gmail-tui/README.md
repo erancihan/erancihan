@@ -59,6 +59,7 @@ Day view
 | `X` | clear the selection on all days |
 | `d` | move to Trash (asks first) |
 | `m` | mark read; if all are read already, mark unread |
+| `e` | archive; if none is in the inbox, move back to the inbox |
 | `L` | label picker: type to filter, `enter` adds the label (or removes it if all have it), a new name creates it |
 | `u` | open the sender's unsubscribe link |
 | `o` | open the mail in Gmail |
@@ -69,15 +70,16 @@ Day view
 | `r` | reload the day |
 | `q` | quit |
 
-`d`, `m` and `L` act on the selected mails, or on the mail under the cursor when
-nothing is selected. The selection is kept while you read mail and change days,
+`e`, `d`, `m` and `L` act on the selected mails, or on the mail under the cursor when
+nothing is selected. In the All received view, archived mails have a faint
+subject. The selection is kept while you read mail and change days,
 so one action can cover mail from several days; the title shows how many
 selected mails are on other days.
 
 The title shows the shown day's unread count and the inbox's unread count over
-all days. Removing the Inbox label archives a mail.
+all days.
 
-Reader: `j`/`k` scroll, `space`/`b` page, `n`/`p` next/previous mail, `d`, `m`,
+Reader: `j`/`k` scroll, `space`/`b` page, `n`/`p` next/previous mail, `e`, `d`, `m`,
 `L`, `u`, `o` as above, `q` back.
 
 Sender stats: senders ranked by mail count over 7, 30 or 90 days ending at the

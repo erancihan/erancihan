@@ -24,6 +24,7 @@ var (
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 	checkStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("78"))
 	labelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("180"))
+	archivedStyle = lipgloss.NewStyle().Faint(true)
 	modalStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
 )
 
@@ -312,6 +313,8 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.confirmTrash(m.targets()), nil
 	case "m":
 		return m, m.toggleRead(m.targets())
+	case "e":
+		return m, m.toggleArchive(m.targets())
 	case "L":
 		return m.openLabels(m.targets())
 
@@ -634,7 +637,7 @@ func (m model) viewDay() string {
 	} else {
 		b.WriteString(m.footerStatus())
 	}
-	b.WriteString(m.help("? keys · h/l day · enter read · x select · d trash · m read · L label · s senders · , settings · q quit"))
+	b.WriteString(m.help("? keys · h/l day · enter read · x select · e archive · d trash · m read · L label · , settings · q quit"))
 	return b.String()
 }
 
@@ -703,8 +706,11 @@ func (m model) renderRow(r row, cursor bool) string {
 		return selectedStyle.Width(m.width).Render(ansi.Truncate(line, m.width, "…"))
 	}
 	subject := e.Subject
-	if e.Unread {
+	switch {
+	case e.Unread:
 		subject = unreadStyle.Render(subject)
+	case !inInbox(e):
+		subject = archivedStyle.Render(subject)
 	}
 	if sender != "" {
 		sender = senderStyle.Render(sender)

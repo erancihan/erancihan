@@ -150,6 +150,22 @@ func (m model) toggleRead(es []email) tea.Cmd {
 	return modifyCmd(m.service, ids(es), []string{"UNREAD"}, nil, "Marked unread:")
 }
 
+// toggleArchive archives the targets (removes them from the inbox), or moves
+// them back to the inbox when none of them is in it.
+func (m model) toggleArchive(es []email) tea.Cmd {
+	if len(es) == 0 {
+		return nil
+	}
+	if slices.ContainsFunc(es, inInbox) {
+		return modifyCmd(m.service, ids(es), nil, []string{"INBOX"}, "Archived:")
+	}
+	return modifyCmd(m.service, ids(es), []string{"INBOX"}, nil, "Moved to Inbox:")
+}
+
+func inInbox(e email) bool {
+	return slices.Contains(e.Labels, "INBOX")
+}
+
 func (m model) confirmTrash(es []email) model {
 	if len(es) == 0 {
 		return m
@@ -465,6 +481,7 @@ var helpLines = []string{
 	"x         select (header: group)   A  select all of day / none",
 	"X         clear selection (all days)",
 	"d         move to Trash            m  mark read / unread",
+	"e         archive / move to inbox",
 	"L         add / remove label       u  unsubscribe",
 	"o         open in Gmail            s  sender stats",
 	"space/z   fold sender / all (grouped view)",
