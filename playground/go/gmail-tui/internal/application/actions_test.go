@@ -251,3 +251,31 @@ func TestArchiveToggle(t *testing.T) {
 		t.Errorf("inbox view still lists %d", len(m.data.emails))
 	}
 }
+
+func TestRememberView(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	m := flat(t)
+	m.settingsPath = path
+	m = press(t, m, "tab")
+	s, _ := LoadSettings(path)
+	if s.View != "inbox" {
+		t.Fatalf("view not saved: %+v", s)
+	}
+	if r := NewApplication(nil, Options{Settings: s, SettingsPath: path}); r.scope != scopeInbox {
+		t.Errorf("restart did not restore inbox")
+	}
+
+	// with the setting off, the app starts on All received and tab saves nothing
+	m = press(t, m, ",", "j", "j", " ", "esc")
+	if m.settings.RememberView {
+		t.Fatal("setting not toggled off")
+	}
+	m = press(t, m, "tab", "tab")
+	s, _ = LoadSettings(path)
+	if s.RememberView || s.View != "inbox" {
+		t.Errorf("saved %+v", s)
+	}
+	if r := NewApplication(nil, Options{Settings: s}); r.scope != scopeReceived {
+		t.Errorf("restored view although the setting is off")
+	}
+}

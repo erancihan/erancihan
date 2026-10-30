@@ -138,6 +138,9 @@ func NewApplication(srv *gmail.Service, opts Options) model {
 		width:        80,
 		height:       24,
 	}
+	if opts.Settings.RememberView && opts.Settings.View == scopeInbox.key() {
+		m.scope = scopeInbox
+	}
 	if opts.CachePath != "" {
 		m.days, m.historyID = loadCache(opts.CachePath)
 	}
@@ -265,7 +268,10 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Toggle between all received mail and inbox only
 	case "tab":
-		return m.open(m.day, 1-m.scope, false)
+		next, cmd := m.open(m.day, 1-m.scope, false)
+		nm := next.(model)
+		nm.rememberView()
+		return nm, cmd
 
 	// List movement
 	case "j", "down":
@@ -335,6 +341,17 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openStats(m.stats.from, m.stats.to, false)
 	}
 	return m, nil
+}
+
+// rememberView saves the current view when the setting is on.
+func (m *model) rememberView() {
+	if !m.settings.RememberView || m.settings.View == m.scope.key() {
+		return
+	}
+	m.settings.View = m.scope.key()
+	if err := m.settings.save(m.settingsPath); err != nil {
+		m.status = errorStyle.Render("Could not save settings: " + err.Error())
+	}
 }
 
 // open switches to the given day and scope. Cached days show at once; refresh

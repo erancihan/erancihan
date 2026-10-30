@@ -9,12 +9,14 @@ import (
 
 // Settings are user preferences, saved as JSON next to the login token.
 type Settings struct {
-	GroupBySender  bool `json:"group_by_sender"`
-	MarkReadOnOpen bool `json:"mark_read_on_open"`
+	GroupBySender  bool   `json:"group_by_sender"`
+	MarkReadOnOpen bool   `json:"mark_read_on_open"`
+	RememberView   bool   `json:"remember_view"`
+	View           string `json:"view,omitempty"` // last view ("received" or "inbox"), used when RememberView is on
 }
 
 func defaultSettings() Settings {
-	return Settings{GroupBySender: false, MarkReadOnOpen: true}
+	return Settings{GroupBySender: false, MarkReadOnOpen: true, RememberView: true}
 }
 
 // LoadSettings reads settings from path; missing fields keep their defaults.
@@ -48,4 +50,5 @@ var settingItems = []struct {
 }{
 	{"Group by sender", func(s *Settings) *bool { return &s.GroupBySender }},
 	{"Mark as read when opened", func(s *Settings) *bool { return &s.MarkReadOnOpen }},
+	{"Remember view (All received / Inbox)", func(s *Settings) *bool { return &s.RememberView }},
 }

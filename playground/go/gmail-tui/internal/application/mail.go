@@ -39,6 +39,14 @@ func (s scope) String() string {
 	return "All received"
 }
 
+// key is the scope's name in settings.json.
+func (s scope) key() string {
+	if s == scopeInbox {
+		return "inbox"
+	}
+	return "received"
+}
+
 // Spam and trash are excluded by Gmail search by default.
 func (s scope) query() string {
 	if s == scopeInbox {

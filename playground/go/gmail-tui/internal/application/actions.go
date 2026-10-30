@@ -368,6 +368,9 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cur, hasCur := m.selectedEmail()
 			v := settingItems[m.settingsCursor].field(&m.settings)
 			*v = !*v
+			if m.settings.RememberView {
+				m.settings.View = m.scope.key()
+			}
 			if err := m.settings.save(m.settingsPath); err != nil {
 				m.status = errorStyle.Render("Could not save settings: " + err.Error())
 			}

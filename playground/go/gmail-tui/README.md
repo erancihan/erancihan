@@ -95,3 +95,4 @@ unsubscribe link, `r` reloads, `q` goes back.
 | --- | --- |
 | Group by sender | off: one list, newest first |
 | Mark as read when opened | on |
+| Remember view: start in the view (All received / Inbox) last chosen with `tab` | on |
