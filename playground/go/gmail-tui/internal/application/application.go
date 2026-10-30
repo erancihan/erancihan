@@ -106,6 +106,9 @@ type model struct {
 	settingsCursor int
 	confirm        confirmState
 	rangeIn        rangeInput
+	cal            calendar
+	counts         map[countKey]dayCount // per-day counts of days that are not cached
+	countPending   map[countKey]bool
 	picker         labelPicker
 	labels         []label // nil until loaded
 	labelsErr      error
@@ -129,6 +132,8 @@ func NewApplication(srv *gmail.Service, opts Options) model {
 		scope:        scopeReceived,
 		days:         map[string]dayStore{},
 		pending:      map[string]bool{},
+		counts:       map[countKey]dayCount{},
+		countPending: map[countKey]bool{},
 		collapsed:    map[string]bool{},
 		selected:     map[string]bool{},
 		bodies:       map[string]*message{},
@@ -228,6 +233,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case syncedMsg:
 		return m.synced(msg)
 
+	case countsMsg:
+		return m.countsLoaded(msg)
+
 	case inboxUnreadMsg:
 		if msg.err == nil {
 			m.inboxUnread = msg.n
@@ -263,6 +271,8 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "t":
 		return m.open(today(), m.scope, false)
+	case "c":
+		return m.openCalendar()
 	case "r":
 		return m.open(m.day, m.scope, true)
 

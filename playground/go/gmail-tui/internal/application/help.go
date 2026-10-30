@@ -83,6 +83,7 @@ func (m model) helpSections() []helpSection {
 		{"Move", []keyHelp{
 			{"h/l", "previous / next day"},
 			{"t", "today"},
+			{"c", "calendar"},
 			{"j/k", "up / down"},
 			{"g/G", "top / bottom"},
 			{"pgup/pgdn", "page"},

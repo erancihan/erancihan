@@ -52,6 +52,7 @@ Day view
 | --- | --- |
 | `h` / `l`, `←` / `→` | previous / next day |
 | `t` | today |
+| `c` | calendar |
 | `j` / `k`, `g` / `G`, `pgup` / `pgdn` | move |
 | `enter` | read mail (on a sender: fold) |
 | `x` | select mail (on a sender: the whole group) |
@@ -89,6 +90,12 @@ length, `tab` cycles the length (7, 30, 90 days), `t` makes it end today, and
 are counted at once; others are fetched once (at most 2000 mails), and the
 fetched days are added to the cache. `u` opens the selected sender's
 unsubscribe link, `r` reloads, `q` goes back.
+
+Calendar (`c`): the month of the shown day, with each day's mail and unread
+count in the current view. Cached days are counted from the cache; other past
+days are counted with id-only list requests (no mail is downloaded). `h`/`l`
+move a day, `j`/`k` a week, `[`/`]` a month, `t` goes to today, `enter` opens
+the day, `r` counts the month again, `esc` closes.
 
 ## Settings
 | Setting | Default |

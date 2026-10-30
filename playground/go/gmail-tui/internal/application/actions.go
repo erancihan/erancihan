@@ -281,6 +281,7 @@ const (
 	modalConfirm
 	modalHelp
 	modalRange
+	modalCalendar
 )
 
 type confirmState struct {
@@ -347,6 +348,9 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case modalRange:
 		return m.updateRange(msg)
+
+	case modalCalendar:
+		return m.updateCalendar(msg)
 
 	case modalConfirm:
 		switch k {
@@ -428,6 +432,9 @@ func (m model) viewModal() string {
 
 	case modalRange:
 		return modalStyle.Render(m.viewRange())
+
+	case modalCalendar:
+		return modalStyle.Render(m.viewCalendar())
 
 	case modalConfirm:
 		lines = []string{titleStyle.Render(m.confirm.text), "", m.keyLine(keyHelp{"y", "confirm"}, keyHelp{"n", "cancel"})}
