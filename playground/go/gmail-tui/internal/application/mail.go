@@ -21,7 +21,7 @@ import (
 const (
 	fetchWorkers = 8    // parallel metadata requests; Gmail allows ~50 gets/sec per user
 	maxPerDay    = 500  // upper bound on mails fetched for a single day
-	maxPerRange  = 2000 // upper bound on mails fetched for sender stats
+	maxPerRange  = 2000 // upper bound on mails counted for a sender range
 )
 
 // --- SCOPE ---
@@ -93,21 +93,30 @@ type message struct {
 
 var errStopPaging = errors.New("stop paging")
 
-// loadDay fetches all mail received on the local calendar day starting at `day`.
-// The inbox view filters this locally. It returns the mails that loaded and
+// loadDay lists all mail received on the local calendar day starting at
+// `day` (the inbox view filters this locally) and fetches metadata only for
+// ids not in `known`. It returns the day's ids, the newly fetched mails and
 // the number that failed to load.
-func loadDay(srv *gmail.Service, day time.Time) ([]email, int, error) {
-	emails, failed, _, err := loadRange(srv, day, day.AddDate(0, 0, 1), scopeReceived, maxPerDay)
-	return emails, failed, err
+func loadDay(srv *gmail.Service, day time.Time, known map[string]bool) (ids []string, emails []email, failed int, err error) {
+	ctx := context.Background()
+	q := fmt.Sprintf("after:%d before:%d %s", day.Unix(), day.AddDate(0, 0, 1).Unix(), scopeReceived.query())
+	ids, _, err = listIDs(ctx, srv, q, maxPerDay)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	var todo []string
+	for _, id := range ids {
+		if !known[id] {
+			todo = append(todo, id)
+		}
+	}
+	emails, missing, failed := getMetadata(ctx, srv, todo)
+	return ids, emails, failed + len(missing), nil
 }
 
-// loadRange fetches up to `limit` mails received in [from, to). truncated reports
+// listIDs lists up to `limit` ids matching q, newest first. truncated reports
 // whether the limit cut the result short.
-func loadRange(srv *gmail.Service, from, to time.Time, s scope, limit int) (emails []email, failed int, truncated bool, err error) {
-	ctx := context.Background()
-	q := fmt.Sprintf("after:%d before:%d %s", from.Unix(), to.Unix(), s.query())
-
-	var ids []string
+func listIDs(ctx context.Context, srv *gmail.Service, q string, limit int) (ids []string, truncated bool, err error) {
 	err = srv.Users.Messages.List("me").Q(q).MaxResults(500).
 		Fields("messages/id", "nextPageToken").
 		Pages(ctx, func(r *gmail.ListMessagesResponse) error {
@@ -120,15 +129,9 @@ func loadRange(srv *gmail.Service, from, to time.Time, s scope, limit int) (emai
 			return nil
 		})
 	if errors.Is(err, errStopPaging) {
-		truncated, err = true, nil
-		ids = ids[:min(len(ids), limit)]
+		return ids[:limit], true, nil
 	}
-	if err != nil {
-		return nil, 0, false, err
-	}
-
-	emails, missing, failed := getMetadata(ctx, srv, ids)
-	return emails, failed + len(missing), truncated, nil
+	return ids, false, err
 }
 
 // getMetadata fetches list metadata for the given ids in parallel. missing holds

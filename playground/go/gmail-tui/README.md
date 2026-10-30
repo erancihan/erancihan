@@ -30,6 +30,15 @@ browser for login (it prints the link too). While the consent screen is in
 "Testing" mode, Google expires the login after 7 days; the app then asks you to
 log in again.
 
+## Spans
+The day list shows one day by default. `w` (or `1`–`5` in its dialog) switches
+to This week (Monday–Sunday), Last 7 days, Last 30 days or Last 90 days, shown
+as one list with a date column. `h`/`l` move by the span's length (a week, 7,
+30 or 90 days), never past today, and `t` goes to the span ending today. Days
+come from the day cache; missing days are fetched newest first, two at a time,
+and appear as they arrive. The span is remembered with the Remember view
+setting. Picking a day in the calendar switches back to Day.
+
 ## Caching
 Each mail is stored once, in `cache.json` (next to `token.json`); days and the
 all-mail list refer to mails by id. Each day is fetched once (the last 60 days
@@ -53,7 +62,8 @@ The footer shows the main keys; `?` shows all keys of the current view.
 Day view
 | Key | Action |
 | --- | --- |
-| `h` / `l`, `←` / `→` | previous / next day |
+| `h` / `l`, `←` / `→` | previous / next day (or span) |
+| `w` | span: Day, This week, Last 7 / 30 / 90 days |
 | `t` | today |
 | `c` | calendar |
 | `a` | all mail list (see below) |
@@ -124,5 +134,5 @@ the day, `r` counts the month again, `esc` closes.
 | --- | --- |
 | Group by sender | off: one list, newest first |
 | Mark as read when opened | on |
-| Remember view: start in the view (All received / Inbox) last chosen with `tab` | on |
+| Remember view: start in the view (All received / Inbox) and span last chosen | on |
 | Shift applies actions to selection: `e d m v` act on the cursor mail, `E D M V` on the selection | on |

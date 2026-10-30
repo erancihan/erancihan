@@ -314,6 +314,7 @@ const (
 	modalRange
 	modalCalendar
 	modalSearch
+	modalSpan
 )
 
 type confirmKind int
@@ -395,6 +396,9 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case modalSearch:
 		return m.updateSearch(msg)
+
+	case modalSpan:
+		return m.updateSpanPicker(msg)
 
 	case modalConfirm:
 		switch k {
@@ -485,6 +489,9 @@ func (m model) viewModal() string {
 
 	case modalSearch:
 		return modalStyle.Render(m.viewSearch())
+
+	case modalSpan:
+		return modalStyle.Render(m.viewSpanPicker())
 
 	case modalConfirm:
 		lines = []string{titleStyle.Render(m.confirm.text), ""}

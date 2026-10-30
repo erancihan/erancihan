@@ -390,7 +390,11 @@ func (m model) viewStats() string {
 	switch {
 	case status != "":
 	case s.data.truncated:
-		status = errorStyle.Render(fmt.Sprintf("Only the newest %d mails were counted.", maxPerRange))
+		limit := maxPerRange
+		if s.allTime {
+			limit = maxAllTime
+		}
+		status = errorStyle.Render("Only the newest " + commas(limit) + " mails were counted.")
 	case s.data.failed > 0:
 		status = errorStyle.Render(fmt.Sprintf("%d mails failed to load (r to retry)", s.data.failed))
 	}

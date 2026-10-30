@@ -118,6 +118,7 @@ func (m model) updateCalendar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		m.modal = modalNone
+		m.span = spanDay
 		return m.open(m.cal.cursor, m.scope, false)
 	case "r":
 		return m, m.loadCounts(true)

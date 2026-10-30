@@ -82,25 +82,29 @@ type model struct {
 	status       string
 
 	// mail list: one day, or all mail (see all.go)
-	list        listKind
-	all         allList
-	listGen     int        // last all-mail query generation, across lists
-	back        *savedList // list to restore when leaving a sender's mail
-	day         time.Time  // local midnight
-	scope       scope
-	mails       map[string]email    // id -> the one stored copy of each mail; see store.go
-	days        map[string]dayStore // day key -> ids of all received mail; see sync.go
-	pending     map[string]bool     // day keys being fetched
-	historyID   uint64              // Gmail history id the cache is current to
-	syncing     bool
-	inboxUnread int64 // unread mails in the inbox, all days; -1 until known
-	data        dayData
-	collapsed   map[string]bool // sender address -> folded; kept across days
-	selected    map[string]bool // message id -> selected for bulk actions
-	rows        []row
-	cursor      int
-	offset      int
-	loading     bool
+	list         listKind
+	all          allList
+	span         span        // days shown by the day list, see span.go
+	queue        []time.Time // span days waiting to be fetched
+	historyFetch bool        // a day fetch is reading the history id
+	spanCursor   int
+	listGen      int        // last all-mail query generation, across lists
+	back         *savedList // list to restore when leaving a sender's mail
+	day          time.Time  // local midnight
+	scope        scope
+	mails        map[string]email    // id -> the one stored copy of each mail; see store.go
+	days         map[string]dayStore // day key -> ids of all received mail; see sync.go
+	pending      map[string]bool     // day keys being fetched
+	historyID    uint64              // Gmail history id the cache is current to
+	syncing      bool
+	inboxUnread  int64 // unread mails in the inbox, all days; -1 until known
+	data         dayData
+	collapsed    map[string]bool // sender address -> folded; kept across days
+	selected     map[string]bool // message id -> selected for bulk actions
+	rows         []row
+	cursor       int
+	offset       int
+	loading      bool
 
 	reader     reader
 	bodies     map[string]*message // message id -> loaded mail
@@ -156,10 +160,10 @@ func NewApplication(srv *gmail.Service, opts Options) model {
 	if opts.CachePath != "" {
 		m.mails, m.days, m.historyID = loadCache(opts.CachePath)
 	}
-	if _, ok := m.days[dayKey(m.day)]; !ok {
-		m.pending[dayKey(m.day)] = true
-		m.loading = true
+	if opts.Settings.RememberView {
+		m.span = parseSpan(opts.Settings.Span)
 	}
+	m.loading = m.spanLoading()
 	m.refreshView()
 	return m
 }
@@ -170,27 +174,29 @@ func today() time.Time {
 }
 
 // --- MESSAGES ---
+// openMsg loads the shown span at startup.
+type openMsg struct{}
+
 type dayLoadedMsg struct {
-	day       string
-	emails    []email
-	failed    int
-	historyID uint64 // mailbox history id read before listing, if requested
-	err       error
+	day         string
+	ids         []string // the day's mails, newest first; nil means the ids of emails
+	emails      []email  // metadata of mails that were not stored yet
+	failed      int
+	historyID   uint64 // mailbox history id read before listing, if requested
+	withHistory bool
+	err         error
 }
 
 type statusMsg string
 
 // --- INIT ---
 func (m model) Init() tea.Cmd {
-	cmds := []tea.Cmd{fetchLabels(m.service), fetchInboxUnread(m.service), syncTick()}
-	if m.pending[dayKey(m.day)] {
-		cmds = append(cmds, fetchDay(m.service, m.day, m.historyID == 0))
-	}
+	cmds := []tea.Cmd{fetchLabels(m.service), fetchInboxUnread(m.service), syncTick(),
+		func() tea.Msg { return openMsg{} }} // load the span through Update, which keeps the fetch queue
 	if m.historyID != 0 {
 		// catch up on changes since the cache was saved
 		cmds = append(cmds, func() tea.Msg { return syncTickMsg{} })
 	}
-	cmds = append(cmds, m.prefetch())
 	return tea.Batch(cmds...)
 }
 
@@ -229,6 +235,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statusMsg:
 		m.status = string(msg)
+
+	case openMsg:
+		return m.open(m.day, m.scope, false)
 
 	case dayLoadedMsg:
 		return m.dayLoaded(msg)
@@ -287,13 +296,23 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Day navigation
 	case "h", "left":
-		return m.open(m.day.AddDate(0, 0, -1), m.scope, false)
+		return m.open(m.day.AddDate(0, 0, -m.span.step()), m.scope, false)
 	case "l", "right":
-		if m.day.Before(today()) {
-			return m.open(m.day.AddDate(0, 0, 1), m.scope, false)
+		next := m.day.AddDate(0, 0, m.span.step())
+		if from, _ := m.span.bounds(next); from.After(today()) {
+			return m, nil
+		}
+		if next.After(today()) {
+			next = today()
+		}
+		if !next.Equal(m.day) {
+			return m.open(next, m.scope, false)
 		}
 	case "t":
 		return m.open(today(), m.scope, false)
+	case "w":
+		m.modal = modalSpan
+		m.spanCursor = int(m.span)
 	case "c":
 		return m.openCalendar()
 	case "r":
@@ -393,42 +412,62 @@ func (m model) open(day time.Time, s scope, refresh bool) (tea.Model, tea.Cmd) {
 	m.cursor, m.offset = 0, 0
 	m.status = ""
 
-	var cmds []tea.Cmd
-	k := dayKey(day)
-	store, cached := m.days[k]
-	m.loading = !cached || refresh
-	if m.loading && (refresh || !m.pending[k]) {
-		m.pending[k] = true
-		cmds = append(cmds, fetchDay(m.service, day, m.historyID == 0))
-	}
-	if cached && !refresh {
-		m.status = failedStatus(store.Failed)
+	load := m.loadSpan(refresh)
+	m.loading = m.spanLoading()
+	if !m.loading {
+		m.status = failedStatus(m.spanFailed())
 	}
 	m.refreshView()
-	cmds = append(cmds, m.prefetch())
-	return m, tea.Batch(cmds...)
+	return m, tea.Batch(load, m.prefetch())
 }
 
 func (m model) dayLoaded(msg dayLoadedMsg) (tea.Model, tea.Cmd) {
 	delete(m.pending, msg.day)
-	current := msg.day == dayKey(m.day)
+	if msg.withHistory {
+		m.historyFetch = false
+	}
+	next := m.nextQueued()
+	shown := m.list == listDay && m.inSpan(msg.day)
 	if msg.err != nil {
-		if current {
-			m.loading = false
+		if shown {
+			m.loading = m.spanLoading()
 			m.status = errorStyle.Render("Error: " + msg.err.Error())
 		}
-		return m, nil
+		return m, next
 	}
-	m.storeDay(msg.day, msg.emails, msg.failed)
+
+	// the day's mails: newly fetched ones, the rest from the store
+	fetched := map[string]email{}
+	for _, e := range msg.emails {
+		fetched[e.ID] = e
+	}
+	ids := msg.ids
+	if ids == nil {
+		ids = make([]string, len(msg.emails))
+		for i, e := range msg.emails {
+			ids[i] = e.ID
+		}
+	}
+	es := make([]email, 0, len(ids))
+	for _, id := range ids {
+		if e, ok := fetched[id]; ok {
+			es = append(es, e)
+		} else if e, ok := m.mails[id]; ok {
+			es = append(es, e)
+		}
+	}
+	m.storeDay(msg.day, es, msg.failed)
 	if m.historyID == 0 {
 		m.historyID = msg.historyID
 	}
-	if current {
-		m.loading = false
-		m.status = failedStatus(msg.failed)
+	if shown {
+		m.loading = m.spanLoading()
+		if !m.loading {
+			m.status = failedStatus(m.spanFailed())
+		}
 		m.refreshView()
 	}
-	return m, m.saveCache()
+	return m, tea.Batch(next, m.saveCache())
 }
 
 func failedStatus(failed int) string {
@@ -440,6 +479,9 @@ func failedStatus(failed int) string {
 
 // prefetch loads the days before the shown one in the background.
 func (m *model) prefetch() tea.Cmd {
+	if m.span != spanDay {
+		return nil // a span already loads many days
+	}
 	var cmds []tea.Cmd
 	for i := 1; i <= prefetchGap; i++ {
 		d := m.day.AddDate(0, 0, -i)
@@ -448,7 +490,7 @@ func (m *model) prefetch() tea.Cmd {
 			continue
 		}
 		m.pending[k] = true
-		cmds = append(cmds, fetchDay(m.service, d, false))
+		cmds = append(cmds, m.fetchDay(d))
 	}
 	return tea.Batch(cmds...)
 }
@@ -461,9 +503,11 @@ func (m *model) refreshView() {
 	if m.list == listAll {
 		es = m.resolve(m.all.ids) // already filtered by Gmail
 	} else {
-		for _, e := range m.dayMails(dayKey(m.day)) {
-			if m.scope.match(e) {
-				es = append(es, e)
+		for _, d := range m.spanDays() {
+			for _, e := range m.dayMails(dayKey(d)) {
+				if m.scope.match(e) {
+					es = append(es, e)
+				}
 			}
 		}
 	}
@@ -647,10 +691,7 @@ func overlay(base, box string, width, height int) string {
 func (m model) viewDay() string {
 	var b strings.Builder
 
-	title := "◂ " + m.day.Format("Mon, 02 Jan 2006") + " ▸"
-	if m.day.Equal(today()) {
-		title += " (today)"
-	}
+	title := "◂ " + m.spanTitle() + " ▸"
 	if m.list == listAll {
 		title = "All mail · " + m.all.filter.String()
 		if v := m.all.sender; v != nil {
@@ -698,6 +739,9 @@ func (m model) viewDay() string {
 	h := m.listHeight()
 	loading := m.loading
 	empty := " No mail on this day."
+	if m.span != spanDay {
+		empty = " No mail in this range."
+	}
 	if m.list == listAll {
 		loading, empty = m.all.loading, " No mail matches."
 	}
@@ -716,6 +760,9 @@ func (m model) viewDay() string {
 	b.WriteString(strings.Repeat("\n", max(0, h-(end-m.offset))))
 
 	switch {
+	case m.list == listDay && m.loading && m.span != spanDay:
+		cached, total := m.spanProgress()
+		b.WriteString(fmt.Sprintf(" Loading %d / %d days…\n", cached, total))
 	case m.list == listDay && m.loading:
 		b.WriteString(" Loading " + m.scope.String() + "…\n")
 	case m.list == listAll && m.all.err != nil:
@@ -733,7 +780,11 @@ func (m model) viewDay() string {
 		b.WriteString(m.helpBar(append(keys, m.actionKeys()...)...))
 		return b.String()
 	}
-	keys := []keyHelp{{"?", "help"}, {"h/l", "day"}, {"enter", "read"}, {"x", "select"}}
+	step := "day"
+	if m.span != spanDay {
+		step = "range"
+	}
+	keys := []keyHelp{{"?", "help"}, {"h/l", step}, {"w", "span"}, {"enter", "read"}, {"x", "select"}}
 	keys = append(keys, m.actionKeys()...)
 	b.WriteString(m.helpBar(append(keys, keyHelp{"q", "quit"})...))
 	return b.String()
@@ -820,7 +871,7 @@ func (m model) columnHeader() string {
 		indent = "    "
 	}
 	col := "Time"
-	if m.list == listAll {
+	if m.list == listAll || m.span != spanDay {
 		col = "Date"
 	}
 	h := indent + pad(col, m.timeWidth()) + "   " + pad("Labels", labelWidth) + "  "
@@ -833,8 +884,11 @@ func (m model) columnHeader() string {
 // timeWidth is the width of the time column: a time in the day list, a date
 // in the all-mail list.
 func (m model) timeWidth() int {
-	if m.list == listAll {
+	switch {
+	case m.list == listAll:
 		return len(time.DateOnly)
+	case m.span != spanDay:
+		return len("02 Jan 15:04")
 	}
 	return 5
 }
@@ -843,6 +897,8 @@ func (m model) timeWidth() int {
 // list "15:04" for today, "Jan 02" for this year, else "2006-01-02".
 func (m model) timeText(e email) string {
 	switch {
+	case m.list != listAll && m.span != spanDay:
+		return e.Time.Format("02 Jan 15:04")
 	case m.list != listAll || dayKey(e.Time) == dayKey(today()):
 		return e.Time.Format("15:04")
 	case e.Time.Year() == today().Year():
@@ -894,10 +950,10 @@ func fetchInboxUnread(srv *gmail.Service) tea.Cmd {
 
 // fetchDay loads a day. withHistory first reads the mailbox history id, so
 // changes made while listing are picked up by the next sync.
-func fetchDay(srv *gmail.Service, day time.Time, withHistory bool) tea.Cmd {
+func fetchDay(srv *gmail.Service, day time.Time, withHistory bool, known map[string]bool) tea.Cmd {
 	k := dayKey(day)
 	return func() tea.Msg {
-		msg := dayLoadedMsg{day: k}
+		msg := dayLoadedMsg{day: k, withHistory: withHistory}
 		if withHistory {
 			p, err := srv.Users.GetProfile("me").Fields("historyId").Do()
 			if err != nil {
@@ -906,7 +962,7 @@ func fetchDay(srv *gmail.Service, day time.Time, withHistory bool) tea.Cmd {
 			}
 			msg.historyID = p.HistoryId
 		}
-		msg.emails, msg.failed, msg.err = loadDay(srv, day)
+		msg.ids, msg.emails, msg.failed, msg.err = loadDay(srv, day, known)
 		return msg
 	}
 }

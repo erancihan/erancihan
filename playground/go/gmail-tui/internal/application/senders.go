@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -189,25 +188,8 @@ func (m model) leaveSenderMails() (tea.Model, tea.Cmd) {
 // --- COMMANDS ---
 func fetchStatsIDs(srv *gmail.Service, q string, limit int, key statsKey) tea.Cmd {
 	return func() tea.Msg {
-		var ids []string
-		err := srv.Users.Messages.List("me").Q(q).MaxResults(500).
-			Fields("messages/id", "nextPageToken").
-			Pages(context.Background(), func(r *gmail.ListMessagesResponse) error {
-				for _, m := range r.Messages {
-					ids = append(ids, m.Id)
-				}
-				if len(ids) >= limit {
-					return errStopPaging
-				}
-				return nil
-			})
-		msg := statsIDsMsg{key: key}
-		if errors.Is(err, errStopPaging) {
-			msg.truncated, err = true, nil
-			ids = ids[:limit]
-		}
-		msg.ids, msg.err = ids, err
-		return msg
+		ids, truncated, err := listIDs(context.Background(), srv, q, limit)
+		return statsIDsMsg{key: key, ids: ids, truncated: truncated, err: err}
 	}
 }
 

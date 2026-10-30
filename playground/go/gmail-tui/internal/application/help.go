@@ -123,7 +123,8 @@ func (m model) helpSections() []helpSection {
 	}
 	return []helpSection{
 		{"Move", []keyHelp{
-			{"h/l", "previous / next day"},
+			{"h/l", "previous / next day (or span)"},
+			{"w", "span: day, week, 7/30/90 days"},
 			{"t", "today"},
 			{"c", "calendar"},
 			{"j/k", "up / down"},
