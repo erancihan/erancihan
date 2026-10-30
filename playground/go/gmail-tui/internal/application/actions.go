@@ -280,6 +280,7 @@ const (
 	modalLabels
 	modalConfirm
 	modalHelp
+	modalRange
 )
 
 type confirmState struct {
@@ -343,6 +344,9 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.modal {
 	case modalHelp:
 		m.modal = modalNone
+
+	case modalRange:
+		return m.updateRange(msg)
 
 	case modalConfirm:
 		switch k {
@@ -417,11 +421,13 @@ func (m model) viewModal() string {
 	var lines []string
 	switch m.modal {
 	case modalHelp:
-		lines = append([]string{titleStyle.Render("Keys")}, helpLines...)
-		lines = append(lines, "", dimStyle.Render("any key to close"))
+		return modalStyle.Render(m.viewHelp())
+
+	case modalRange:
+		return modalStyle.Render(m.viewRange())
 
 	case modalConfirm:
-		lines = []string{titleStyle.Render(m.confirm.text), "", dimStyle.Render("y confirm · n cancel")}
+		lines = []string{titleStyle.Render(m.confirm.text), "", m.keyLine(keyHelp{"y", "confirm"}, keyHelp{"n", "cancel"})}
 
 	case modalSettings:
 		lines = []string{titleStyle.Render("Settings"), ""}
@@ -436,7 +442,7 @@ func (m model) viewModal() string {
 			}
 			lines = append(lines, line)
 		}
-		lines = append(lines, "", dimStyle.Render("space toggle · esc close"))
+		lines = append(lines, "", m.keyLine(keyHelp{"space", "toggle"}, keyHelp{"esc", "close"}))
 
 	case modalLabels:
 		lines = []string{titleStyle.Render("Label " + plural(len(m.picker.ids))), "> " + m.picker.filter + "▏", ""}
@@ -469,24 +475,9 @@ func (m model) viewModal() string {
 			}
 			lines = append(lines, line)
 		}
-		lines = append(lines, "", dimStyle.Render("type to filter · enter add/remove · esc close"))
+		lines = append(lines, "", m.keyLine(keyHelp{"type", "filter"}, keyHelp{"enter", "add/remove"}, keyHelp{"esc", "close"}))
 	}
 	return modalStyle.Render(strings.Join(lines, "\n"))
-}
-
-var helpLines = []string{
-	"h/l ←/→   previous / next day      t  today",
-	"j/k ↑/↓   move                     g/G  top / bottom",
-	"enter     read mail                tab  all received / inbox",
-	"x         select (header: group)   A  select all of day / none",
-	"X         clear selection (all days)",
-	"d         move to Trash            m  mark read / unread",
-	"e         archive / move to inbox",
-	"L         add / remove label       u  unsubscribe",
-	"o         open in Gmail            s  sender stats",
-	"space/z   fold sender / all (grouped view)",
-	",         settings                 r  reload day",
-	"q         quit (back in reader and stats)",
 }
 
 // --- COMMANDS ---

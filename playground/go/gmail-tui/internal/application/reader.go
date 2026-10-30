@@ -157,7 +157,8 @@ func (m model) viewReader() string {
 	}
 	b.WriteString(strings.Repeat("\n", max(0, r.height-(end-r.offset))))
 	b.WriteString(m.footerStatus())
-	b.WriteString(m.help("q back · j/k scroll · space/b page · n/p next/prev · e archive · d trash · m read · L label · u unsub · o web"))
+	b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"q", "back"}, keyHelp{"n/p", "next/prev"},
+		keyHelp{"e", "archive"}, keyHelp{"d", "trash"}, keyHelp{"m", "read/unread"}, keyHelp{"L", "label"}))
 	return b.String()
 }
 

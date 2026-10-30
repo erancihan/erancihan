@@ -17,6 +17,8 @@ func key(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyEsc}
 	case "tab":
 		return tea.KeyMsg{Type: tea.KeyTab}
+	case "backspace":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
 	case " ":
 		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")}
 	}
@@ -110,7 +112,7 @@ func TestStatsView(t *testing.T) {
 		t.Errorf("u = %v", got)
 	}
 	m = press(t, m, "tab")
-	if m.stats.days != 30 {
-		t.Errorf("tab days = %d", m.stats.days)
+	if m.stats.days() != 30 {
+		t.Errorf("tab days = %d", m.stats.days())
 	}
 }

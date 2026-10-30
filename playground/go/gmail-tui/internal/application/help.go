@@ -1,0 +1,132 @@
+package application
+
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+)
+
+var (
+	keyStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("111"))
+	sectionStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")).Underline(true)
+)
+
+type keyHelp struct {
+	key, desc string
+}
+
+type helpSection struct {
+	title string
+	keys  []keyHelp
+}
+
+// keyLine renders keys as "key desc · key desc" with highlighted keys.
+func (m model) keyLine(keys ...keyHelp) string {
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = keyStyle.Render(k.key) + " " + dimStyle.Render(k.desc)
+	}
+	return strings.Join(parts, dimStyle.Render(" · "))
+}
+
+// helpBar is the one-line footer; it drops keys from the end until it fits.
+func (m model) helpBar(keys ...keyHelp) string {
+	for n := len(keys); n > 0; n-- {
+		if line := " " + m.keyLine(keys[:n]...); ansi.StringWidth(line) <= m.width {
+			return line
+		}
+	}
+	return ansi.Truncate(" "+m.keyLine(keys...), m.width, "…")
+}
+
+var actionSection = helpSection{"Act on selection or cursor", []keyHelp{
+	{"e", "archive / move to inbox"},
+	{"d", "move to Trash"},
+	{"m", "mark read / unread"},
+	{"L", "add / remove label"},
+	{"u", "unsubscribe from sender"},
+	{"o", "open in Gmail"},
+}}
+
+// helpSections lists the keys of the current view for the ? dialog.
+func (m model) helpSections() []helpSection {
+	switch m.mode {
+	case modeReader:
+		return []helpSection{
+			{"Read", []keyHelp{
+				{"j/k", "scroll"},
+				{"space/b", "page down / up"},
+				{"g/G", "top / bottom"},
+				{"n/p", "next / previous mail"},
+				{"q", "back to list"},
+			}},
+			actionSection,
+		}
+	case modeStats:
+		return []helpSection{
+			{"Range", []keyHelp{
+				{"h/l", "previous / next range"},
+				{"t", "range ending today"},
+				{"tab", "length: 7 / 30 / 90 days"},
+				{"c", "custom range"},
+				{"r", "reload range"},
+			}},
+			{"Senders", []keyHelp{
+				{"j/k", "move"},
+				{"u", "unsubscribe"},
+				{"q", "back to day view"},
+			}},
+		}
+	}
+	return []helpSection{
+		{"Move", []keyHelp{
+			{"h/l", "previous / next day"},
+			{"t", "today"},
+			{"j/k", "up / down"},
+			{"g/G", "top / bottom"},
+			{"pgup/pgdn", "page"},
+		}},
+		{"Select", []keyHelp{
+			{"x", "mail (on sender: group)"},
+			{"A", "all of day / none"},
+			{"X", "clear (all days)"},
+		}},
+		actionSection,
+		{"View", []keyHelp{
+			{"enter", "read mail"},
+			{"tab", "all received / inbox"},
+			{"space/z", "fold sender / all"},
+			{"s", "senders over a range"},
+			{"r", "reload day"},
+			{",", "settings"},
+			{"q", "quit"},
+		}},
+	}
+}
+
+// viewHelp renders the help sections in two columns, or one when narrow.
+func (m model) viewHelp() string {
+	sections := m.helpSections()
+	blocks := make([]string, len(sections))
+	for i, s := range sections {
+		w := 0
+		for _, k := range s.keys {
+			w = max(w, len(k.key))
+		}
+		lines := []string{sectionStyle.Render(s.title)}
+		for _, k := range s.keys {
+			lines = append(lines, keyStyle.Render(pad(k.key, w))+"  "+k.desc)
+		}
+		blocks[i] = strings.Join(lines, "\n")
+	}
+
+	half := (len(blocks) + 1) / 2
+	left := strings.Join(blocks[:half], "\n\n")
+	right := strings.Join(blocks[half:], "\n\n")
+	body := lipgloss.JoinHorizontal(lipgloss.Top, left, "    ", right)
+	if lipgloss.Width(body)+4 > m.width { // modal border and padding
+		body = strings.Join(blocks, "\n\n")
+	}
+	return titleStyle.Render("Keys") + "\n\n" + body + "\n\n" + dimStyle.Render("any key to close")
+}

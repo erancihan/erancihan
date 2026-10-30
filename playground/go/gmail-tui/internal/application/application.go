@@ -105,6 +105,7 @@ type model struct {
 	modal          modal
 	settingsCursor int
 	confirm        confirmState
+	rangeIn        rangeInput
 	picker         labelPicker
 	labels         []label // nil until loaded
 	labelsErr      error
@@ -132,7 +133,7 @@ func NewApplication(srv *gmail.Service, opts Options) model {
 		selected:     map[string]bool{},
 		bodies:       map[string]*message{},
 		statsCache:   map[statsKey]statsData{},
-		stats:        stats{days: statsRanges[0]},
+		stats:        stats{from: today().AddDate(0, 0, -(statsLengths[0] - 1)), to: today()},
 		inboxUnread:  -1,
 		width:        80,
 		height:       24,
@@ -331,7 +332,7 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Sender stats
 	case "s":
-		return m.openStats(m.stats.days, false)
+		return m.openStats(m.stats.from, m.stats.to, false)
 	}
 	return m, nil
 }
@@ -637,7 +638,8 @@ func (m model) viewDay() string {
 	} else {
 		b.WriteString(m.footerStatus())
 	}
-	b.WriteString(m.help("? keys · h/l day · enter read · x select · e archive · d trash · m read · L label · , settings · q quit"))
+	b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"h/l", "day"}, keyHelp{"enter", "read"}, keyHelp{"x", "select"},
+		keyHelp{"e", "archive"}, keyHelp{"d", "trash"}, keyHelp{"m", "read/unread"}, keyHelp{"L", "label"}, keyHelp{"q", "quit"}))
 	return b.String()
 }
 
@@ -646,10 +648,6 @@ func (m model) footerStatus() string {
 		return "\n"
 	}
 	return " " + ansi.Truncate(m.status, m.width-1, "…") + "\n"
-}
-
-func (m model) help(text string) string {
-	return dimStyle.Render(ansi.Truncate(" "+text, m.width, "…"))
 }
 
 // check renders the selection column.

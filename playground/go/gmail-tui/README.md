@@ -45,7 +45,7 @@ go run .
 ```
 
 ## Keys
-Press `?` in the app for this list.
+The footer shows the main keys; `?` shows all keys of the current view.
 
 Day view
 | Key | Action |
@@ -82,9 +82,13 @@ all days.
 Reader: `j`/`k` scroll, `space`/`b` page, `n`/`p` next/previous mail, `e`, `d`, `m`,
 `L`, `u`, `o` as above, `q` back.
 
-Sender stats: senders ranked by mail count over 7, 30 or 90 days ending at the
-current day (`tab` cycles). `u` opens the selected sender's unsubscribe link,
-`r` reloads, `q` back. At most 2000 mails are counted per range.
+Senders (`s`): senders ranked by mail count over a range of days, by default
+the last 7 days ending today. `h`/`l` move the range back or forward by its own
+length, `tab` cycles the length (7, 30, 90 days), `t` makes it end today, and
+`c` sets any From–To range (up to 366 days). Ranges whose days are all cached
+are counted at once; others are fetched once (at most 2000 mails), and the
+fetched days are added to the cache. `u` opens the selected sender's
+unsubscribe link, `r` reloads, `q` goes back.
 
 ## Settings
 | Setting | Default |
