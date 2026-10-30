@@ -158,7 +158,7 @@ func (m model) viewStats() string {
 
 	end, _ := time.ParseInLocation(time.DateOnly, s.key.end, time.Local)
 	title := fmt.Sprintf("Senders · %d days to %s", s.days, end.Format("Mon, 02 Jan"))
-	meta := fmt.Sprintf("  %s · %d mails · %d senders", s.key.scope, s.data.total, len(s.data.senders))
+	meta := fmt.Sprintf("  %s · %s · %s", s.key.scope, plural(s.data.total), count(len(s.data.senders), "sender"))
 	b.WriteString(ansi.Truncate(titleStyle.Render(title)+dimStyle.Render(meta), m.width, "…") + "\n\n")
 	b.WriteString(dimStyle.Render(ansi.Truncate(fmt.Sprintf(" %5s %6s  %-10s  %-6s  %s", "mails", "unread", "share", "last", "sender"), m.width, "…")) + "\n")
 

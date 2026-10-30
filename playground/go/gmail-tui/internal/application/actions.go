@@ -40,17 +40,11 @@ type actionDoneMsg struct {
 
 // --- SELECTION ---
 
-// targets returns the mails an action applies to: the selection if any,
-// else the mail under the cursor, else the sender group under the cursor.
+// targets returns the mails an action applies to: the selection (on any day)
+// if any, else the mail under the cursor, else the sender group under the cursor.
 func (m model) targets() []email {
 	if len(m.selected) > 0 {
-		var out []email
-		for _, e := range m.data.emails {
-			if m.selected[e.ID] {
-				out = append(out, e)
-			}
-		}
-		return out
+		return m.cachedEmails(m.selected)
 	}
 	if e, ok := m.selectedEmail(); ok {
 		return []email{e}
@@ -83,14 +77,43 @@ func (m *model) toggleSelect() {
 	}
 }
 
-// toggleSelectAll selects every mail of the day, or clears the selection if all are selected.
+// toggleSelectAll selects every mail of the shown day, or unselects them if
+// all are selected. Selections on other days are kept.
 func (m *model) toggleSelectAll() {
-	if len(m.selected) == len(m.data.emails) {
-		clear(m.selected)
+	all := !slices.ContainsFunc(m.data.emails, func(e email) bool { return !m.selected[e.ID] })
+	for _, e := range m.data.emails {
+		if all {
+			delete(m.selected, e.ID)
+		} else {
+			m.selected[e.ID] = true
+		}
+	}
+}
+
+// cachedEmails returns the cached mails with the given ids, newest first.
+func (m model) cachedEmails(set map[string]bool) []email {
+	var out []email
+	for _, s := range m.days {
+		for _, e := range s.Emails {
+			if set[e.ID] {
+				out = append(out, e)
+			}
+		}
+	}
+	slices.SortStableFunc(out, func(a, b email) int { return b.Time.Compare(a.Time) })
+	return out
+}
+
+// pruneSelection drops selected ids that are no longer cached, e.g. trashed.
+func (m *model) pruneSelection() {
+	if len(m.selected) == 0 {
 		return
 	}
-	for _, e := range m.data.emails {
-		m.selected[e.ID] = true
+	known := m.knownIDs()
+	for id := range m.selected {
+		if !known[id] {
+			delete(m.selected, id)
+		}
 	}
 }
 
@@ -103,10 +126,15 @@ func ids(es []email) []string {
 }
 
 func plural(n int) string {
+	return count(n, "mail")
+}
+
+// count formats n with the noun, adding "s" unless n is 1.
+func count(n int, noun string) string {
 	if n == 1 {
-		return "1 mail"
+		return "1 " + noun
 	}
-	return fmt.Sprintf("%d mails", n)
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // --- ACTIONS ---
@@ -164,7 +192,7 @@ func (m model) actionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	var save tea.Cmd
 	if len(msg.ids) > 0 {
-		save = m.saveCache()
+		save = tea.Batch(m.saveCache(), fetchInboxUnread(m.service))
 	}
 	switch {
 	case msg.err != nil:
@@ -279,12 +307,14 @@ func (m model) labelCount(id string) int {
 		set[pid] = true
 	}
 	n := 0
-	for _, e := range m.data.emails {
-		if set[e.ID] && slices.Contains(e.Labels, id) {
+	found := map[string]bool{}
+	for _, e := range m.cachedEmails(set) {
+		found[e.ID] = true
+		if slices.Contains(e.Labels, id) {
 			n++
 		}
 	}
-	if m.mode == modeReader && set[m.reader.email.ID] && !slices.ContainsFunc(m.data.emails, func(e email) bool { return e.ID == m.reader.email.ID }) {
+	if m.mode == modeReader && set[m.reader.email.ID] && !found[m.reader.email.ID] {
 		if slices.Contains(m.reader.email.Labels, id) {
 			n++
 		}
@@ -432,8 +462,8 @@ var helpLines = []string{
 	"h/l ←/→   previous / next day      t  today",
 	"j/k ↑/↓   move                     g/G  top / bottom",
 	"enter     read mail                tab  all received / inbox",
-	"x         select (header: group)   A  select all / none",
-	"esc       clear selection",
+	"x         select (header: group)   A  select all of day / none",
+	"X         clear selection (all days)",
 	"d         move to Trash            m  mark read / unread",
 	"L         add / remove label       u  unsubscribe",
 	"o         open in Gmail            s  sender stats",

@@ -251,7 +251,7 @@ func (m model) synced(msg syncedMsg) (tea.Model, tea.Cmd) {
 		return m, m.saveCache() // history id moved on
 	}
 	m.refreshView()
-	return m, m.saveCache()
+	return m, tea.Batch(m.saveCache(), fetchInboxUnread(m.service))
 }
 
 // dropMails removes the given ids from every cached day.

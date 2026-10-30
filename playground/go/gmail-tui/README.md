@@ -55,8 +55,8 @@ Day view
 | `j` / `k`, `g` / `G`, `pgup` / `pgdn` | move |
 | `enter` | read mail (on a sender: fold) |
 | `x` | select mail (on a sender: the whole group) |
-| `A` | select all mail of the day, or clear |
-| `esc` | clear selection |
+| `A` | select all mail of the shown day, or unselect them |
+| `X` | clear the selection on all days |
 | `d` | move to Trash (asks first) |
 | `m` | mark read; if all are read already, mark unread |
 | `L` | label picker: type to filter, `enter` adds the label (or removes it if all have it), a new name creates it |
@@ -70,7 +70,12 @@ Day view
 | `q` | quit |
 
 `d`, `m` and `L` act on the selected mails, or on the mail under the cursor when
-nothing is selected. Removing the Inbox label archives a mail.
+nothing is selected. The selection is kept while you read mail and change days,
+so one action can cover mail from several days; the title shows how many
+selected mails are on other days.
+
+The title shows the shown day's unread count and the inbox's unread count over
+all days. Removing the Inbox label archives a mail.
 
 Reader: `j`/`k` scroll, `space`/`b` page, `n`/`p` next/previous mail, `d`, `m`,
 `L`, `u`, `o` as above, `q` back.

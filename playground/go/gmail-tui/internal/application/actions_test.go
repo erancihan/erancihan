@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -123,7 +124,10 @@ func TestInboxScopeFiltersLocally(t *testing.T) {
 func TestLabelPicker(t *testing.T) {
 	m := flat(t)
 	m.labels = []label{{"INBOX", "Inbox"}, {"Label_1", "Work"}, {"Label_2", "Receipts"}}
-	m.data.emails[0].Labels = []string{"Label_1"}
+	s := m.days[dayKey(m.day)]
+	s.Emails[0].Labels = []string{"Label_1"}
+	m.days[dayKey(m.day)] = s
+	m.refreshView()
 	m = press(t, m, "L")
 	if m.modal != modalLabels {
 		t.Fatal("picker not open")
@@ -169,5 +173,57 @@ func TestBackgroundReadKeepsSelection(t *testing.T) {
 	m = next.(model)
 	if len(m.selected) != 1 || m.status != "" {
 		t.Errorf("selection=%v status=%q", m.selected, m.status)
+	}
+}
+
+func TestSelectionSurvivesReaderAndDays(t *testing.T) {
+	m := flat(t)
+	m = press(t, m, "x", "enter")                                                      // select 3, open 2
+	next, _ := m.Update(actionDoneMsg{ids: []string{"2"}, remove: []string{"UNREAD"}}) // mark read on open
+	m = next.(model)
+	m = press(t, m, "esc", "h") // back to list, then to yesterday
+	next, _ = m.Update(dayLoadedMsg{day: dayKey(m.day), emails: []email{{ID: "y1", Time: m.day.Add(time.Hour)}}})
+	m = next.(model)
+	m.width = 200
+	m = press(t, m, "x") // select y1 too
+	if len(m.selected) != 2 || !m.selected["3"] || !m.selected["y1"] {
+		t.Fatalf("selected = %v", m.selected)
+	}
+	if !strings.Contains(ansi.Strip(m.View()), "2 selected (1 on other days)") {
+		t.Errorf("title:\n%s", ansi.Strip(m.View()))
+	}
+	if got := ids(m.targets()); !slices.Equal(got, []string{"3", "y1"}) {
+		t.Errorf("targets = %v", got)
+	}
+	m = press(t, m, "A") // all of yesterday is selected already → unselect it, keep today's
+	if len(m.selected) != 1 || !m.selected["3"] {
+		t.Errorf("A on day = %v", m.selected)
+	}
+	m = press(t, m, "X")
+	if len(m.selected) != 0 {
+		t.Errorf("X did not clear")
+	}
+}
+
+func TestTrashPrunesSelection(t *testing.T) {
+	m := flat(t)
+	m = press(t, m, "x", "x")
+	next, _ := m.Update(actionDoneMsg{ids: []string{"3"}, trash: true}) // e.g. trashed from the reader
+	m = next.(model)
+	if len(m.selected) != 1 || !m.selected["2"] {
+		t.Errorf("selected = %v", m.selected)
+	}
+}
+
+func TestUnreadCounts(t *testing.T) {
+	m := flat(t)
+	m.width = 200
+	if strings.Contains(ansi.Strip(m.View()), "Inbox:") {
+		t.Error("inbox count shown before it is known")
+	}
+	next, _ := m.Update(inboxUnreadMsg{n: 128})
+	m = next.(model)
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "3 mails · 1 unread") || !strings.Contains(v, "Inbox: 128 unread") {
+		t.Errorf("title:\n%s", v)
 	}
 }

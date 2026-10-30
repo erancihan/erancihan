@@ -81,19 +81,20 @@ type model struct {
 	status       string
 
 	// day view
-	day       time.Time // local midnight
-	scope     scope
-	days      map[string]dayStore // day key -> all received mail; see sync.go
-	pending   map[string]bool     // day keys being fetched
-	historyID uint64              // Gmail history id the cache is current to
-	syncing   bool
-	data      dayData
-	collapsed map[string]bool // sender address -> folded; kept across days
-	selected  map[string]bool // message id -> selected for bulk actions
-	rows      []row
-	cursor    int
-	offset    int
-	loading   bool
+	day         time.Time // local midnight
+	scope       scope
+	days        map[string]dayStore // day key -> all received mail; see sync.go
+	pending     map[string]bool     // day keys being fetched
+	historyID   uint64              // Gmail history id the cache is current to
+	syncing     bool
+	inboxUnread int64 // unread mails in the inbox, all days; -1 until known
+	data        dayData
+	collapsed   map[string]bool // sender address -> folded; kept across days
+	selected    map[string]bool // message id -> selected for bulk actions
+	rows        []row
+	cursor      int
+	offset      int
+	loading     bool
 
 	reader     reader
 	bodies     map[string]*message // message id -> loaded mail
@@ -131,6 +132,7 @@ func NewApplication(srv *gmail.Service, opts Options) model {
 		bodies:       map[string]*message{},
 		statsCache:   map[statsKey]statsData{},
 		stats:        stats{days: statsRanges[0]},
+		inboxUnread:  -1,
 		width:        80,
 		height:       24,
 	}
@@ -163,7 +165,7 @@ type statusMsg string
 
 // --- INIT ---
 func (m model) Init() tea.Cmd {
-	cmds := []tea.Cmd{fetchLabels(m.service), syncTick()}
+	cmds := []tea.Cmd{fetchLabels(m.service), fetchInboxUnread(m.service), syncTick()}
 	if m.pending[dayKey(m.day)] {
 		cmds = append(cmds, fetchDay(m.service, m.day, m.historyID == 0))
 	}
@@ -220,6 +222,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case syncedMsg:
 		return m.synced(msg)
+
+	case inboxUnreadMsg:
+		if msg.err == nil {
+			m.inboxUnread = msg.n
+		}
 
 	case labelsLoadedMsg:
 		m.labels, m.labelsErr = msg.labels, msg.err
@@ -299,7 +306,7 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.move(1)
 	case "A":
 		m.toggleSelectAll()
-	case "esc":
+	case "X":
 		clear(m.selected)
 	case "d":
 		return m.confirmTrash(m.targets()), nil
@@ -332,7 +339,6 @@ func (m model) open(day time.Time, s scope, refresh bool) (tea.Model, tea.Cmd) {
 	m.day, m.scope = day, s
 	m.cursor, m.offset = 0, 0
 	m.status = ""
-	clear(m.selected)
 
 	var cmds []tea.Cmd
 	k := dayKey(day)
@@ -406,11 +412,7 @@ func (m *model) refreshView() {
 		}
 	}
 	m.data = newDayData(es, 0)
-	for id := range m.selected {
-		if !slices.ContainsFunc(es, func(e email) bool { return e.ID == id }) {
-			delete(m.selected, id)
-		}
-	}
+	m.pruneSelection()
 	m.rebuild()
 	if hasCur {
 		m.cursorTo(cur.ID)
@@ -587,9 +589,27 @@ func (m model) viewDay() string {
 	if m.day.Equal(today()) {
 		title += " (today)"
 	}
-	meta := fmt.Sprintf("  %s · %d mails · %d senders", m.scope, len(m.data.emails), len(m.data.groups))
+	unread := 0
+	for _, e := range m.data.emails {
+		if e.Unread {
+			unread++
+		}
+	}
+	meta := fmt.Sprintf("  %s · %s · %d unread · %s", m.scope, plural(len(m.data.emails)), unread, count(len(m.data.groups), "sender"))
+	if m.inboxUnread >= 0 {
+		meta += fmt.Sprintf(" │ Inbox: %d unread", m.inboxUnread)
+	}
 	if n := len(m.selected); n > 0 {
-		meta += fmt.Sprintf(" · %d selected", n)
+		meta += fmt.Sprintf(" │ %d selected", n)
+		here := 0
+		for _, e := range m.data.emails {
+			if m.selected[e.ID] {
+				here++
+			}
+		}
+		if other := n - here; other > 0 {
+			meta += fmt.Sprintf(" (%d on other days)", other)
+		}
 	}
 	b.WriteString(ansi.Truncate(titleStyle.Render(title)+dimStyle.Render(meta), m.width, "…") + "\n")
 	b.WriteString(m.columnHeader() + "\n")
@@ -731,6 +751,22 @@ func (m model) labelText(e email) string {
 }
 
 // --- COMMANDS ---
+type inboxUnreadMsg struct {
+	n   int64
+	err error
+}
+
+// fetchInboxUnread reads the inbox's unread count across all days.
+func fetchInboxUnread(srv *gmail.Service) tea.Cmd {
+	return func() tea.Msg {
+		l, err := srv.Users.Labels.Get("me", "INBOX").Fields("messagesUnread").Do()
+		if err != nil {
+			return inboxUnreadMsg{err: err}
+		}
+		return inboxUnreadMsg{n: l.MessagesUnread}
+	}
+}
+
 // fetchDay loads a day. withHistory first reads the mailbox history id, so
 // changes made while listing are picked up by the next sync.
 func fetchDay(srv *gmail.Service, day time.Time, withHistory bool) tea.Cmd {
