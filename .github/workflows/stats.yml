@@ -25,7 +25,7 @@ jobs:
       - name: Reset metrics-renders branch to master
         run: git push --force origin HEAD:refs/heads/metrics-renders
 
-      - uses: erancihan/lowlighter-github-metrics@devel
+      - uses: erancihan/lowlighter-github-metrics@feat/multi-source
         with:
           user: erancihan
           template: classic
@@ -55,6 +55,8 @@ jobs:
 
           plugin_isocalendar: yes
           plugin_isocalendar_duration: full-year 
+          plugin_isocalendar_sources: |
+            [{"type": "file", "name": "work", "url": "https://raw.githubusercontent.com/erancihan/erancihan/contributions/.contributions/gitlab.json"}]
           
           # Language Analysis
           plugin_languages: yes
