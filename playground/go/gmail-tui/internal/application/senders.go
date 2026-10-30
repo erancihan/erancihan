@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"fmt"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"google.golang.org/api/gmail/v1"
@@ -133,56 +132,15 @@ func commas(n int) string {
 
 // --- SENDER MAIL ---
 
-// senderView narrows the all-mail list to one sender over the senders range.
-type senderView struct {
-	name, addr string
-	from, to   time.Time
-	allTime    bool
-}
-
-func (v senderView) query() string {
-	q := "from:" + v.addr
-	if !v.allTime {
-		q += fmt.Sprintf(" after:%d before:%d", v.from.Unix(), v.to.AddDate(0, 0, 1).Unix())
-	}
-	return q
-}
-
-func (v senderView) rangeText() string {
-	if v.allTime {
-		return allTimeLabel
-	}
-	return formatRange(v.from, v.to)
-}
-
-// savedList is the mail list state put aside while a sender's mail is shown.
-type savedList struct {
-	all            allList
-	list           listKind
-	cursor, offset int
-}
-
 // openSenderMails shows the mails of a sender over the senders range as a mail list.
 func (m model) openSenderMails(s senderStat) (tea.Model, tea.Cmd) {
-	m.back = &savedList{all: m.all, list: m.list, cursor: m.cursor, offset: m.offset}
-	m.all = allList{filter: filterAll, sender: &senderView{
-		name: s.name, addr: s.addr, from: m.stats.from, to: m.stats.to, allTime: m.stats.allTime,
-	}}
-	m.mode = modeDay
-	return m.openAll(true)
-}
-
-// leaveSenderMails returns to the senders list, restoring the mail list.
-func (m model) leaveSenderMails() (tea.Model, tea.Cmd) {
-	b := m.back
-	m.back = nil
-	m.all, m.list = b.all, b.list
-	m.refreshView()
-	m.cursor, m.offset = b.cursor, b.offset
-	m.scroll()
-	m.mode = modeStats
-	m.status = ""
-	return m, nil
+	q, when := "from:"+s.addr, allTimeLabel
+	if !m.stats.allTime {
+		q += fmt.Sprintf(" after:%d before:%d", m.stats.from.Unix(), m.stats.to.AddDate(0, 0, 1).Unix())
+		when = formatRange(m.stats.from, m.stats.to)
+	}
+	return m.openSubList(subList{kind: "Sender", title: s.name + " · " + when, query: q,
+		back: modeStats, backName: "senders", flat: true})
 }
 
 // --- COMMANDS ---

@@ -41,11 +41,11 @@ func (f allFilter) String() string {
 // (e.g. read in the Unread filter) stay listed until reload.
 type allList struct {
 	filter   allFilter
-	search   string      // extra Gmail query from the search dialog
-	sender   *senderView // set when showing one sender's mail from the senders view
-	ids      []string    // in Gmail's order, newest first
-	next     string      // page token of the next page; "" when complete
-	estimate int64       // Gmail's estimate of matching mails
+	search   string   // extra Gmail query from the search dialog
+	sub      *subList // set when the list was opened from another screen
+	ids      []string // in Gmail's order, newest first
+	next     string   // page token of the next page; "" when complete
+	estimate int64    // Gmail's estimate of matching mails
 	loading  bool
 	loaded   bool  // at least one page arrived for the current query
 	gen      int   // increases with each new query; stale pages are dropped
@@ -69,8 +69,8 @@ func (m model) allQuery() string {
 	if m.all.filter == filterUnread {
 		q = append(q, "is:unread")
 	}
-	if m.all.sender != nil {
-		q = append(q, m.all.sender.query())
+	if m.all.sub != nil {
+		q = append(q, m.all.sub.query)
 	}
 	if s := strings.TrimSpace(m.all.search); s != "" {
 		q = append(q, s)
@@ -92,7 +92,7 @@ func (m model) openAll(reload bool) (tea.Model, tea.Cmd) {
 	m.all.loading = true
 	m.cursor, m.offset = 0, 0
 	m.refreshView()
-	return m, fetchAll(m.service, m.allQuery(), "", m.all.gen, m.knownIDs())
+	return m, fetchAll(m.service, m.allQuery(), m.allLabel(), "", m.all.gen, m.knownIDs())
 }
 
 func (m model) allLoaded(msg allLoadedMsg) (tea.Model, tea.Cmd) {
@@ -135,7 +135,7 @@ func (m *model) loadMoreIfNeeded() tea.Cmd {
 		return nil
 	}
 	m.all.loading = true
-	return fetchAll(m.service, m.allQuery(), m.all.next, m.all.gen, m.knownIDs())
+	return fetchAll(m.service, m.allQuery(), m.allLabel(), m.all.next, m.all.gen, m.knownIDs())
 }
 
 // updateAll handles keys specific to the all-mail list; ok is false for keys
@@ -143,8 +143,8 @@ func (m *model) loadMoreIfNeeded() tea.Cmd {
 func (m model) updateAll(msg tea.KeyMsg) (_ tea.Model, _ tea.Cmd, ok bool) {
 	switch msg.String() {
 	case "a", "esc", "s":
-		if m.all.sender != nil {
-			next, cmd := m.leaveSenderMails()
+		if m.all.sub != nil {
+			next, cmd := m.leaveSubList()
 			return next, cmd, true
 		}
 		if msg.String() == "s" {
@@ -172,6 +172,48 @@ func (m model) updateAll(msg tea.KeyMsg) (_ tea.Model, _ tea.Cmd, ok bool) {
 		return m, nil, true // day navigation does not apply here
 	}
 	return m, nil, false
+}
+
+// --- SUB-LISTS ---
+
+// subList is a mail list opened from another screen (a sender's or a label's
+// mail); esc returns there.
+type subList struct {
+	kind     string // "Sender", "Label"
+	title    string // e.g. "GitHub · 24 Oct – 30 Oct 2026"
+	query    string // Gmail query narrowing the list
+	back     mode   // screen to return to
+	backName string // its name for the footer, e.g. "senders"
+	labelID  string // only mail with this label (Gmail's label filter, exact)
+	flat     bool   // never group by sender (a single sender's mail)
+}
+
+// savedList is the mail list state put aside while a sub-list is shown.
+type savedList struct {
+	all            allList
+	list           listKind
+	cursor, offset int
+}
+
+func (m model) openSubList(v subList) (tea.Model, tea.Cmd) {
+	m.back = &savedList{all: m.all, list: m.list, cursor: m.cursor, offset: m.offset}
+	m.all = allList{filter: filterAll, sub: &v}
+	m.mode = modeDay
+	return m.openAll(true)
+}
+
+// leaveSubList returns to the screen the sub-list was opened from, restoring
+// the mail list.
+func (m model) leaveSubList() (tea.Model, tea.Cmd) {
+	b, back := m.back, m.all.sub.back
+	m.back = nil
+	m.all, m.list = b.all, b.list
+	m.refreshView()
+	m.cursor, m.offset = b.cursor, b.offset
+	m.scroll()
+	m.mode = back
+	m.status = ""
+	return m, nil
 }
 
 // --- SEARCH DIALOG ---
@@ -212,13 +254,24 @@ func (m model) viewSearch() string {
 
 // fetchAll lists one page of ids for q and fetches metadata only for mails
 // that are not stored yet.
-func fetchAll(srv *gmail.Service, q, pageToken string, gen int, known map[string]bool) tea.Cmd {
+// allLabel is the label the list is limited to, if any.
+func (m model) allLabel() string {
+	if m.all.sub != nil {
+		return m.all.sub.labelID
+	}
+	return ""
+}
+
+func fetchAll(srv *gmail.Service, q, labelID, pageToken string, gen int, known map[string]bool) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		call := srv.Users.Messages.List("me").Q(q).MaxResults(allPageSize).
 			Fields("messages/id", "nextPageToken", "resultSizeEstimate")
 		if pageToken != "" {
 			call = call.PageToken(pageToken)
+		}
+		if labelID != "" {
+			call = call.LabelIds(labelID)
 		}
 		r, err := call.Context(ctx).Do()
 		if err != nil {

@@ -315,6 +315,8 @@ const (
 	modalCalendar
 	modalSearch
 	modalSpan
+	modalInput
+	modalMove
 )
 
 type confirmKind int
@@ -322,6 +324,7 @@ type confirmKind int
 const (
 	confirmTrash confirmKind = iota
 	confirmAllTime
+	confirmDeleteLabel
 )
 
 type confirmState struct {
@@ -400,15 +403,33 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case modalSpan:
 		return m.updateSpanPicker(msg)
 
+	case modalInput:
+		return m.updateInput(msg)
+
+	case modalMove:
+		return m.updateMove(msg)
+
 	case modalConfirm:
 		switch k {
 		case "y", "enter":
 			m.modal = modalNone
-			if m.confirm.kind == confirmAllTime {
+			switch m.confirm.kind {
+			case confirmAllTime:
 				return m.openStatsAllTime(false)
+			case confirmDeleteLabel:
+				return m.runLabelOps("Deleted 1 label", []labelOp{{kind: "delete", id: m.confirm.ids[0]}})
 			}
 			m.status = "Moving to Trash…"
 			return m, trashCmd(m.service, m.confirm.ids)
+		case "a":
+			if m.confirm.kind == confirmDeleteLabel && len(m.confirm.ids) > 1 {
+				m.modal = modalNone
+				var ops []labelOp
+				for i := len(m.confirm.ids) - 1; i >= 0; i-- { // children first
+					ops = append(ops, labelOp{kind: "delete", id: m.confirm.ids[i]})
+				}
+				return m.runLabelOps("Deleted "+count(len(ops), "label"), ops)
+			}
 		case "n", "esc", "q":
 			m.modal = modalNone
 		}
@@ -489,6 +510,12 @@ func (m model) viewModal() string {
 
 	case modalSearch:
 		return modalStyle.Render(m.viewSearch())
+
+	case modalInput:
+		return modalStyle.Render(m.viewInput())
+
+	case modalMove:
+		return modalStyle.Render(m.viewMove())
 
 	case modalSpan:
 		return modalStyle.Render(m.viewSpanPicker())

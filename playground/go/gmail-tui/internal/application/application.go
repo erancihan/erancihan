@@ -44,6 +44,7 @@ const (
 	modeDay mode = iota
 	modeReader
 	modeStats
+	modeLabelsView
 )
 
 // dayKey is the cache key of a day, YYYY-MM-DD.
@@ -89,7 +90,7 @@ type model struct {
 	historyFetch bool        // a day fetch is reading the history id
 	spanCursor   int
 	listGen      int        // last all-mail query generation, across lists
-	back         *savedList // list to restore when leaving a sender's mail
+	back         *savedList // list to restore when leaving a sub-list
 	day          time.Time  // local midnight
 	scope        scope
 	mails        map[string]email    // id -> the one stored copy of each mail; see store.go
@@ -114,6 +115,9 @@ type model struct {
 	modal          modal
 	settingsCursor int
 	confirm        confirmState
+	lv             labelsView
+	input          textInput
+	movePick       movePicker
 	rangeIn        rangeInput
 	searchIn       string
 	cal            calendar
@@ -209,6 +213,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scroll()
 		m.reader.layout(m.width, m.readerHeight())
 		m.stats.scroll(m.statsHeight())
+		m.scrollLabels()
 
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
@@ -230,6 +235,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateReader(msg)
 		case modeStats:
 			return m.updateStats(msg)
+		case modeLabelsView:
+			return m.updateLabelsView(msg)
 		}
 		return m.updateDay(msg)
 
@@ -265,6 +272,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.inboxUnread = msg.n
 		}
+
+	case labelInfosMsg:
+		m.lv.loading, m.lv.err = false, msg.err
+		if msg.err == nil {
+			m.lv.infos = msg.infos
+		}
+		m.lv.cursor = max(0, min(m.lv.cursor, len(m.labelRows())-1))
+		m.scrollLabels()
+
+	case labelOpsDoneMsg:
+		return m.labelOpsDone(msg)
 
 	case labelsLoadedMsg:
 		m.labels, m.labelsErr = msg.labels, msg.err
@@ -389,6 +407,8 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Sender stats
 	case "s":
 		return m.openStats(m.stats.from, m.stats.to, false)
+	case "#":
+		return m.openLabelsView()
 	}
 	return m, nil
 }
@@ -522,7 +542,7 @@ func (m *model) refreshView() {
 // grouped reports whether the list groups mails by sender; a single
 // sender's list never does.
 func (m model) grouped() bool {
-	return m.settings.GroupBySender && !(m.list == listAll && m.all.sender != nil)
+	return m.settings.GroupBySender && !(m.list == listAll && m.all.sub != nil && m.all.sub.flat)
 }
 
 // rebuild recomputes the visible rows from the mails, grouping and fold state.
@@ -657,6 +677,8 @@ func (m model) View() string {
 		v = m.viewReader()
 	case modeStats:
 		v = m.viewStats()
+	case modeLabelsView:
+		v = m.viewLabelsView()
 	default:
 		v = m.viewDay()
 	}
@@ -694,8 +716,8 @@ func (m model) viewDay() string {
 	title := "◂ " + m.spanTitle() + " ▸"
 	if m.list == listAll {
 		title = "All mail · " + m.all.filter.String()
-		if v := m.all.sender; v != nil {
-			title = "Sender · " + v.name + " · " + v.rangeText()
+		if v := m.all.sub; v != nil {
+			title = v.kind + " · " + v.title
 			if m.all.filter == filterUnread {
 				title += " · Unread"
 			}
@@ -774,8 +796,8 @@ func (m model) viewDay() string {
 	}
 	if m.list == listAll {
 		keys := []keyHelp{{"?", "help"}, {"a", "day view"}, {"f", "filter"}, {"/", "search"}, {"enter", "read"}, {"x", "select"}}
-		if m.all.sender != nil {
-			keys[1] = keyHelp{"esc", "senders"}
+		if m.all.sub != nil {
+			keys[1] = keyHelp{"esc", m.all.sub.backName}
 		}
 		b.WriteString(m.helpBar(append(keys, m.actionKeys()...)...))
 		return b.String()

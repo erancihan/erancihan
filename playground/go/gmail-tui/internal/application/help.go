@@ -77,6 +77,22 @@ func (m model) helpSections() []helpSection {
 			}},
 			m.actionSection(),
 		}
+	case modeLabelsView:
+		return []helpSection{
+			{"Labels", []keyHelp{
+				{"j/k", "move"},
+				{"enter", "mails with the label"},
+				{"R", "reload"},
+				{"q", "back"},
+			}},
+			{"Change", []keyHelp{
+				{"n", "new label"},
+				{"N", "new label below this one"},
+				{"r", "rename (labels below follow)"},
+				{"m", "move under another label"},
+				{"d", "delete (asks first)"},
+			}},
+		}
 	case modeStats:
 		return []helpSection{
 			{"Range", []keyHelp{
@@ -97,8 +113,8 @@ func (m model) helpSections() []helpSection {
 	}
 	if m.list == listAll {
 		title, back := "All mail", keyHelp{"a/esc", "back to day view"}
-		if m.all.sender != nil {
-			title, back = "Sender mail", keyHelp{"esc", "back to senders"}
+		if v := m.all.sub; v != nil {
+			title, back = v.kind+" mail", keyHelp{"esc", "back to " + v.backName}
 		}
 		return []helpSection{
 			{title, []keyHelp{
@@ -143,6 +159,7 @@ func (m model) helpSections() []helpSection {
 			{"tab", "all received / inbox"},
 			{"space/z", "fold sender / all"},
 			{"s", "senders over a range"},
+			{"#", "labels: create, rename, move"},
 			{"r", "reload day"},
 			{",", "settings"},
 			{"q", "quit"},

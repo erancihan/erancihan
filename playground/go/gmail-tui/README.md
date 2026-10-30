@@ -79,6 +79,7 @@ Day view
 | `u` | open the sender's unsubscribe link |
 | `o` | open the mail in Gmail |
 | `s` | sender stats |
+| `#` | labels screen (create, rename, move, delete) |
 | `tab` | switch between all received mail and inbox only |
 | `space` / `z` | fold sender / fold all (grouped view) |
 | `,` | settings |
@@ -128,6 +129,20 @@ count in the current view. Cached days are counted from the cache; other past
 days are counted with id-only list requests (no mail is downloaded). `h`/`l`
 move a day, `j`/`k` a week, `[`/`]` a month, `t` goes to today, `enter` opens
 the day, `r` counts the month again, `esc` closes.
+
+## Labels
+`#` shows your labels as a tree with mail and unread counts. Gmail nests labels
+by name only (`Work/Clients` shows under `Work`), so a parent that is not a
+label itself is shown as "parent name only".
+
+- `n` creates a label (use `/` to nest), `N` creates one below the selected label.
+- `r` renames the selected level; labels below it follow.
+- `m` moves a label under another label or to the top level. Its sub-labels
+  move with it (`Work/Clients/2024` becomes `Archive/Clients/2024`), as in
+  Gmail's web client. Names that would clash with an existing label are refused.
+- `d` deletes a label after asking. Mail is not deleted, it only loses the
+  label. If the label has labels below it, `y` keeps them and `a` deletes them too.
+- `enter` lists the mail with that label; `esc` comes back. `R` reloads.
 
 ## Settings
 | Setting | Default |

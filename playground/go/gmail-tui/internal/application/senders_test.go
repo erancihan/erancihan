@@ -95,7 +95,7 @@ func TestSenderMails(t *testing.T) {
 	next, _ = m.Update(statsLoadedMsg{key: m.stats.key, from: m.stats.from, to: m.stats.to, emails: m.dayMails(dayKey(today()))})
 	m = next.(model)
 	m = press(t, m, "enter") // GitHub, the busiest sender
-	if m.mode != modeDay || m.list != listAll || m.all.sender == nil || m.all.sender.addr != "gh@x" {
+	if m.mode != modeDay || m.list != listAll || m.all.sub == nil || !strings.Contains(m.all.sub.query, "from:gh@x") {
 		t.Fatalf("sender view: mode=%v list=%v", m.mode, m.list)
 	}
 	q := m.allQuery()
@@ -112,11 +112,11 @@ func TestSenderMails(t *testing.T) {
 	}
 	// reading and coming back stays in the sender list; esc returns to senders
 	m = press(t, m, "enter", "q")
-	if m.list != listAll || m.all.sender == nil {
+	if m.list != listAll || m.all.sub == nil {
 		t.Fatal("reader back left the sender list")
 	}
 	m = press(t, m, "esc")
-	if m.mode != modeStats || m.back != nil || m.all.sender != nil || len(m.all.ids) != 5 {
+	if m.mode != modeStats || m.back != nil || m.all.sub != nil || len(m.all.ids) != 5 {
 		t.Errorf("back: mode=%v all=%d", m.mode, len(m.all.ids))
 	}
 	m = press(t, m, "q", "a") // the earlier all-mail list is intact
