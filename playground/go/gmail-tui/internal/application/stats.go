@@ -7,7 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"google.golang.org/api/gmail/v1"
 )
 
 // statsLengths are the range lengths in days that tab cycles through.
@@ -37,13 +36,22 @@ type statsData struct {
 }
 
 type stats struct {
-	from, to time.Time // inclusive range of local days
+	from, to time.Time // inclusive range of local days; kept while allTime is on
+	allTime  bool      // the newest maxAllTime mails instead of a range
 	key      statsKey
-	data     statsData
-	loading  bool
-	err      error
-	cursor   int
-	offset   int
+
+	// loading pipeline, see senders.go
+	ids       []string // mails of the range
+	todo      []string // ids whose metadata is still to fetch
+	progress  [2]int   // fetched, to fetch
+	failed    int
+	truncated bool
+
+	data    statsData
+	loading bool
+	err     error
+	cursor  int
+	offset  int
 }
 
 // days is the length of the range in days.
@@ -84,8 +92,7 @@ func (m model) openStats(from, to time.Time, refresh bool) (tea.Model, tea.Cmd) 
 			return m, nil
 		}
 	}
-	m.stats.loading = true
-	return m, fetchStats(m.service, from, to, m.scope, key)
+	return m.startStatsFetch()
 }
 
 // cachedRange returns the mails of from..to in scope if every day is cached completely.
@@ -128,7 +135,7 @@ func (m model) statsLoaded(msg statsLoadedMsg) (tea.Model, tea.Cmd) {
 // browsing those days later needs no fetch. Days already cached are kept, as
 // the sync keeps them current.
 func (m *model) fillDays(msg statsLoadedMsg) bool {
-	if msg.key.scope != scopeReceived || msg.truncated || msg.failed > 0 || m.historyID == 0 {
+	if msg.key.from == allTimeLabel || msg.key.scope != scopeReceived || msg.truncated || msg.failed > 0 || m.historyID == 0 {
 		return false
 	}
 	byDay := map[string][]email{}
@@ -230,22 +237,42 @@ func (m model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeDay
 		m.status = ""
 
+	case "enter":
+		if m.stats.cursor < len(m.stats.data.senders) && !m.stats.loading {
+			return m.openSenderMails(m.stats.data.senders[m.stats.cursor])
+		}
+
 	// Range
+	case "a":
+		if !m.stats.allTime {
+			return m.confirmAllTime(), nil
+		}
 	case "h", "left":
-		return m.shiftStats(-1)
+		if !m.stats.allTime {
+			return m.shiftStats(-1)
+		}
 	case "l", "right":
-		if m.stats.to.Before(today()) {
+		if !m.stats.allTime && m.stats.to.Before(today()) {
 			return m.shiftStats(1)
 		}
 	case "t":
 		n := m.stats.days()
+		if m.stats.allTime {
+			n = statsLengths[0]
+		}
 		return m.openStats(today().AddDate(0, 0, -(n-1)), today(), false)
 	case "tab":
+		if m.stats.allTime {
+			return m.openStats(m.stats.from, m.stats.to, false) // back to the range
+		}
 		return m.cycleStatsLength()
 	case "c":
 		m.modal = modalRange
 		m.rangeIn = rangeInput{fields: [2]string{dayKey(m.stats.from), dayKey(m.stats.to)}}
 	case "r":
+		if m.stats.allTime {
+			return m.openStatsAllTime(true)
+		}
 		return m.openStats(m.stats.from, m.stats.to, true)
 
 	// List
@@ -326,14 +353,20 @@ func (m model) viewStats() string {
 	var b strings.Builder
 
 	title := "Senders · " + formatRange(s.from, s.to) + " · " + count(s.days(), "day")
+	if s.allTime {
+		title = "Senders · all time (newest " + commas(maxAllTime) + ")"
+	}
 	meta := fmt.Sprintf("  %s · %s · %s", s.key.scope, plural(s.data.total), count(len(s.data.senders), "sender"))
 	b.WriteString(ansi.Truncate(titleStyle.Render(title)+dimStyle.Render(meta), m.width, "…") + "\n\n")
 	b.WriteString(dimStyle.Render(ansi.Truncate(fmt.Sprintf(" %5s %6s  %-10s  %-6s  %s", "mails", "unread", "share", "last", "sender"), m.width, "…")) + "\n")
 
 	h := m.statsHeight()
 	switch {
+	case s.loading && s.ids == nil:
+		b.WriteString(" Listing mails…\n")
+		h--
 	case s.loading:
-		b.WriteString(" Loading senders… (large ranges take a while)\n")
+		b.WriteString(fmt.Sprintf(" Loading senders… %s / %s mails\n", commas(s.progress[0]), commas(s.progress[1])))
 		h--
 	case s.err != nil:
 		b.WriteString(" " + errorStyle.Render("Error: "+s.err.Error()) + "\n")
@@ -363,8 +396,8 @@ func (m model) viewStats() string {
 	}
 	m.status = status
 	b.WriteString(m.footerStatus())
-	b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"q", "back"}, keyHelp{"h/l", "range"},
-		keyHelp{"tab", "length"}, keyHelp{"c", "custom range"}, keyHelp{"u", "unsubscribe"}))
+	b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"q", "back"}, keyHelp{"enter", "mails"}, keyHelp{"h/l", "range"},
+		keyHelp{"tab", "length"}, keyHelp{"c", "custom range"}, keyHelp{"a", "all time"}, keyHelp{"u", "unsubscribe"}))
 	return b.String()
 }
 
@@ -392,12 +425,4 @@ func formatRange(from, to time.Time) string {
 		return from.Format("02 Jan") + " – " + to.Format("02 Jan 2006")
 	}
 	return from.Format("02 Jan 2006") + " – " + to.Format("02 Jan 2006")
-}
-
-// --- COMMANDS ---
-func fetchStats(srv *gmail.Service, from, to time.Time, s scope, key statsKey) tea.Cmd {
-	return func() tea.Msg {
-		emails, failed, truncated, err := loadRange(srv, from, to.AddDate(0, 0, 1), s, maxPerRange)
-		return statsLoadedMsg{key: key, from: from, to: to, emails: emails, failed: failed, truncated: truncated, err: err}
-	}
 }

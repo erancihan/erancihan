@@ -84,7 +84,9 @@ type model struct {
 	// mail list: one day, or all mail (see all.go)
 	list        listKind
 	all         allList
-	day         time.Time // local midnight
+	listGen     int        // last all-mail query generation, across lists
+	back        *savedList // list to restore when leaving a sender's mail
+	day         time.Time  // local midnight
 	scope       scope
 	mails       map[string]email    // id -> the one stored copy of each mail; see store.go
 	days        map[string]dayStore // day key -> ids of all received mail; see sync.go
@@ -240,6 +242,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case allLoadedMsg:
 		return m.allLoaded(msg)
+
+	case statsIDsMsg:
+		return m.statsIDs(msg)
+
+	case statsChunkMsg:
+		return m.statsChunkDone(msg)
 
 	case countsMsg:
 		return m.countsLoaded(msg)
@@ -467,10 +475,16 @@ func (m *model) refreshView() {
 	}
 }
 
+// grouped reports whether the list groups mails by sender; a single
+// sender's list never does.
+func (m model) grouped() bool {
+	return m.settings.GroupBySender && !(m.list == listAll && m.all.sender != nil)
+}
+
 // rebuild recomputes the visible rows from the mails, grouping and fold state.
 func (m *model) rebuild() {
 	m.rows = nil
-	if !m.settings.GroupBySender {
+	if !m.grouped() {
 		for i := range m.data.emails {
 			m.rows = append(m.rows, row{group: -1, mail: i})
 		}
@@ -639,6 +653,12 @@ func (m model) viewDay() string {
 	}
 	if m.list == listAll {
 		title = "All mail · " + m.all.filter.String()
+		if v := m.all.sender; v != nil {
+			title = "Sender · " + v.name + " · " + v.rangeText()
+			if m.all.filter == filterUnread {
+				title += " · Unread"
+			}
+		}
 		if m.all.search != "" {
 			title += " · “" + m.all.search + "”"
 		}
@@ -707,6 +727,9 @@ func (m model) viewDay() string {
 	}
 	if m.list == listAll {
 		keys := []keyHelp{{"?", "help"}, {"a", "day view"}, {"f", "filter"}, {"/", "search"}, {"enter", "read"}, {"x", "select"}}
+		if m.all.sender != nil {
+			keys[1] = keyHelp{"esc", "senders"}
+		}
 		b.WriteString(m.helpBar(append(keys, m.actionKeys()...)...))
 		return b.String()
 	}
@@ -793,7 +816,7 @@ func (m model) renderRow(r row, cursor bool) string {
 // is the group header, so it has no column.
 func (m model) columnHeader() string {
 	indent := "  "
-	if m.settings.GroupBySender {
+	if m.grouped() {
 		indent = "    "
 	}
 	col := "Time"
@@ -801,7 +824,7 @@ func (m model) columnHeader() string {
 		col = "Date"
 	}
 	h := indent + pad(col, m.timeWidth()) + "   " + pad("Labels", labelWidth) + "  "
-	if !m.settings.GroupBySender {
+	if !m.grouped() {
 		h += pad("Sender", senderWidth) + "  "
 	}
 	return dimStyle.Render(ansi.Truncate(h+"Subject", m.width, "…"))

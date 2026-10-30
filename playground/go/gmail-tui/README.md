@@ -95,10 +95,14 @@ act on the selection.
 Senders (`s`): senders ranked by mail count over a range of days, by default
 the last 7 days ending today. `h`/`l` move the range back or forward by its own
 length, `tab` cycles the length (7, 30, 90 days), `t` makes it end today, and
-`c` sets any From–To range (up to 366 days). Ranges whose days are all cached
-are counted at once; others are fetched once (at most 2000 mails), and the
-fetched days are added to the cache. `u` opens the selected sender's
-unsubscribe link, `r` reloads, `q` goes back.
+`c` sets any From–To range (up to 366 days). `a` counts over all time (the
+newest 10,000 mails) after asking first, since Gmail needs one request per
+mail; `tab` goes back to the range. Ranges whose days are all cached are
+counted at once; otherwise the mails are listed and only those not stored yet
+are fetched, with progress shown. `enter` opens the selected sender's mail over
+the same range as a mail list (reader, selection and actions work as usual;
+`esc` goes back to the senders). `u` opens the sender's unsubscribe link, `r`
+reloads, `q` goes back.
 
 All mail (`a`): one list across all dates, newest first, to work through old
 mail without going day by day. It starts filtered to unread mail; `f` switches

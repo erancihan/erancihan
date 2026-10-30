@@ -41,10 +41,11 @@ func (f allFilter) String() string {
 // (e.g. read in the Unread filter) stay listed until reload.
 type allList struct {
 	filter   allFilter
-	search   string   // extra Gmail query from the search dialog
-	ids      []string // in Gmail's order, newest first
-	next     string   // page token of the next page; "" when complete
-	estimate int64    // Gmail's estimate of matching mails
+	search   string      // extra Gmail query from the search dialog
+	sender   *senderView // set when showing one sender's mail from the senders view
+	ids      []string    // in Gmail's order, newest first
+	next     string      // page token of the next page; "" when complete
+	estimate int64       // Gmail's estimate of matching mails
 	loading  bool
 	loaded   bool  // at least one page arrived for the current query
 	gen      int   // increases with each new query; stale pages are dropped
@@ -68,6 +69,9 @@ func (m model) allQuery() string {
 	if m.all.filter == filterUnread {
 		q = append(q, "is:unread")
 	}
+	if m.all.sender != nil {
+		q = append(q, m.all.sender.query())
+	}
 	if s := strings.TrimSpace(m.all.search); s != "" {
 		q = append(q, s)
 	}
@@ -82,7 +86,8 @@ func (m model) openAll(reload bool) (tea.Model, tea.Cmd) {
 		m.refreshView()
 		return m, nil
 	}
-	m.all.gen++
+	m.listGen++
+	m.all.gen = m.listGen
 	m.all.ids, m.all.next, m.all.loaded, m.all.failed, m.all.err = nil, "", false, 0, nil
 	m.all.loading = true
 	m.cursor, m.offset = 0, 0
@@ -137,7 +142,14 @@ func (m *model) loadMoreIfNeeded() tea.Cmd {
 // it does not handle.
 func (m model) updateAll(msg tea.KeyMsg) (_ tea.Model, _ tea.Cmd, ok bool) {
 	switch msg.String() {
-	case "a", "esc":
+	case "a", "esc", "s":
+		if m.all.sender != nil {
+			next, cmd := m.leaveSenderMails()
+			return next, cmd, true
+		}
+		if msg.String() == "s" {
+			return m, nil, false
+		}
 		next, cmd := m.open(m.day, m.scope, false)
 		return next, cmd, true
 	case "f":

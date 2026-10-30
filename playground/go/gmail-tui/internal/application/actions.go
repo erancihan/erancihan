@@ -218,7 +218,7 @@ func (m model) confirmTrash(es []email) model {
 		return m
 	}
 	m.modal = modalConfirm
-	m.confirm = confirmState{text: "Move " + plural(len(es)) + " to Trash?", ids: ids(es)}
+	m.confirm = confirmState{kind: confirmTrash, text: "Move " + plural(len(es)) + " to Trash?", ids: ids(es)}
 	return m
 }
 
@@ -316,9 +316,18 @@ const (
 	modalSearch
 )
 
+type confirmKind int
+
+const (
+	confirmTrash confirmKind = iota
+	confirmAllTime
+)
+
 type confirmState struct {
-	text string
-	ids  []string
+	kind   confirmKind
+	text   string
+	detail string   // optional explanation under the question
+	ids    []string // mails to trash
 }
 
 type labelPicker struct {
@@ -391,6 +400,9 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch k {
 		case "y", "enter":
 			m.modal = modalNone
+			if m.confirm.kind == confirmAllTime {
+				return m.openStatsAllTime(false)
+			}
 			m.status = "Moving to Trash…"
 			return m, trashCmd(m.service, m.confirm.ids)
 		case "n", "esc", "q":
@@ -475,7 +487,11 @@ func (m model) viewModal() string {
 		return modalStyle.Render(m.viewSearch())
 
 	case modalConfirm:
-		lines = []string{titleStyle.Render(m.confirm.text), "", m.keyLine(keyHelp{"y", "confirm"}, keyHelp{"n", "cancel"})}
+		lines = []string{titleStyle.Render(m.confirm.text), ""}
+		if m.confirm.detail != "" {
+			lines = append(lines, dimStyle.Render(m.confirm.detail), "")
+		}
+		lines = append(lines, m.keyLine(keyHelp{"y", "confirm"}, keyHelp{"n", "cancel"}))
 
 	case modalSettings:
 		lines = []string{titleStyle.Render("Settings"), ""}

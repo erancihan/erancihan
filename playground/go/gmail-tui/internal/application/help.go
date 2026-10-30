@@ -88,19 +88,25 @@ func (m model) helpSections() []helpSection {
 			}},
 			{"Senders", []keyHelp{
 				{"j/k", "move"},
+				{"enter", "mails of sender"},
+				{"a", "all time (asks first)"},
 				{"u", "unsubscribe"},
 				{"q", "back to day view"},
 			}},
 		}
 	}
 	if m.list == listAll {
+		title, back := "All mail", keyHelp{"a/esc", "back to day view"}
+		if m.all.sender != nil {
+			title, back = "Sender mail", keyHelp{"esc", "back to senders"}
+		}
 		return []helpSection{
-			{"All mail", []keyHelp{
+			{title, []keyHelp{
 				{"f", "filter: unread / all"},
 				{"/", "search (Gmail query)"},
 				{"tab", "all received / inbox"},
 				{"r", "reload"},
-				{"a/esc", "back to day view"},
+				back,
 			}},
 			{"Move", []keyHelp{
 				{"j/k", "up / down (more loads at the end)"},
