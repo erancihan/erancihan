@@ -86,9 +86,10 @@ type message struct {
 var errStopPaging = errors.New("stop paging")
 
 // loadDay fetches all mail received on the local calendar day starting at `day`.
-// It returns the mails that loaded and the number that failed to load.
-func loadDay(srv *gmail.Service, day time.Time, s scope) ([]email, int, error) {
-	emails, failed, _, err := loadRange(srv, day, day.AddDate(0, 0, 1), s, maxPerDay)
+// The inbox view filters this locally. It returns the mails that loaded and
+// the number that failed to load.
+func loadDay(srv *gmail.Service, day time.Time) ([]email, int, error) {
+	emails, failed, _, err := loadRange(srv, day, day.AddDate(0, 0, 1), scopeReceived, maxPerDay)
 	return emails, failed, err
 }
 
@@ -118,8 +119,15 @@ func loadRange(srv *gmail.Service, from, to time.Time, s scope, limit int) (emai
 		return nil, 0, false, err
 	}
 
+	emails, missing, failed := getMetadata(ctx, srv, ids)
+	return emails, failed + len(missing), truncated, nil
+}
+
+// getMetadata fetches list metadata for the given ids in parallel. missing holds
+// ids Gmail no longer has; failed counts other errors.
+func getMetadata(ctx context.Context, srv *gmail.Service, ids []string) (emails []email, missing []string, failed int) {
 	all := make([]email, len(ids))
-	loaded := make([]bool, len(ids))
+	errs := make([]error, len(ids))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	for range fetchWorkers {
@@ -132,10 +140,10 @@ func loadRange(srv *gmail.Service, from, to time.Time, s scope, limit int) (emai
 						Do()
 				})
 				if err != nil {
+					errs[i] = err
 					continue
 				}
 				all[i] = parseEmail(m)
-				loaded[i] = true
 			}
 		})
 	}
@@ -146,11 +154,35 @@ func loadRange(srv *gmail.Service, from, to time.Time, s scope, limit int) (emai
 	wg.Wait()
 
 	for i, e := range all {
-		if loaded[i] {
+		switch {
+		case errs[i] == nil:
 			emails = append(emails, e)
+		case notFound(errs[i]):
+			missing = append(missing, ids[i])
+		default:
+			failed++
 		}
 	}
-	return emails, len(ids) - len(emails), truncated, nil
+	return emails, missing, failed
+}
+
+func notFound(err error) bool {
+	var gerr *googleapi.Error
+	return errors.As(err, &gerr) && gerr.Code == 404
+}
+
+// receivable reports whether a mail belongs in the "all received" view, the
+// local equivalent of the search `-in:sent -in:drafts -in:chats` (spam and
+// trash are excluded by Gmail search by default).
+func receivable(e email) bool {
+	return !slices.ContainsFunc(e.Labels, func(l string) bool {
+		return l == "SENT" || l == "DRAFT" || l == "CHAT" || l == "SPAM" || l == "TRASH"
+	})
+}
+
+// match reports whether a mail from the "all received" set belongs in scope s.
+func (s scope) match(e email) bool {
+	return s != scopeInbox || slices.Contains(e.Labels, "INBOX")
 }
 
 // withRetry retries a request that hit Gmail's rate limit, backing off 1s, 2s, 4s.

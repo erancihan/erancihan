@@ -84,6 +84,7 @@ func TestGroupHeaderSelectsGroup(t *testing.T) {
 
 func TestTrashConfirmAndRemove(t *testing.T) {
 	m := flat(t)
+	m.height = 20
 	m = press(t, m, "d")
 	if m.modal != modalConfirm || !strings.Contains(ansi.Strip(m.View()), "Move 1 mail to Trash?") {
 		t.Fatalf("no confirm:\n%s", ansi.Strip(m.View()))
@@ -99,16 +100,23 @@ func TestTrashConfirmAndRemove(t *testing.T) {
 	}
 }
 
-func TestInboxScopeDropsArchived(t *testing.T) {
+func TestInboxScopeFiltersLocally(t *testing.T) {
 	m := flat(t)
-	m.cache[cacheKey{day: m.key().day, scope: scopeInbox}] = newDayData([]email{{ID: "1", Labels: []string{"INBOX"}}}, 0)
-	next, _ := m.Update(actionDoneMsg{ids: []string{"1"}, remove: []string{"INBOX"}, verb: "Removed Inbox from"})
-	m = next.(model)
-	if n := len(m.cache[cacheKey{day: m.key().day, scope: scopeInbox}].emails); n != 0 {
-		t.Errorf("inbox cache still has %d", n)
+	s := m.days[dayKey(m.day)]
+	s.Emails[0].Labels = []string{"INBOX"}
+	m.days[dayKey(m.day)] = s
+	m = press(t, m, "tab")
+	if m.scope != scopeInbox || len(m.data.emails) != 1 || m.loading {
+		t.Fatalf("inbox view: scope=%v mails=%d loading=%v", m.scope, len(m.data.emails), m.loading)
 	}
+	next, _ := m.Update(actionDoneMsg{ids: []string{m.data.emails[0].ID}, remove: []string{"INBOX"}, verb: "Removed Inbox from"})
+	m = next.(model)
+	if len(m.data.emails) != 0 {
+		t.Errorf("archived mail still in inbox view")
+	}
+	m = press(t, m, "tab")
 	if len(m.data.emails) != 3 {
-		t.Errorf("all-received view lost a mail")
+		t.Errorf("all-received view lost a mail: %d", len(m.data.emails))
 	}
 }
 
@@ -138,12 +146,12 @@ func TestLabelPicker(t *testing.T) {
 	}
 }
 
-func TestLabelChips(t *testing.T) {
+func TestLabelText(t *testing.T) {
 	m := flat(t)
-	m.labels = []label{{"STARRED", "Starred"}, {"Label_1", "Work"}}
-	e := email{Labels: []string{"STARRED", "Label_1", "INBOX"}}
-	if got := m.labelChips(e); got != " ★ [Work]" {
-		t.Errorf("chips = %q", got)
+	m.labels = []label{{"STARRED", "Starred"}, {"Label_1", "Work"}, {"Label_2", "Receipts"}}
+	e := email{Labels: []string{"STARRED", "Label_1", "Label_2", "INBOX"}}
+	if got := m.labelText(e); got != "★ Work, Receipts" {
+		t.Errorf("labels = %q", got)
 	}
 }
 

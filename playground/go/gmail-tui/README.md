@@ -30,6 +30,15 @@ browser for login (it prints the link too). While the consent screen is in
 "Testing" mode, Google expires the login after 7 days; the app then asks you to
 log in again.
 
+## Caching
+Each day is fetched once and saved to `cache.json` (next to `token.json`, last
+60 days), so past days open instantly, also after a restart. Mail cannot arrive
+in the past, so days are never listed again. Changes still happen to known mail
+(read in another client, labelled, trashed), and new mail arrives for today:
+every minute the app asks Gmail's History API for changes since the last check
+and applies them. The day before the shown one is loaded in the background.
+`r` reloads the shown day from scratch.
+
 ## Run
 ```sh
 go run .

@@ -162,6 +162,10 @@ func (m model) actionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
 			clear(m.selected)
 		}
 	}
+	var save tea.Cmd
+	if len(msg.ids) > 0 {
+		save = m.saveCache()
+	}
 	switch {
 	case msg.err != nil:
 		m.status = errorStyle.Render("Error: " + msg.err.Error())
@@ -171,42 +175,36 @@ func (m model) actionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
 	default:
 		m.status = msg.verb + " " + plural(len(msg.ids))
 	}
-	return m, nil
+	return m, save
 }
 
 // mutate updates the given mails in every cached day; trashed mails, and mails
-// that left the inbox for inbox-scoped days, are dropped.
+// that no longer count as received (e.g. moved to spam), are dropped.
 func (m *model) mutate(set map[string]bool, trash bool, fn func(*email)) {
-	cur, hasCur := m.selectedEmail()
-	for k, d := range m.cache {
+	for d, s := range m.days {
 		changed := false
 		var kept []email
-		for _, e := range d.emails {
+		for _, e := range s.Emails {
 			if set[e.ID] {
 				changed = true
 				if trash {
 					continue
 				}
 				fn(&e)
-				if k.scope == scopeInbox && !slices.Contains(e.Labels, "INBOX") {
+				if !receivable(e) {
 					continue
 				}
 			}
 			kept = append(kept, e)
 		}
 		if changed {
-			m.cache[k] = newDayData(kept, d.failed)
+			s.Emails = kept
+			m.days[d] = s
 		}
 	}
 	clear(m.statsCache) // counts are stale now
+	m.refreshView()
 
-	if d, ok := m.cache[m.key()]; ok {
-		m.data = d
-		m.rebuild()
-		if hasCur {
-			m.cursorTo(cur.ID)
-		}
-	}
 	if m.mode == modeReader {
 		if trash && set[m.reader.email.ID] {
 			m.mode = modeDay

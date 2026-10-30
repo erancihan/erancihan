@@ -61,7 +61,11 @@ func main() {
 	}
 
 	// 3. Run Bubble Tea Program
-	m := application.NewApplication(srv, settings, settingsPath)
+	m := application.NewApplication(srv, application.Options{
+		Settings:     settings,
+		SettingsPath: settingsPath,
+		CachePath:    filepath.Join(dir, "cache.json"),
+	})
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)

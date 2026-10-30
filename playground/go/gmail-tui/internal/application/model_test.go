@@ -36,10 +36,10 @@ func loaded(t *testing.T) model {
 	t.Helper()
 	s := defaultSettings()
 	s.GroupBySender = true
-	m := NewApplication(nil, s, "")
+	m := NewApplication(nil, Options{Settings: s})
 	m.width, m.height = 90, 14
 	t0 := today().Add(9 * time.Hour)
-	next, _ := m.Update(dayLoadedMsg{key: m.key(), emails: []email{
+	next, _ := m.Update(dayLoadedMsg{day: dayKey(m.day), emails: []email{
 		{ID: "1", FromName: "GitHub", FromAddr: "gh@x", Subject: "PR merged", Time: t0, Unread: true, Unsubscribe: "https://gh/u"},
 		{ID: "2", FromName: "GitHub", FromAddr: "gh@x", Subject: "CI failed", Time: t0.Add(time.Hour)},
 		{ID: "3", FromName: "Bank", FromAddr: "bank@x", Subject: "Statement", Time: t0.Add(2 * time.Hour)},
@@ -78,7 +78,7 @@ func TestDayFoldAndRead(t *testing.T) {
 func TestStaleDayIgnored(t *testing.T) {
 	m := loaded(t)
 	m = press(t, m, "h") // yesterday, starts loading
-	next, _ := m.Update(dayLoadedMsg{key: cacheKey{day: "2000-01-01"}, emails: []email{{FromAddr: "x"}}})
+	next, _ := m.Update(dayLoadedMsg{day: "2000-01-01", emails: []email{{FromAddr: "x"}}})
 	m = next.(model)
 	if !m.loading || len(m.rows) != 0 {
 		t.Errorf("stale load applied")

@@ -30,7 +30,10 @@ var (
 const (
 	unreadMark  = "●"
 	checkMark   = "✓"
+	labelWidth  = 16 // labels column
 	senderWidth = 18 // sender column in the flat list
+	prefetchGap = 1  // days before the shown one to load in the background
+	keepDays    = 60 // days kept in the disk cache
 )
 
 // --- MODEL ---
@@ -42,11 +45,12 @@ const (
 	modeStats
 )
 
-type cacheKey struct {
-	day   string // YYYY-MM-DD
-	scope scope
+// dayKey is the cache key of a day, YYYY-MM-DD.
+func dayKey(day time.Time) string {
+	return day.Format(time.DateOnly)
 }
 
+// dayData is the shown day: the cached mails filtered by scope.
 type dayData struct {
 	emails []email // newest first
 	groups []group
@@ -70,6 +74,7 @@ type model struct {
 	service      *gmail.Service
 	settings     Settings
 	settingsPath string
+	cachePath    string
 	mode         mode
 	width        int
 	height       int
@@ -78,7 +83,10 @@ type model struct {
 	// day view
 	day       time.Time // local midnight
 	scope     scope
-	cache     map[cacheKey]dayData
+	days      map[string]dayStore // day key -> all received mail; see sync.go
+	pending   map[string]bool     // day keys being fetched
+	historyID uint64              // Gmail history id the cache is current to
+	syncing   bool
 	data      dayData
 	collapsed map[string]bool // sender address -> folded; kept across days
 	selected  map[string]bool // message id -> selected for bulk actions
@@ -100,15 +108,24 @@ type model struct {
 	labelsErr      error
 }
 
+// Options configure the application.
+type Options struct {
+	Settings     Settings
+	SettingsPath string // where settings are saved; empty disables saving
+	CachePath    string // where fetched days are cached; empty disables the disk cache
+}
+
 // --- CONSTRUCTOR ---
-func NewApplication(srv *gmail.Service, settings Settings, settingsPath string) model {
-	return model{
+func NewApplication(srv *gmail.Service, opts Options) model {
+	m := model{
 		service:      srv,
-		settings:     settings,
-		settingsPath: settingsPath,
+		settings:     opts.Settings,
+		settingsPath: opts.SettingsPath,
+		cachePath:    opts.CachePath,
 		day:          today(),
 		scope:        scopeReceived,
-		cache:        map[cacheKey]dayData{},
+		days:         map[string]dayStore{},
+		pending:      map[string]bool{},
 		collapsed:    map[string]bool{},
 		selected:     map[string]bool{},
 		bodies:       map[string]*message{},
@@ -116,8 +133,16 @@ func NewApplication(srv *gmail.Service, settings Settings, settingsPath string) 
 		stats:        stats{days: statsRanges[0]},
 		width:        80,
 		height:       24,
-		loading:      true,
 	}
+	if opts.CachePath != "" {
+		m.days, m.historyID = loadCache(opts.CachePath)
+	}
+	if _, ok := m.days[dayKey(m.day)]; !ok {
+		m.pending[dayKey(m.day)] = true
+		m.loading = true
+	}
+	m.refreshView()
+	return m
 }
 
 func today() time.Time {
@@ -125,23 +150,29 @@ func today() time.Time {
 	return time.Date(y, mo, d, 0, 0, 0, 0, time.Local)
 }
 
-func (m model) key() cacheKey {
-	return cacheKey{day: m.day.Format(time.DateOnly), scope: m.scope}
-}
-
 // --- MESSAGES ---
 type dayLoadedMsg struct {
-	key    cacheKey
-	emails []email
-	failed int
-	err    error
+	day       string
+	emails    []email
+	failed    int
+	historyID uint64 // mailbox history id read before listing, if requested
+	err       error
 }
 
 type statusMsg string
 
 // --- INIT ---
 func (m model) Init() tea.Cmd {
-	return tea.Batch(fetchDay(m.service, m.day, m.scope), fetchLabels(m.service))
+	cmds := []tea.Cmd{fetchLabels(m.service), syncTick()}
+	if m.pending[dayKey(m.day)] {
+		cmds = append(cmds, fetchDay(m.service, m.day, m.historyID == 0))
+	}
+	if m.historyID != 0 {
+		// catch up on changes since the cache was saved
+		cmds = append(cmds, func() tea.Msg { return syncTickMsg{} })
+	}
+	cmds = append(cmds, m.prefetch())
+	return tea.Batch(cmds...)
 }
 
 // --- UPDATE ---
@@ -181,19 +212,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = string(msg)
 
 	case dayLoadedMsg:
-		if msg.err != nil {
-			if msg.key == m.key() {
-				m.loading = false
-				m.status = errorStyle.Render("Error: " + msg.err.Error())
-			}
-			return m, nil
-		}
-		d := newDayData(msg.emails, msg.failed)
-		m.cache[msg.key] = d
-		if msg.key == m.key() {
-			m.loading = false
-			m.show(d)
-		}
+		return m.dayLoaded(msg)
+
+	case syncTickMsg:
+		m, cmd := m.startSync()
+		return m, tea.Batch(cmd, syncTick())
+
+	case syncedMsg:
+		return m.synced(msg)
 
 	case labelsLoadedMsg:
 		m.labels, m.labelsErr = msg.labels, msg.err
@@ -300,28 +326,95 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// open switches to the given day and scope, loading it unless cached.
+// open switches to the given day and scope. Cached days show at once; refresh
+// fetches the day again.
 func (m model) open(day time.Time, s scope, refresh bool) (tea.Model, tea.Cmd) {
 	m.day, m.scope = day, s
 	m.cursor, m.offset = 0, 0
+	m.status = ""
 	clear(m.selected)
-	if d, ok := m.cache[m.key()]; ok && !refresh {
-		m.loading = false
-		m.show(d)
-		return m, nil
+
+	var cmds []tea.Cmd
+	k := dayKey(day)
+	store, cached := m.days[k]
+	m.loading = !cached || refresh
+	if m.loading && (refresh || !m.pending[k]) {
+		m.pending[k] = true
+		cmds = append(cmds, fetchDay(m.service, day, m.historyID == 0))
 	}
-	m.loading = true
-	m.show(dayData{})
-	return m, fetchDay(m.service, day, s)
+	if cached && !refresh {
+		m.status = failedStatus(store.Failed)
+	}
+	m.refreshView()
+	cmds = append(cmds, m.prefetch())
+	return m, tea.Batch(cmds...)
 }
 
-func (m *model) show(d dayData) {
-	m.data = d
-	m.status = ""
-	if d.failed > 0 {
-		m.status = errorStyle.Render(fmt.Sprintf("%d mails failed to load (r to retry)", d.failed))
+func (m model) dayLoaded(msg dayLoadedMsg) (tea.Model, tea.Cmd) {
+	delete(m.pending, msg.day)
+	current := msg.day == dayKey(m.day)
+	if msg.err != nil {
+		if current {
+			m.loading = false
+			m.status = errorStyle.Render("Error: " + msg.err.Error())
+		}
+		return m, nil
+	}
+	slices.SortStableFunc(msg.emails, func(a, b email) int { return b.Time.Compare(a.Time) })
+	m.days[msg.day] = dayStore{Emails: msg.emails, Failed: msg.failed}
+	if m.historyID == 0 {
+		m.historyID = msg.historyID
+	}
+	if current {
+		m.loading = false
+		m.status = failedStatus(msg.failed)
+		m.refreshView()
+	}
+	return m, m.saveCache()
+}
+
+func failedStatus(failed int) string {
+	if failed == 0 {
+		return ""
+	}
+	return errorStyle.Render(fmt.Sprintf("%s failed to load (r to retry)", plural(failed)))
+}
+
+// prefetch loads the days before the shown one in the background.
+func (m *model) prefetch() tea.Cmd {
+	var cmds []tea.Cmd
+	for i := 1; i <= prefetchGap; i++ {
+		d := m.day.AddDate(0, 0, -i)
+		k := dayKey(d)
+		if _, ok := m.days[k]; ok || m.pending[k] {
+			continue
+		}
+		m.pending[k] = true
+		cmds = append(cmds, fetchDay(m.service, d, false))
+	}
+	return tea.Batch(cmds...)
+}
+
+// refreshView recomputes the shown day from the cache, keeping the cursor on
+// the same mail when it is still listed.
+func (m *model) refreshView() {
+	cur, hasCur := m.selectedEmail()
+	var es []email
+	for _, e := range m.days[dayKey(m.day)].Emails {
+		if m.scope.match(e) {
+			es = append(es, e)
+		}
+	}
+	m.data = newDayData(es, 0)
+	for id := range m.selected {
+		if !slices.ContainsFunc(es, func(e email) bool { return e.ID == id }) {
+			delete(m.selected, id)
+		}
 	}
 	m.rebuild()
+	if hasCur {
+		m.cursorTo(cur.ID)
+	}
 }
 
 // rebuild recomputes the visible rows from the mails, grouping and fold state.
@@ -443,7 +536,7 @@ func (m *model) scroll() {
 	m.offset = max(0, min(m.offset, len(m.rows)-h))
 }
 
-// listHeight is the screen height minus title, blank line, status and help.
+// listHeight is the screen height minus title, column header, status and help.
 func (m model) listHeight() int {
 	return max(1, m.height-4)
 }
@@ -498,7 +591,8 @@ func (m model) viewDay() string {
 	if n := len(m.selected); n > 0 {
 		meta += fmt.Sprintf(" · %d selected", n)
 	}
-	b.WriteString(ansi.Truncate(titleStyle.Render(title)+dimStyle.Render(meta), m.width, "…") + "\n\n")
+	b.WriteString(ansi.Truncate(titleStyle.Render(title)+dimStyle.Render(meta), m.width, "…") + "\n")
+	b.WriteString(m.columnHeader() + "\n")
 
 	h := m.listHeight()
 	switch {
@@ -574,19 +668,18 @@ func (m model) renderRow(r row, cursor bool) string {
 		indent = "   "
 	}
 	prefix := indent + e.Time.Format("15:04") + " " + mark + " "
+	labels := pad(m.labelText(e), labelWidth) + "  "
 	sender := ""
 	if r.group < 0 {
-		sender = ansi.Truncate(e.FromName, senderWidth, "…")
-		sender += strings.Repeat(" ", senderWidth-ansi.StringWidth(sender)) + "  "
+		sender = pad(e.FromName, senderWidth) + "  "
 	}
-	chips := m.labelChips(e)
 	snippet := ""
 	if e.Snippet != "" {
 		snippet = " — " + e.Snippet
 	}
 
 	if cursor {
-		line := m.check(m.selected[e.ID], true) + prefix + sender + e.Subject + chips + snippet
+		line := m.check(m.selected[e.ID], true) + prefix + labels + sender + e.Subject + snippet
 		return selectedStyle.Width(m.width).Render(ansi.Truncate(line, m.width, "…"))
 	}
 	subject := e.Subject
@@ -596,32 +689,64 @@ func (m model) renderRow(r row, cursor bool) string {
 	if sender != "" {
 		sender = senderStyle.Render(sender)
 	}
-	return ansi.Truncate(m.check(m.selected[e.ID], false)+prefix+sender+subject+labelStyle.Render(chips)+dimStyle.Render(snippet), m.width, "…")
+	return ansi.Truncate(m.check(m.selected[e.ID], false)+prefix+labelStyle.Render(labels)+sender+subject+dimStyle.Render(snippet), m.width, "…")
 }
 
-// labelChips lists a mail's star and user labels, e.g. " ★ [Work]".
-func (m model) labelChips(e email) string {
-	var b strings.Builder
+// columnHeader names the columns of renderRow; in the grouped list the sender
+// is the group header, so it has no column.
+func (m model) columnHeader() string {
+	indent := "  "
+	if m.settings.GroupBySender {
+		indent = "    "
+	}
+	h := indent + pad("Time", 5) + "   " + pad("Labels", labelWidth) + "  "
+	if !m.settings.GroupBySender {
+		h += pad("Sender", senderWidth) + "  "
+	}
+	return dimStyle.Render(ansi.Truncate(h+"Subject", m.width, "…"))
+}
+
+// pad truncates or pads s to exactly w cells.
+func pad(s string, w int) string {
+	s = ansi.Truncate(s, w, "…")
+	return s + strings.Repeat(" ", w-ansi.StringWidth(s))
+}
+
+// labelText lists a mail's star and user labels, e.g. "★ Work, Receipts".
+func (m model) labelText(e email) string {
+	var parts []string
 	if slices.Contains(e.Labels, "STARRED") {
-		b.WriteString(" ★")
+		parts = append(parts, "★")
 	}
+	var names []string
 	for _, l := range m.labels {
-		if !strings.HasPrefix(l.ID, "Label_") {
-			continue // system label
-		}
-		if slices.Contains(e.Labels, l.ID) {
-			b.WriteString(" [" + l.Name + "]")
+		if strings.HasPrefix(l.ID, "Label_") && slices.Contains(e.Labels, l.ID) {
+			names = append(names, l.Name)
 		}
 	}
-	return b.String()
+	if len(names) > 0 {
+		parts = append(parts, strings.Join(names, ", "))
+	}
+	return strings.Join(parts, " ")
 }
 
 // --- COMMANDS ---
-func fetchDay(srv *gmail.Service, day time.Time, s scope) tea.Cmd {
-	key := cacheKey{day: day.Format(time.DateOnly), scope: s}
+// fetchDay loads a day. withHistory first reads the mailbox history id, so
+// changes made while listing are picked up by the next sync.
+func fetchDay(srv *gmail.Service, day time.Time, withHistory bool) tea.Cmd {
+	k := dayKey(day)
 	return func() tea.Msg {
-		emails, failed, err := loadDay(srv, day, s)
-		return dayLoadedMsg{key: key, emails: emails, failed: failed, err: err}
+		msg := dayLoadedMsg{day: k}
+		if withHistory {
+			p, err := srv.Users.GetProfile("me").Fields("historyId").Do()
+			if err != nil {
+				msg.err = err
+				return msg
+			}
+			msg.historyID = p.HistoryId
+		}
+		msg.emails, msg.failed, msg.err = loadDay(srv, day)
+		return msg
 	}
 }
 
