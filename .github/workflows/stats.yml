@@ -28,6 +28,7 @@ jobs:
       - uses: erancihan/lowlighter-github-metrics@feat/multi-source
         with:
           user: erancihan
+          debug: yes
           template: classic
           base: header, activity, community, repositories, metadata
           config_timezone: Europe/Istanbul
