@@ -2,27 +2,46 @@ package googleclient
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
+	"net"
 	"net/http"
 	"os"
-	"os/exec"
-	"runtime"
+	"time"
+
+	"gmail-tui/internal/browser"
 
 	"golang.org/x/oauth2"
 )
 
-// --- GOOGLE AUTH BOILERPLATE ---
-// Retrieve a token, saves the token, then returns the generated client.
-func GetClient(config *oauth2.Config) *http.Client {
-	tokFile := "secrets/token.json"
+// --- GOOGLE AUTH ---
+// GetClient loads the cached token from tokFile, refreshing it or running the
+// browser login when it is missing or no longer valid.
+func GetClient(ctx context.Context, config *oauth2.Config, tokFile string) (*http.Client, error) {
 	tok, err := tokenFromFile(tokFile)
-	if err != nil {
-		tok = getTokenFromWeb(config)
-		saveToken(tokFile, tok)
+	if err == nil {
+		// Refresh tokens of apps in "Testing" expire after 7 days; detect that up front.
+		if _, err := config.TokenSource(ctx, tok).Token(); err != nil {
+			fmt.Printf("Saved login is no longer valid (%v), logging in again.\n", err)
+			tok = nil
+		}
+	} else {
+		tok = nil
 	}
-	return config.Client(context.Background(), tok)
+
+	if tok == nil {
+		tok, err = tokenFromWeb(ctx, config)
+		if err != nil {
+			return nil, err
+		}
+		if err := saveToken(tokFile, tok); err != nil {
+			return nil, err
+		}
+	}
+	return config.Client(ctx, tok), nil
 }
 
 func tokenFromFile(file string) (*oauth2.Token, error) {
@@ -36,80 +55,78 @@ func tokenFromFile(file string) (*oauth2.Token, error) {
 	return tok, err
 }
 
-func saveToken(path string, token *oauth2.Token) {
+func saveToken(path string, token *oauth2.Token) error {
 	fmt.Printf("Saving credential file to: %s\n", path)
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		log.Fatalf("Unable to cache oauth token: %v", err)
+		return fmt.Errorf("unable to cache oauth token: %w", err)
 	}
 	defer f.Close()
-	json.NewEncoder(f).Encode(token)
+	return json.NewEncoder(f).Encode(token)
 }
 
-func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
-	// 1. Create a channel to receive the auth code from the web server
-	codeCh := make(chan string)
+// tokenFromWeb runs the OAuth loopback flow: a one-shot server on a free local
+// port receives the redirect. Desktop app clients accept any loopback port.
+func tokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to start local server: %w", err)
+	}
+	config.RedirectURL = fmt.Sprintf("http://127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
 
-	// 2. Create a local server to listen for the callback
-	// NOTE: Ensure "http://localhost:8080" is added to your Authorized Redirect URIs in Google Cloud Console
-	server := &http.Server{Addr: ":8080"}
+	stateBytes := make([]byte, 16)
+	rand.Read(stateBytes)
+	state := hex.EncodeToString(stateBytes)
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Get the code from the query string
-		code := r.URL.Query().Get("code")
-		if code != "" {
-			// Tell the user it was successful
+	type result struct {
+		code string
+		err  error
+	}
+	resCh := make(chan result, 1)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		var res result
+		switch {
+		case q.Get("state") != state:
+			http.Error(w, "Error: state mismatch.", http.StatusBadRequest)
+			return
+		case q.Get("error") != "":
+			res.err = fmt.Errorf("login refused: %s", q.Get("error"))
+			fmt.Fprint(w, "Login failed. You can close this tab now.")
+		case q.Get("code") == "":
+			http.Error(w, "Error: no code found.", http.StatusBadRequest)
+			return
+		default:
+			res.code = q.Get("code")
 			fmt.Fprint(w, "Login successful! You can close this tab now.")
-			// Send code to the channel
-			codeCh <- code
-		} else {
-			fmt.Fprint(w, "Error: No code found.")
+		}
+		select {
+		case resCh <- res:
+		default:
 		}
 	})
+	server := &http.Server{Handler: mux}
+	go server.Serve(ln)
+	defer server.Shutdown(context.Background())
 
-	// 3. Start the server in a goroutine
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start local server: %v", err)
-		}
-	}()
+	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	fmt.Printf("Log in to Google in your browser. If it does not open, visit:\n%s\n", authURL)
+	browser.Open(authURL)
 
-	// 4. Construct the Auth URL with the redirect to localhost
-	config.RedirectURL = "http://localhost:8080"
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	var res result
+	select {
+	case res = <-resCh:
+	case <-time.After(5 * time.Minute):
+		return nil, errors.New("timed out waiting for login")
+	}
+	if res.err != nil {
+		return nil, res.err
+	}
 
-	// 5. Open the browser automatically
-	fmt.Println("Opening browser for authentication...")
-	openBrowser(authURL)
-
-	// 6. Wait for the code
-	authCode := <-codeCh
-
-	// 7. Shut down the server nicely
-	go server.Shutdown(context.Background())
-
-	// 8. Exchange the code for a token
-	tok, err := config.Exchange(context.TODO(), authCode)
+	tok, err := config.Exchange(ctx, res.code)
 	if err != nil {
-		log.Fatalf("Unable to retrieve token from web: %v", err)
+		return nil, fmt.Errorf("unable to retrieve token from web: %w", err)
 	}
-	return tok
-}
-
-// Helper to open the browser on different OSs
-func openBrowser(url string) {
-	var err error
-	switch runtime.GOOS {
-	case "linux":
-		err = exec.Command("xdg-open", url).Start()
-	case "windows":
-		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-	case "darwin":
-		err = exec.Command("open", url).Start()
-	default:
-		err = fmt.Errorf("unsupported platform")
-	}
-	if err != nil {
-		fmt.Printf("Could not open browser automatically. Please visit: %s\n", url)
-	}
+	return tok, nil
 }
