@@ -151,3 +151,12 @@ label itself is shown as "parent name only".
 | Mark as read when opened | on |
 | Remember view: start in the view (All received / Inbox) and span last chosen | on |
 | Shift applies actions to selection: `e d m v` act on the cursor mail, `E D M V` on the selection | on |
+
+"Colors…" at the end of the settings dialog opens the theme screen: the color
+roles (cursor, selected rows, titles, senders, labels, errors, …) next to a
+live preview. `[`/`]` switch between the presets Default, Light (for light
+terminals), Ocean, Forest, Sunset and Mono. `enter` opens a 256-color picker
+for the selected role; moving through it updates the preview at once, `enter`
+keeps the color, `esc` restores the previous one, and `#` takes a hex value
+(`#d7ffd7`). `x` resets a role to its default. Changed colors are saved under
+`colors` in `settings.json`.

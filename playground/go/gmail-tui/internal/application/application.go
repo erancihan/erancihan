@@ -23,6 +23,7 @@ var (
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(lipgloss.Color("57"))
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 	checkStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("78"))
+	markedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("235")).Background(lipgloss.Color("194")) // selected with x
 	labelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("180"))
 	archivedStyle = lipgloss.NewStyle().Faint(true)
 	modalStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
@@ -118,6 +119,7 @@ type model struct {
 	lv             labelsView
 	input          textInput
 	movePick       movePicker
+	colorEd        colorEditor
 	rangeIn        rangeInput
 	searchIn       string
 	cal            calendar
@@ -137,6 +139,7 @@ type Options struct {
 
 // --- CONSTRUCTOR ---
 func NewApplication(srv *gmail.Service, opts Options) model {
+	applyColors(opts.Settings.Colors)
 	m := model{
 		service:      srv,
 		settings:     opts.Settings,
@@ -845,6 +848,9 @@ func (m model) renderRow(r row, cursor bool) string {
 		if cursor {
 			return selectedStyle.Width(m.width).Render(ansi.Truncate(m.check(all, true)+arrow+" "+g.name+count, m.width, "…"))
 		}
+		if all {
+			return markedStyle.Bold(true).Width(m.width).Render(ansi.Truncate(m.check(all, true)+arrow+" "+g.name+count, m.width, "…"))
+		}
 		return ansi.Truncate(m.check(all, false)+arrow+" "+senderStyle.Render(g.name)+dimStyle.Render(count), m.width, "…")
 	}
 
@@ -871,6 +877,11 @@ func (m model) renderRow(r row, cursor bool) string {
 	if cursor {
 		line := m.check(m.selected[e.ID], true) + prefix + labels + sender + e.Subject + snippet
 		return selectedStyle.Width(m.width).Render(ansi.Truncate(line, m.width, "…"))
+	}
+	if m.selected[e.ID] {
+		// one style for the whole row: inner styles would reset the background
+		line := m.check(true, true) + prefix + labels + sender + e.Subject + snippet
+		return markedStyle.Bold(e.Unread).Width(m.width).Render(ansi.Truncate(line, m.width, "…"))
 	}
 	subject := e.Subject
 	switch {

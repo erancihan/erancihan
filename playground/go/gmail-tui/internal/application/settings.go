@@ -9,12 +9,13 @@ import (
 
 // Settings are user preferences, saved as JSON next to the login token.
 type Settings struct {
-	GroupBySender  bool   `json:"group_by_sender"`
-	MarkReadOnOpen bool   `json:"mark_read_on_open"`
-	RememberView   bool   `json:"remember_view"`
-	ShiftSelection bool   `json:"shift_for_selection"` // e/d/m/v act on the cursor, E/D/M/V on the selection
-	View           string `json:"view,omitempty"`      // last view ("received" or "inbox"), used when RememberView is on
-	Span           string `json:"span,omitempty"`      // last span of the day list, used when RememberView is on
+	GroupBySender  bool              `json:"group_by_sender"`
+	MarkReadOnOpen bool              `json:"mark_read_on_open"`
+	RememberView   bool              `json:"remember_view"`
+	ShiftSelection bool              `json:"shift_for_selection"` // e/d/m/v act on the cursor, E/D/M/V on the selection
+	View           string            `json:"view,omitempty"`      // last view ("received" or "inbox"), used when RememberView is on
+	Span           string            `json:"span,omitempty"`      // last span of the day list, used when RememberView is on
+	Colors         map[string]string `json:"colors,omitempty"`    // color overrides by role, see colors.go
 }
 
 func defaultSettings() Settings {

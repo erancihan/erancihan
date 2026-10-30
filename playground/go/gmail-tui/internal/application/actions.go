@@ -346,6 +346,7 @@ const (
 	modalSpan
 	modalInput
 	modalMove
+	modalColors
 )
 
 type confirmKind int
@@ -440,6 +441,9 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case modalMove:
 		return m.updateMove(msg)
 
+	case modalColors:
+		return m.updateColors(msg)
+
 	case modalConfirm:
 		switch k {
 		case "y", "enter":
@@ -468,10 +472,15 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case modalSettings:
 		switch k {
 		case "j", "down":
-			m.settingsCursor = min(m.settingsCursor+1, len(settingItems)-1)
+			m.settingsCursor = min(m.settingsCursor+1, len(settingItems)) // last row: Colors…
 		case "k", "up":
 			m.settingsCursor = max(m.settingsCursor-1, 0)
 		case " ", "enter":
+			if m.settingsCursor == len(settingItems) {
+				m.modal = modalColors
+				m.colorEd = colorEditor{}
+				return m, nil
+			}
 			cur, hasCur := m.selectedEmail()
 			v := settingItems[m.settingsCursor].field(&m.settings)
 			*v = !*v
@@ -548,6 +557,9 @@ func (m model) viewModal() string {
 	case modalMove:
 		return modalStyle.Render(m.viewMove())
 
+	case modalColors:
+		return modalStyle.Render(m.viewColors())
+
 	case modalSpan:
 		return modalStyle.Render(m.viewSpanPicker())
 
@@ -571,7 +583,11 @@ func (m model) viewModal() string {
 			}
 			lines = append(lines, line)
 		}
-		lines = append(lines, "", m.keyLine(keyHelp{"space", "toggle"}, keyHelp{"esc", "close"}))
+		colors := "    Colors…"
+		if m.settingsCursor == len(settingItems) {
+			colors = selectedStyle.Render(colors)
+		}
+		lines = append(lines, colors, "", m.keyLine(keyHelp{"space", "toggle"}, keyHelp{"enter", "open"}, keyHelp{"esc", "close"}))
 
 	case modalLabels:
 		lines = []string{titleStyle.Render("Label " + plural(len(m.picker.ids))), "> " + m.picker.filter + "▏", ""}
