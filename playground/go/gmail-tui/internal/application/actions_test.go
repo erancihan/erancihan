@@ -53,11 +53,11 @@ func TestSelectAndBulkRead(t *testing.T) {
 	if len(m.selected) != 2 || !m.selected["3"] || !m.selected["2"] {
 		t.Fatalf("selected = %v", m.selected)
 	}
-	if got := ids(m.actionTargets(true, m.cursorTargets())); !slices.Equal(got, []string{"3", "2"}) {
+	if got := ids(selTargets(m)); !slices.Equal(got, []string{"3", "2"}) {
 		t.Fatalf("targets = %v", got)
 	}
 	// both read already, so m marks them unread
-	next, _ := m.Update(actionDoneMsg{ids: []string{"3", "2"}, add: []string{"UNREAD"}, verb: "Marked unread:"})
+	next, _ := m.Update(actionDoneMsg{ids: []string{"3", "2"}, add: []string{"UNREAD"}, verb: "Marked unread:", bulk: true})
 	m = next.(model)
 	if !m.data.emails[0].Unread || !m.data.emails[1].Unread || len(m.selected) != 0 {
 		t.Errorf("not applied: %+v selected=%v", m.data.emails, m.selected)
@@ -188,7 +188,7 @@ func TestSelectionSurvivesReaderAndDays(t *testing.T) {
 	if !strings.Contains(ansi.Strip(m.View()), "2 selected (1 on other days)") {
 		t.Errorf("title:\n%s", ansi.Strip(m.View()))
 	}
-	if got := ids(m.actionTargets(true, m.cursorTargets())); !slices.Equal(got, []string{"3", "y1"}) {
+	if got := ids(selTargets(m)); !slices.Equal(got, []string{"3", "y1"}) {
 		t.Errorf("targets = %v", got)
 	}
 	m = press(t, m, "A") // all of yesterday is selected already → unselect it, keep today's
@@ -229,10 +229,10 @@ func TestArchiveToggle(t *testing.T) {
 	setLabels(&m, 0, []string{"INBOX"}) // 3 in inbox, 2 archived
 	m.refreshView()
 	m = press(t, m, "x", "x")
-	if !slices.ContainsFunc(m.actionTargets(true, m.cursorTargets()), inInbox) {
+	if !slices.ContainsFunc(selTargets(m), inInbox) {
 		t.Fatal("setup: expected an inbox mail among targets")
 	}
-	next, _ := m.Update(actionDoneMsg{ids: []string{"3", "2"}, remove: []string{"INBOX"}, verb: "Archived:"})
+	next, _ := m.Update(actionDoneMsg{ids: []string{"3", "2"}, remove: []string{"INBOX"}, verb: "Archived:", bulk: true})
 	m = next.(model)
 	if slices.ContainsFunc(m.data.emails, inInbox) || m.status != "Archived: 2 mails" || len(m.selected) != 0 {
 		t.Errorf("not archived: status=%q selected=%v", m.status, m.selected)
@@ -330,5 +330,58 @@ func TestShiftSettingOff(t *testing.T) {
 	m = press(t, m, "enter") // reader still acts on the open mail
 	if got := confirmText(t, m, "D"); got != "Move 1 mail to Trash?" {
 		t.Errorf("reader D = %q", got)
+	}
+}
+
+// selTargets is what a Shift action would act on.
+func selTargets(m model) []email {
+	es, _ := m.actionTargets(true, m.cursorTargets())
+	return es
+}
+
+func TestCursorActionKeepsSelection(t *testing.T) {
+	m := flat(t)
+	m = press(t, m, "x", "x") // select 3 and 2; cursor on 1
+	// a cursor action (e on mail 1) finishes: the selection stays
+	next, _ := m.Update(actionDoneMsg{ids: []string{"1"}, remove: []string{"INBOX"}, verb: "Archived:"})
+	m = next.(model)
+	if len(m.selected) != 2 {
+		t.Fatalf("cursor action cleared the selection: %v", m.selected)
+	}
+	// a Shift action finishes: its mails leave the selection, failed ones stay
+	next, _ = m.Update(actionDoneMsg{ids: []string{"3"}, remove: []string{"UNREAD"}, verb: "Marked read:", bulk: true, failed: 1})
+	m = next.(model)
+	if len(m.selected) != 1 || !m.selected["2"] {
+		t.Errorf("bulk action: selected = %v", m.selected)
+	}
+	// the flag is set by the key: E is bulk, e is not
+	_, cmd := m.Update(key("E"))
+	if cmd == nil {
+		t.Fatal("E produced no command")
+	}
+	if _, bulk := m.actionTargets(true, m.cursorTargets()); !bulk {
+		t.Error("Shift targets not marked as selection")
+	}
+	if _, bulk := m.actionTargets(false, m.cursorTargets()); bulk {
+		t.Error("cursor targets marked as selection")
+	}
+}
+
+func TestTrashInReaderOpensNext(t *testing.T) {
+	m := flat(t) // 3, 2, 1 newest first
+	m = press(t, m, "j", "enter")
+	if m.reader.email.ID != "2" {
+		t.Fatalf("reading %q", m.reader.email.ID)
+	}
+	next, _ := m.Update(actionDoneMsg{ids: []string{"2"}, trash: true, verb: "Moved to Trash:"})
+	m = next.(model)
+	if m.mode != modeReader || m.reader.email.ID != "1" || m.status != "Moved to Trash: 1 mail" {
+		t.Errorf("mode=%v reading=%q status=%q", m.mode, m.reader.email.ID, m.status)
+	}
+	// at the end of the list it moves to the mail above
+	next, _ = m.Update(actionDoneMsg{ids: []string{"1"}, trash: true, verb: "Moved to Trash:"})
+	m = next.(model)
+	if m.mode != modeReader || m.reader.email.ID != "3" {
+		t.Errorf("after last: mode=%v reading=%q", m.mode, m.reader.email.ID)
 	}
 }

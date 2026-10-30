@@ -86,10 +86,10 @@ func TestAllListFilterSearchAndStale(t *testing.T) {
 func TestAllListActionsAndBack(t *testing.T) {
 	m := allOpen(t)
 	m = press(t, m, "x", "x")
-	if got := len(m.actionTargets(true, m.cursorTargets())); got != 2 {
+	if got := len(selTargets(m)); got != 2 {
 		t.Fatalf("targets = %d", got)
 	}
-	next, _ := m.Update(actionDoneMsg{ids: []string{"a1", "a2"}, remove: []string{"UNREAD"}, verb: "Marked read:"})
+	next, _ := m.Update(actionDoneMsg{ids: []string{"a1", "a2"}, remove: []string{"UNREAD"}, verb: "Marked read:", bulk: true})
 	m = next.(model)
 	if m.data.emails[0].Unread || len(m.data.emails) != 30 {
 		t.Errorf("read mail should stay listed but read: %+v", m.data.emails[0])

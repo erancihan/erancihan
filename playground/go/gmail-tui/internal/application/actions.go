@@ -34,6 +34,7 @@ type actionDoneMsg struct {
 	trash   bool
 	created *label // label created by this action, if any
 	verb    string // past tense for the status line, e.g. "Marked read"
+	bulk    bool   // the action was taken on the selection
 	failed  int
 	err     error
 }
@@ -57,40 +58,56 @@ func actionKey(k string) (act string, shift, ok bool) {
 // actionTargets picks the mails for an action key. With the Shift setting on,
 // the Shift form acts on the selection and the plain form on `cursor` only;
 // with it off, both act on the selection if there is one, else on `cursor`.
-func (m model) actionTargets(shift bool, cursor []email) []email {
+func (m model) actionTargets(shift bool, cursor []email) (es []email, fromSelection bool) {
 	if m.settings.ShiftSelection && !shift {
-		return cursor
+		return cursor, false
 	}
 	if len(m.selected) > 0 || m.settings.ShiftSelection {
-		return m.cachedEmails(m.selected)
+		return m.cachedEmails(m.selected), true
 	}
-	return cursor
+	return cursor, false
 }
 
 // runAction runs an action key on the mails picked by actionTargets.
 func (m model) runAction(act string, shift bool, cursor []email) (tea.Model, tea.Cmd) {
-	es := m.actionTargets(shift, cursor)
+	es, bulk := m.actionTargets(shift, cursor)
 	if len(es) == 0 && shift && m.settings.ShiftSelection {
 		m.status = "Nothing selected (x selects a mail)"
 		return m, nil
 	}
-	return m.runOn(act, es)
+	return m.runOn(act, es, bulk)
 }
 
-// runOn runs an action on the given mails.
-func (m model) runOn(act string, es []email) (tea.Model, tea.Cmd) {
+// runOn runs an action on the given mails; bulk marks mails taken from the
+// selection, which leave it once the action is done.
+func (m model) runOn(act string, es []email, bulk bool) (tea.Model, tea.Cmd) {
 	if len(es) == 0 {
 		return m, nil
 	}
 	switch act {
 	case "e":
-		return m, m.toggleArchive(es)
+		return m, withBulk(m.toggleArchive(es), bulk)
 	case "d":
-		return m.confirmTrash(es), nil
+		return m.confirmTrash(es, bulk), nil
 	case "m":
-		return m, m.toggleRead(es)
+		return m, withBulk(m.toggleRead(es), bulk)
 	}
-	return m.openLabels(es)
+	return m.openLabels(es, bulk)
+}
+
+// withBulk marks the actionDoneMsg of cmd as taken on the selection.
+func withBulk(cmd tea.Cmd, bulk bool) tea.Cmd {
+	if cmd == nil || !bulk {
+		return cmd
+	}
+	return func() tea.Msg {
+		msg := cmd()
+		if done, ok := msg.(actionDoneMsg); ok {
+			done.bulk = true
+			return done
+		}
+		return msg
+	}
 }
 
 // cursorTargets is the mail under the cursor, or the sender group on a header.
@@ -213,21 +230,21 @@ func inInbox(e email) bool {
 	return slices.Contains(e.Labels, "INBOX")
 }
 
-func (m model) confirmTrash(es []email) model {
+func (m model) confirmTrash(es []email, bulk bool) model {
 	if len(es) == 0 {
 		return m
 	}
 	m.modal = modalConfirm
-	m.confirm = confirmState{kind: confirmTrash, text: "Move " + plural(len(es)) + " to Trash?", ids: ids(es)}
+	m.confirm = confirmState{kind: confirmTrash, text: "Move " + plural(len(es)) + " to Trash?", ids: ids(es), bulk: bulk}
 	return m
 }
 
-func (m model) openLabels(es []email) (model, tea.Cmd) {
+func (m model) openLabels(es []email, bulk bool) (model, tea.Cmd) {
 	if len(es) == 0 {
 		return m, nil
 	}
 	m.modal = modalLabels
-	m.picker = labelPicker{ids: ids(es)}
+	m.picker = labelPicker{ids: ids(es), bulk: bulk}
 	if m.labels == nil {
 		return m, fetchLabels(m.service)
 	}
@@ -236,6 +253,7 @@ func (m model) openLabels(es []email) (model, tea.Cmd) {
 
 // actionDone applies a finished action to every cached copy of the mails.
 func (m model) actionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
+	readerTrashed := m.mode == modeReader && msg.trash && slices.Contains(msg.ids, m.reader.email.ID)
 	if msg.created != nil {
 		m.labels = append(m.labels, *msg.created)
 		sortLabels(m.labels)
@@ -249,8 +267,10 @@ func (m model) actionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
 			e.Labels = withLabels(e.Labels, msg.add, msg.remove)
 			e.Unread = slices.Contains(e.Labels, "UNREAD")
 		})
-		if msg.verb != "" { // user action: the selection has been used up
-			clear(m.selected)
+		if msg.bulk { // taken on the selection: those mails leave it
+			for _, id := range msg.ids {
+				delete(m.selected, id)
+			}
 		}
 	}
 	var save tea.Cmd
@@ -265,6 +285,15 @@ func (m model) actionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
 		m.status = errorStyle.Render(fmt.Sprintf("%s %s, %d failed", msg.verb, plural(len(msg.ids)), msg.failed))
 	default:
 		m.status = msg.verb + " " + plural(len(msg.ids))
+	}
+	// the open mail was trashed: read the next one, as Gmail does, instead
+	// of dropping back to the list
+	if e, ok := m.selectedEmail(); readerTrashed && ok {
+		status := m.status
+		next, cmd := m.openReader(e)
+		nm := next.(model)
+		nm.status = status
+		return nm, tea.Batch(save, cmd)
 	}
 	return m, save
 }
@@ -332,10 +361,12 @@ type confirmState struct {
 	text   string
 	detail string   // optional explanation under the question
 	ids    []string // mails to trash
+	bulk   bool     // they are the selection
 }
 
 type labelPicker struct {
 	ids    []string // mails the picker applies to
+	bulk   bool     // they are the selection
 	filter string
 	cursor int
 }
@@ -420,7 +451,7 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m.runLabelOps("Deleted 1 label", []labelOp{{kind: "delete", id: m.confirm.ids[0]}})
 			}
 			m.status = "Moving to Trash…"
-			return m, trashCmd(m.service, m.confirm.ids)
+			return m, withBulk(trashCmd(m.service, m.confirm.ids), m.confirm.bulk)
 		case "a":
 			if m.confirm.kind == confirmDeleteLabel && len(m.confirm.ids) > 1 {
 				m.modal = modalNone
@@ -479,12 +510,12 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			it := items[m.picker.cursor]
 			m.modal = modalNone
 			if it.create {
-				return m, createLabelCmd(m.service, it.label.Name, m.picker.ids)
+				return m, withBulk(createLabelCmd(m.service, it.label.Name, m.picker.ids), m.picker.bulk)
 			}
 			if m.labelCount(it.label.ID) == len(m.picker.ids) {
-				return m, modifyCmd(m.service, m.picker.ids, nil, []string{it.label.ID}, "Removed "+it.label.Name+" from")
+				return m, withBulk(modifyCmd(m.service, m.picker.ids, nil, []string{it.label.ID}, "Removed "+it.label.Name+" from"), m.picker.bulk)
 			}
-			return m, modifyCmd(m.service, m.picker.ids, []string{it.label.ID}, nil, "Labelled "+it.label.Name+":")
+			return m, withBulk(modifyCmd(m.service, m.picker.ids, []string{it.label.ID}, nil, "Labelled "+it.label.Name+":"), m.picker.bulk)
 		default:
 			if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
 				m.picker.filter += string(msg.Runes)

@@ -141,7 +141,7 @@ func (m model) updateReader(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "e", "E", "d", "D", "m", "M", "v", "V", "L":
 		act, shift, _ := actionKey(msg.String())
 		if !m.settings.ShiftSelection {
-			return m.runOn(act, []email{m.reader.email}) // without the setting, the reader acts on the open mail
+			return m.runOn(act, []email{m.reader.email}, false) // without the setting, the reader acts on the open mail
 		}
 		return m.runAction(act, shift, []email{m.reader.email})
 	}
