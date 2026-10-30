@@ -62,10 +62,10 @@ Day view
 | `x` | select mail (on a sender: the whole group) |
 | `A` | select all mail of the shown day, or unselect them |
 | `X` | clear the selection on all days |
-| `d` | move to Trash (asks first) |
-| `m` | mark read; if all are read already, mark unread |
-| `e` | archive; if none is in the inbox, move back to the inbox |
-| `L` | label picker: type to filter, `enter` adds the label (or removes it if all have it), a new name creates it |
+| `e` / `E` | archive; if none is in the inbox, move back to the inbox |
+| `d` / `D` | move to Trash (asks first) |
+| `m` / `M` | mark read; if all are read already, mark unread |
+| `v` / `V` | label picker: type to filter, `enter` adds the label (or removes it if all have it), a new name creates it (`L` = `V`) |
 | `u` | open the sender's unsubscribe link |
 | `o` | open the mail in Gmail |
 | `s` | sender stats |
@@ -75,7 +75,11 @@ Day view
 | `r` | reload the day |
 | `q` | quit |
 
-`e`, `d`, `m` and `L` act on the selected mails, or on the mail under the cursor when
+With the "Shift applies actions to selection" setting (on by default), `e`,
+`d`, `m` and `v` act on the mail under the cursor (on a sender header: the
+group), and `E`, `D`, `M` and `V` act on the selected mails, so you can handle
+one mail without losing a selection. With the setting off, both forms act on
+the selected mails, or on the mail under the cursor when
 nothing is selected. In the All received view, archived mails have a faint
 subject. The selection is kept while you read mail and change days,
 so one action can cover mail from several days; the title shows how many
@@ -84,8 +88,9 @@ selected mails are on other days.
 The title shows the shown day's unread count and the inbox's unread count over
 all days.
 
-Reader: `j`/`k` scroll, `space`/`b` page, `n`/`p` next/previous mail, `e`, `d`, `m`,
-`L`, `u`, `o` as above, `q` back.
+Reader: `j`/`k` scroll, `space`/`b` page, `n`/`p` next/previous mail, `u`, `o`, `q` back;
+`e` `d` `m` `v` act on the open mail, and with the Shift setting `E` `D` `M` `V`
+act on the selection.
 
 Senders (`s`): senders ranked by mail count over a range of days, by default
 the last 7 days ending today. `h`/`l` move the range back or forward by its own
@@ -116,3 +121,4 @@ the day, `r` counts the month again, `esc` closes.
 | Group by sender | off: one list, newest first |
 | Mark as read when opened | on |
 | Remember view: start in the view (All received / Inbox) last chosen with `tab` | on |
+| Shift applies actions to selection: `e d m v` act on the cursor mail, `E D M V` on the selection | on |

@@ -344,14 +344,9 @@ func (m model) updateDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.toggleSelectAll()
 	case "X":
 		clear(m.selected)
-	case "d":
-		return m.confirmTrash(m.targets()), nil
-	case "m":
-		return m, m.toggleRead(m.targets())
-	case "e":
-		return m, m.toggleArchive(m.targets())
-	case "L":
-		return m.openLabels(m.targets())
+	case "e", "E", "d", "D", "m", "M", "v", "V", "L":
+		act, shift, _ := actionKey(msg.String())
+		return m.runAction(act, shift, m.cursorTargets())
 
 	// Links
 	case "u":
@@ -711,12 +706,13 @@ func (m model) viewDay() string {
 		b.WriteString(m.footerStatus())
 	}
 	if m.list == listAll {
-		b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"a", "day view"}, keyHelp{"f", "filter"}, keyHelp{"/", "search"},
-			keyHelp{"enter", "read"}, keyHelp{"x", "select"}, keyHelp{"e", "archive"}, keyHelp{"d", "trash"}, keyHelp{"m", "read/unread"}))
+		keys := []keyHelp{{"?", "help"}, {"a", "day view"}, {"f", "filter"}, {"/", "search"}, {"enter", "read"}, {"x", "select"}}
+		b.WriteString(m.helpBar(append(keys, m.actionKeys()...)...))
 		return b.String()
 	}
-	b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"h/l", "day"}, keyHelp{"enter", "read"}, keyHelp{"x", "select"},
-		keyHelp{"e", "archive"}, keyHelp{"d", "trash"}, keyHelp{"m", "read/unread"}, keyHelp{"L", "label"}, keyHelp{"q", "quit"}))
+	keys := []keyHelp{{"?", "help"}, {"h/l", "day"}, {"enter", "read"}, {"x", "select"}}
+	keys = append(keys, m.actionKeys()...)
+	b.WriteString(m.helpBar(append(keys, keyHelp{"q", "quit"})...))
 	return b.String()
 }
 

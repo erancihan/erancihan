@@ -86,7 +86,7 @@ func TestAllListFilterSearchAndStale(t *testing.T) {
 func TestAllListActionsAndBack(t *testing.T) {
 	m := allOpen(t)
 	m = press(t, m, "x", "x")
-	if got := len(m.targets()); got != 2 {
+	if got := len(m.actionTargets(true, m.cursorTargets())); got != 2 {
 		t.Fatalf("targets = %d", got)
 	}
 	next, _ := m.Update(actionDoneMsg{ids: []string{"a1", "a2"}, remove: []string{"UNREAD"}, verb: "Marked read:"})

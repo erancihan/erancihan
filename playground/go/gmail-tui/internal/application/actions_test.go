@@ -53,7 +53,7 @@ func TestSelectAndBulkRead(t *testing.T) {
 	if len(m.selected) != 2 || !m.selected["3"] || !m.selected["2"] {
 		t.Fatalf("selected = %v", m.selected)
 	}
-	if got := ids(m.targets()); !slices.Equal(got, []string{"3", "2"}) {
+	if got := ids(m.actionTargets(true, m.cursorTargets())); !slices.Equal(got, []string{"3", "2"}) {
 		t.Fatalf("targets = %v", got)
 	}
 	// both read already, so m marks them unread
@@ -124,7 +124,7 @@ func TestLabelPicker(t *testing.T) {
 	m.labels = []label{{"INBOX", "Inbox"}, {"Label_1", "Work"}, {"Label_2", "Receipts"}}
 	setLabels(&m, 0, []string{"Label_1"})
 	m.refreshView()
-	m = press(t, m, "L")
+	m = press(t, m, "v")
 	if m.modal != modalLabels {
 		t.Fatal("picker not open")
 	}
@@ -188,7 +188,7 @@ func TestSelectionSurvivesReaderAndDays(t *testing.T) {
 	if !strings.Contains(ansi.Strip(m.View()), "2 selected (1 on other days)") {
 		t.Errorf("title:\n%s", ansi.Strip(m.View()))
 	}
-	if got := ids(m.targets()); !slices.Equal(got, []string{"3", "y1"}) {
+	if got := ids(m.actionTargets(true, m.cursorTargets())); !slices.Equal(got, []string{"3", "y1"}) {
 		t.Errorf("targets = %v", got)
 	}
 	m = press(t, m, "A") // all of yesterday is selected already → unselect it, keep today's
@@ -229,7 +229,7 @@ func TestArchiveToggle(t *testing.T) {
 	setLabels(&m, 0, []string{"INBOX"}) // 3 in inbox, 2 archived
 	m.refreshView()
 	m = press(t, m, "x", "x")
-	if !slices.ContainsFunc(m.targets(), inInbox) {
+	if !slices.ContainsFunc(m.actionTargets(true, m.cursorTargets()), inInbox) {
 		t.Fatal("setup: expected an inbox mail among targets")
 	}
 	next, _ := m.Update(actionDoneMsg{ids: []string{"3", "2"}, remove: []string{"INBOX"}, verb: "Archived:"})
@@ -280,4 +280,55 @@ func setLabels(m *model, i int, labels []string) {
 	e := m.mails[id]
 	e.Labels = labels
 	m.mails[id] = e
+}
+
+func confirmText(t *testing.T, m model, k string) string {
+	t.Helper()
+	next, _ := m.Update(key(k))
+	nm := next.(model)
+	if nm.modal != modalConfirm {
+		return "status: " + nm.status
+	}
+	return nm.confirm.text
+}
+
+func TestShiftForSelection(t *testing.T) {
+	m := flat(t)              // setting on by default
+	m = press(t, m, "x", "x") // select 3 and 2, cursor on 1
+	if got := confirmText(t, m, "d"); got != "Move 1 mail to Trash?" {
+		t.Errorf("d = %q", got)
+	}
+	if got := confirmText(t, m, "D"); got != "Move 2 mails to Trash?" {
+		t.Errorf("D = %q", got)
+	}
+	m = press(t, m, "X")
+	if got := confirmText(t, m, "D"); got != "status: Nothing selected (x selects a mail)" {
+		t.Errorf("D without selection = %q", got)
+	}
+	if !strings.Contains(ansi.Strip(m.View()), "e archive") {
+		t.Errorf("footer:\n%s", ansi.Strip(m.View()))
+	}
+
+	// in the reader: d is the open mail, D the selection
+	m = press(t, m, "g", "x", "enter")
+	if got := confirmText(t, m, "d"); got != "Move 1 mail to Trash?" {
+		t.Errorf("reader d = %q", got)
+	}
+	m = press(t, m, "q", "x", "enter") // select a second one, open it
+	if got := confirmText(t, m, "D"); got != "Move 2 mails to Trash?" {
+		t.Errorf("reader D = %q", got)
+	}
+}
+
+func TestShiftSettingOff(t *testing.T) {
+	m := flat(t)
+	m.settings.ShiftSelection = false
+	m = press(t, m, "x", "x")
+	if got := confirmText(t, m, "d"); got != "Move 2 mails to Trash?" {
+		t.Errorf("d with selection = %q", got)
+	}
+	m = press(t, m, "enter") // reader still acts on the open mail
+	if got := confirmText(t, m, "D"); got != "Move 1 mail to Trash?" {
+		t.Errorf("reader D = %q", got)
+	}
 }

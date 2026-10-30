@@ -40,14 +40,28 @@ func (m model) helpBar(keys ...keyHelp) string {
 	return ansi.Truncate(" "+m.keyLine(keys...), m.width, "…")
 }
 
-var actionSection = helpSection{"Act on selection or cursor", []keyHelp{
-	{"e", "archive / move to inbox"},
-	{"d", "move to Trash"},
-	{"m", "mark read / unread"},
-	{"L", "add / remove label"},
-	{"u", "unsubscribe from sender"},
-	{"o", "open in Gmail"},
-}}
+// actionSection lists the action keys; with the Shift setting, the plain key
+// acts on the cursor mail and the Shift key on the selection.
+func (m model) actionSection() helpSection {
+	if m.settings.ShiftSelection {
+		return helpSection{"Act (cursor / Shift: selection)", []keyHelp{
+			{"e E", "archive / move to inbox"},
+			{"d D", "move to Trash"},
+			{"m M", "mark read / unread"},
+			{"v V", "add / remove label"},
+			{"u", "unsubscribe from sender"},
+			{"o", "open in Gmail"},
+		}}
+	}
+	return helpSection{"Act on selection or cursor", []keyHelp{
+		{"e", "archive / move to inbox"},
+		{"d", "move to Trash"},
+		{"m", "mark read / unread"},
+		{"v", "add / remove label"},
+		{"u", "unsubscribe from sender"},
+		{"o", "open in Gmail"},
+	}}
+}
 
 // helpSections lists the keys of the current view for the ? dialog.
 func (m model) helpSections() []helpSection {
@@ -61,7 +75,7 @@ func (m model) helpSections() []helpSection {
 				{"n/p", "next / previous mail"},
 				{"q", "back to list"},
 			}},
-			actionSection,
+			m.actionSection(),
 		}
 	case modeStats:
 		return []helpSection{
@@ -98,7 +112,7 @@ func (m model) helpSections() []helpSection {
 				{"x", "mail (on sender: group)"},
 				{"X", "clear selection"},
 			}},
-			actionSection,
+			m.actionSection(),
 		}
 	}
 	return []helpSection{
@@ -115,7 +129,7 @@ func (m model) helpSections() []helpSection {
 			{"A", "all of day / none"},
 			{"X", "clear (all days)"},
 		}},
-		actionSection,
+		m.actionSection(),
 		{"View", []keyHelp{
 			{"enter", "read mail"},
 			{"a", "all mail (unread first)"},
@@ -153,4 +167,14 @@ func (m model) viewHelp() string {
 		body = strings.Join(blocks, "\n\n")
 	}
 	return titleStyle.Render("Keys") + "\n\n" + body + "\n\n" + dimStyle.Render("any key to close")
+}
+
+// actionKeys are the action keys for footers; with the Shift setting and a
+// selection, a reminder that Shift acts on it comes first.
+func (m model) actionKeys() []keyHelp {
+	keys := []keyHelp{{"e", "archive"}, {"d", "trash"}, {"m", "read/unread"}, {"v", "label"}}
+	if m.settings.ShiftSelection && len(m.selected) > 0 {
+		keys = append([]keyHelp{{"⇧", "on selection"}}, keys...)
+	}
+	return keys
 }

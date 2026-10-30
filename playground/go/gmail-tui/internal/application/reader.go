@@ -138,14 +138,12 @@ func (m model) updateReader(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, openLink(gmailLink(m.reader.email.ID))
 
 	// Actions on this mail
-	case "d":
-		return m.confirmTrash([]email{m.reader.email}), nil
-	case "m":
-		return m, m.toggleRead([]email{m.reader.email})
-	case "e":
-		return m, m.toggleArchive([]email{m.reader.email})
-	case "L":
-		return m.openLabels([]email{m.reader.email})
+	case "e", "E", "d", "D", "m", "M", "v", "V", "L":
+		act, shift, _ := actionKey(msg.String())
+		if !m.settings.ShiftSelection {
+			return m.runOn(act, []email{m.reader.email}) // without the setting, the reader acts on the open mail
+		}
+		return m.runAction(act, shift, []email{m.reader.email})
 	}
 	return m, nil
 }
@@ -160,8 +158,8 @@ func (m model) viewReader() string {
 	}
 	b.WriteString(strings.Repeat("\n", max(0, r.height-(end-r.offset))))
 	b.WriteString(m.footerStatus())
-	b.WriteString(m.helpBar(keyHelp{"?", "help"}, keyHelp{"q", "back"}, keyHelp{"n/p", "next/prev"},
-		keyHelp{"e", "archive"}, keyHelp{"d", "trash"}, keyHelp{"m", "read/unread"}, keyHelp{"L", "label"}))
+	keys := []keyHelp{{"?", "help"}, {"q", "back"}, {"n/p", "next/prev"}}
+	b.WriteString(m.helpBar(append(keys, m.actionKeys()...)...))
 	return b.String()
 }
 

@@ -40,12 +40,61 @@ type actionDoneMsg struct {
 
 // --- SELECTION ---
 
-// targets returns the mails an action applies to: the selection (on any day)
-// if any, else the mail under the cursor, else the sender group under the cursor.
-func (m model) targets() []email {
-	if len(m.selected) > 0 {
+// actionKey maps a key to an action (e archive, d trash, m read, v label) and
+// whether it is the Shift form. L is kept as a synonym for V.
+func actionKey(k string) (act string, shift, ok bool) {
+	switch k {
+	case "e", "d", "m", "v":
+		return k, false, true
+	case "E", "D", "M", "V":
+		return strings.ToLower(k), true, true
+	case "L":
+		return "v", true, true
+	}
+	return "", false, false
+}
+
+// actionTargets picks the mails for an action key. With the Shift setting on,
+// the Shift form acts on the selection and the plain form on `cursor` only;
+// with it off, both act on the selection if there is one, else on `cursor`.
+func (m model) actionTargets(shift bool, cursor []email) []email {
+	if m.settings.ShiftSelection && !shift {
+		return cursor
+	}
+	if len(m.selected) > 0 || m.settings.ShiftSelection {
 		return m.cachedEmails(m.selected)
 	}
+	return cursor
+}
+
+// runAction runs an action key on the mails picked by actionTargets.
+func (m model) runAction(act string, shift bool, cursor []email) (tea.Model, tea.Cmd) {
+	es := m.actionTargets(shift, cursor)
+	if len(es) == 0 && shift && m.settings.ShiftSelection {
+		m.status = "Nothing selected (x selects a mail)"
+		return m, nil
+	}
+	return m.runOn(act, es)
+}
+
+// runOn runs an action on the given mails.
+func (m model) runOn(act string, es []email) (tea.Model, tea.Cmd) {
+	if len(es) == 0 {
+		return m, nil
+	}
+	switch act {
+	case "e":
+		return m, m.toggleArchive(es)
+	case "d":
+		return m.confirmTrash(es), nil
+	case "m":
+		return m, m.toggleRead(es)
+	}
+	return m.openLabels(es)
+}
+
+// cursorTargets is the mail under the cursor, or the sender group on a header.
+func (m model) cursorTargets() []email {
 	if e, ok := m.selectedEmail(); ok {
 		return []email{e}
 	}
